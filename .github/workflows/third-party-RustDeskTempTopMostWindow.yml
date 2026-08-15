@@ -1,0 +1,140 @@
+name: build RustDeskTempTopMostWindow
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifact:
+        type: boolean
+        default: true
+      target:
+        description: 'Runner Label (windows-2022)'
+        required: true
+        type: string
+        default: 'windows-2022'
+      configuration:
+        description: 'Build Configuration: Release / Debug'
+        required: true
+        type: string
+        default: 'Release'
+      platform:
+        description: 'Build Platform: x64 / x86'
+        required: true
+        type: string
+        default: 'x64'
+      target_version:
+        description: 'Windows SDK Target Version'
+        required: true
+        type: string
+        default: 'Windows10'
+    secrets:
+      REPO:
+        required: false
+        description: "Token for accessing private patches repo"
+      GENURL:
+        required: false
+        description: "Privacy wallpaper api address"
+
+env:
+  project_path: WindowInjection/WindowInjection.vcxproj
+  build_output_dir: RustDeskTempTopMostWindow/WindowInjection/${{ inputs.platform }}/${{ inputs.configuration }}
+
+jobs:
+  build-RustDeskTempTopMostWindow:
+    runs-on: ${{ inputs.target }}
+    outputs:
+      target_arch: ${{ inputs.platform }}
+    strategy:
+      fail-fast: false
+    steps:
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
+
+      - name: Checkout patches repository
+        uses: actions/checkout@v4
+        with:
+          repository: 857074609/patches
+          path: patches
+          ref: main
+          token: ${{ secrets.REPO }}
+          ssh-strict: false
+          ssh-user: ""
+
+      - name: Clone RustDeskTempTopMostWindow source
+        shell: bash
+        run: |
+          if ! git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow RustDeskTempTopMostWindow 2>&1; then
+            echo "git clone failed, falling back to codeload tarball"
+            curl -fsSL -o rd_tw.tgz "https://codeload.github.com/rustdesk-org/RustDeskTempTopMostWindow/legacy.tar.gz/HEAD"
+            mkdir -p RustDeskTempTopMostWindow
+            tar -xzf rd_tw.tgz -C RustDeskTempTopMostWindow --strip-components=1
+            rm -f rd_tw.tgz
+          fi
+          if [ ! -f RustDeskTempTopMostWindow/WindowInjection/dllmain.cpp ]; then
+            echo "ERROR: RustDeskTempTopMostWindow/WindowInjection/dllmain.cpp not found after clone"
+            ls -la RustDeskTempTopMostWindow || true
+            exit 1
+          fi
+
+      - name: Generate privacy wallpaper PNG
+        if: ${{ fromJson(github.event.inputs.extras).privacy_wallpaper_link == 'true' }}
+        run: |
+          $outputDir = Join-Path "$env:GITHUB_WORKSPACE" "RustDeskTempTopMostWindow" "WindowInjection"
+          python patches/generate_privacy.py --uuid "${{ github.event.inputs.uuid }}" --genurl "${{ secrets.GENURL }}" --output-dir $outputDir
+
+      - name: Upload privacy_wallpaper.png (Debug Artifact)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ fromJson(github.event.inputs.extras).privacy_wallpaper_link == 'true' }}
+        with:
+          name: privacy-wallpaper-debug-${{ inputs.platform }}
+          path: RustDeskTempTopMostWindow/WindowInjection/privacy_wallpaper.png
+
+      - name: Convert PNG to img.cpp
+        if: ${{ fromJson(github.event.inputs.extras).privacy_wallpaper_link == 'true' }}
+        shell: pwsh
+        run: |
+          $workspace = "$env:GITHUB_WORKSPACE"
+          $pngPath = Join-Path $workspace "RustDeskTempTopMostWindow" "WindowInjection" "privacy_wallpaper.png"
+          $outDir = Join-Path $workspace "RustDeskTempTopMostWindow" "WindowInjection"
+          $script = Join-Path $workspace "patches" "generate_img_cpp.py"
+          python $script --input-png $pngPath --output-dir $outDir
+
+      - name: Validate img.cpp file size
+        if: ${{ fromJson(github.event.inputs.extras).privacy_wallpaper_link == 'true' }}
+        run: |
+          $cppFile = Join-Path "$env:GITHUB_WORKSPACE" "RustDeskTempTopMostWindow" "WindowInjection" "img.cpp"
+          $size = (Get-Item $cppFile).Length
+          if ($size -lt 1000) {
+              Write-Error "img.cpp too small! Invalid PNG, abort build."
+              exit 1
+          }
+      - name: Build WindowInjection.dll
+        run: |
+          cd RustDeskTempTopMostWindow
+          msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }}
+
+      - name: Locate and stage VC runtime redist DLLs
+        id: vswhere
+        run: |
+          $VSWHERE = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $VS_PATH = & $VSWHERE -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+          $VC_TOOLS = Join-Path $VS_PATH "VC\Tools\MSVC"
+          $VC_VERSION = Get-ChildItem $VC_TOOLS | Select-Object -ExpandProperty Name | Select-Object -Last 1
+          $ARCH = "${{ inputs.platform }}"
+          $REDIST = Join-Path $VC_TOOLS $VC_VERSION "bin\Hostx64\$ARCH"
+          $DST = Join-Path "$env:GITHUB_WORKSPACE" "${{ env.build_output_dir }}"
+          New-Item -ItemType Directory -Force -Path $DST | Out-Null
+          Copy-Item (Join-Path $REDIST "msvcp140.dll") $DST -Force
+          Copy-Item (Join-Path $REDIST "vcruntime140.dll") $DST -Force
+          Copy-Item (Join-Path $REDIST "vcruntime140_1.dll") $DST -Force
+          echo "vcredist=$REDIST" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload compiled WindowInjection.dll
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ inputs.upload-artifact }}
+        with:
+          name: topmostwindow-artifacts-${{ inputs.platform }}
+          path: |
+            ./${{ env.build_output_dir }}/WindowInjection.dll
+            ./${{ env.build_output_dir }}/msvcp140.dll
+            ./${{ env.build_output_dir }}/vcruntime140.dll
+            ./${{ env.build_output_dir }}/vcruntime140_1.dll

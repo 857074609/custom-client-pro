@@ -1,0 +1,33 @@
+name:  Reset
+
+on:
+  workflow_dispatch:
+
+jobs:
+  reset-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Reset to initial commit
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
+  
+          git checkout --orphan fresh-branch
+          
+          git add .
+          git commit -m "Reset"
+          
+     
+          git branch -D master || true
+          git branch -m master
+          git push origin --force --set-upstream master
+
+      - name: Delete remote tags (optional)
+        run: |
+          git tag -l | xargs -r git push origin --delete

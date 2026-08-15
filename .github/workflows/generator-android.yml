@@ -1,0 +1,710 @@
+name: Custom Android Client Generator (Combined)
+run-name: Custom Android Client Generator
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform'
+        required: false
+        default: 'android'
+        type: string
+      serverinfo:
+        description: 'Encrypted serverinfo (Fernet) — contains server / RS_PUB_KEY / apiServer / permanentPassword / unlockPin / urlLink / downloadLink / updateLink'
+        required: true
+        default: ''
+        type: string
+      custom:
+        description: "Custom JSON"
+        required: true
+        default: ''
+        type: string
+      uuid:
+        description: "uuid of request"
+        required: true
+        default: ''
+        type: string
+      ui_mode:
+        description: "Custom User Interface (reserved, mobile UI not affected)"
+        required: false
+        type: string
+      iconlink:
+        description: "Icon source: 'true' uses GENURL+uuid mechanism; or pass http(s) PNG link directly; 'false' (default) keeps RustDesk default icon."
+        required: false
+        default: 'false'
+        type: string
+      logolink:
+        description: "logo link"
+        required: false
+        default: 'false'
+        type: string
+      appname:
+        description: "app name"
+        required: true
+        default: 'rustdesk'
+        type: string
+      filename:
+        description: "output APK base filename"
+        required: true
+        default: 'rustdesk'
+        type: string
+      androidappid:
+        description: "Android applicationId / client identifier (package name), e.g. com.example.myclient"
+        required: false
+        default: 'com.carriez.flutter_hbb'
+        type: string
+      compname:
+        description: "Company name shown in About"
+        required: false
+        default: 'Purslane Tech Pte. Ltd.'
+        type: string
+      extras:
+        description: "extra inputs in json (version, gdpro, token, gdpro, allow-websocket, ws_port, delayFix, xOffline, hidecm, removeNewVersionNotif, cycleMonitor)"
+        required: true
+        default: '{}'
+        type: string
+env:
+  SCITER_RUST_VERSION: "1.75"
+  RUST_VERSION: "1.75"
+  CARGO_NDK_VERSION: "3.1.2"
+  SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
+  SCITER_NASM_DEBVERSION: "2.14-1"
+  LLVM_VERSION: "15.0.6"
+  FLUTTER_VERSION: "3.24.5"
+  ANDROID_FLUTTER_VERSION: "3.24.5"
+  FLUTTER_ELINUX_VERSION: "3.16.9"
+  TAG_NAME: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
+  VERSION: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
+  RUSTDESK_BUILD_NUMBER: "${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
+  VER_SUFFIX: "${{ (fromJson(inputs.extras || '{}').build_number || '0') != '0' && format('.{0}', fromJson(inputs.extras || '{}').build_number || '0') || '' }}"
+  NDK_VERSION: "r27c"
+  ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
+  MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
+  UPLOAD_ARTIFACT: 'true'
+  SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  STATUS_URL: "${{ secrets.GENURL }}/updategh"
+  GENURL: ${{ secrets.GENURL }}
+  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
+jobs:
+  generate-bridge-linux:
+    uses: ./.github/workflows/bridge.yml
+    with:
+      version: ${{ fromJson(inputs.extras || '{}').version }}
+  build-rustdesk-android:
+    needs: [generate-bridge-linux]
+    name: build rustdesk android apk ${{ matrix.job.target }}
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - {
+              arch: aarch64,
+              target: aarch64-linux-android,
+              os: ubuntu-24.04,
+              reltype: release,
+              suffix: "",
+            }
+          - {
+              arch: armv7,
+              target: armv7-linux-androideabi,
+              os: ubuntu-24.04,
+              reltype: release,
+              suffix: "",
+            }
+          - {
+              arch: x86_64,
+              target: x86_64-linux-android,
+              os: ubuntu-24.04,
+              reltype: release,
+              suffix: "",
+            }
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: false
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: Decrypt and mask secrets
+        id: decrypt
+        shell: bash
+        env:
+          SERVERINFO: ${{ github.event.inputs.serverinfo }}
+          BUILD_SECRET_KEY: ${{ secrets.BUILD_SECRET_KEY }}
+        run: |
+          set +x
+          pip install cryptography
+          python -c "
+          import os, json
+          from cryptography.fernet import Fernet
+          key = os.environ['BUILD_SECRET_KEY'].encode()
+          encrypted = os.environ['SERVERINFO'].encode()
+          f = Fernet(key)
+          decrypted = f.decrypt(encrypted).decode()
+          data = json.loads(decrypted)
+          fields_to_handle = [
+              'server',
+              'RS_PUB_KEY',
+              'apiServer',
+              'permanentPassword',
+              'unlockPin',
+              'urlLink',
+              'downloadLink',
+              'updateLink'
+          ]
+          for field in fields_to_handle:
+              val = data.get(field)
+              if val:
+                 print('::add-mask::' + val)
+          with open(os.environ['GITHUB_ENV'], 'a') as env_file:
+              env_file.write(f\"CUSTOM_SERVER={data.get('server', '')}\n\")
+              env_file.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY', '')}\n\")
+              env_file.write(f\"CUSTOM_APISERVER={data.get('apiServer', '')}\n\")
+              env_file.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword', '')}\n\")
+              env_file.write(f\"UNLOCK_PIN={data.get('unlockPin', '')}\n\")
+              env_file.write(f\"URL_LINK={data.get('urlLink', '')}\n\")
+              env_file.write(f\"DOWNLOAD_LINK={data.get('downloadLink', '')}\n\")
+              env_file.write(f\"UPDATE_LINK={data.get('updateLink', '')}\n\")
+          "
+      - name: Display last
+        shell: bash
+        run: |
+          echo "CUSTOM_SERVER suffix:  ${CUSTOM_SERVER: -5}"
+          echo "CUSTOM_KEY suffix:  ${CUSTOM_KEY: -5}"
+          echo "CUSTOM_APISERVER suffix:  ${CUSTOM_APISERVER: -5}"
+          echo "UNLOCK_PIN suffix:  ${UNLOCK_PIN: -1}"
+          echo "PERMANENT_PASSWORD suffix:  ${PERMANENT_PASSWORD: -2}"
+      - name: Set gdpro value
+        if: ${{ fromJson(inputs.extras || '{}').gdpro == 'true' }}
+        run: |
+          echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> $GITHUB_ENV
+      - name: Set gdpro value
+        if: ${{ fromJson(inputs.extras || '{}').gdpro == 'false' }}
+        run: |
+          echo "STATUS_URL=${{ env.CUSTOM_APISERVER }}/api/updategh" >> $GITHUB_ENV
+      - name: Report Status
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "准备就绪，开始卖力工作"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+               clang \
+               cmake \
+               curl \
+               gcc-multilib \
+               git \
+               g++ \
+               g++-multilib \
+               imagemagick \
+               libayatana-appindicator3-dev \
+               libasound2-dev \
+               libc6-dev \
+               libclang-dev \
+               libunwind-dev \
+               libgstreamer1.0-dev \
+               libgstreamer-plugins-base1.0-dev \
+               libgtk-3-dev \
+               libpam0g-dev \
+               libpulse-dev \
+               libva-dev \
+               libvdpau-dev \
+               libxcb-randr0-dev \
+               libxcb-shape0-dev \
+               libxcb-xfixes0-dev \
+               libxdo-dev \
+               libxfixes-dev \
+               llvm-dev \
+               nasm \
+               ninja-build \
+               openjdk-17-jdk-headless \
+               pkg-config \
+               potrace \
+               tree \
+               wget \
+               imagemagick
+      - name: Checkout source code
+        if: ${{ env.VERSION != 'master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: refs/tags/${{ env.VERSION }}
+          submodules: recursive
+      - name: Checkout source code
+        if: ${{ env.VERSION == 'master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          submodules: recursive
+      - name: Checkout patches scripts
+        uses: actions/checkout@v4
+        with:
+          repository: 857074609/patches
+          path: patches
+          token: ${{ secrets.REPO }}
+          ref: main
+          clean: false
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.ANDROID_FLUTTER_VERSION }}
+      - name: Patch flutter
+        run: |
+          cd $(dirname $(dirname $(which flutter)))
+          [[ "3.24.5" == ${{env.ANDROID_FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          add-to-path: true
+      - name: Setup vcpkg with Github Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+      - name: Install vcpkg dependencies
+        run: |
+          case ${{ matrix.job.target }} in
+            aarch64-linux-android)
+              ANDROID_TARGET=arm64-v8a
+            ;;
+            armv7-linux-androideabi)
+              ANDROID_TARGET=armeabi-v7a
+            ;;
+            x86_64-linux-android)
+              ANDROID_TARGET=x86_64
+            ;;
+            i686-linux-android)
+              ANDROID_TARGET=x86
+            ;;
+          esac
+          if ! ./flutter/build_android_deps.sh "${ANDROID_TARGET}"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+        shell: bash
+      - name: Restore bridge files
+        uses: actions/download-artifact@master
+        with:
+          name: bridge-artifact
+          path: ./
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: "rustfmt"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rustdesk-lib-cache-android
+          key: ${{ matrix.job.target }}
+      - name: icon stuff
+        if: ${{ inputs.iconlink != 'false' }}
+        shell: bash
+        run: |
+          ICON_URL="${{ inputs.iconlink }}"
+          if [ "$ICON_URL" = "true" ] || [ "$ICON_URL" = "True" ]; then
+            if [ -n "${GENURL}" ] && [ -n "${{ inputs.uuid }}" ]; then
+              ICON_URL="${GENURL}/png/${{ inputs.uuid }}/icon.png"
+            else
+              echo "::warning::iconlink=true but GENURL/uuid missing, keeping default icon"
+              ICON_URL=""
+            fi
+          fi
+          if [ -n "$ICON_URL" ] && { [ "${ICON_URL#http}" != "$ICON_URL" ]; }; then
+            mv ./res/icon.ico ./res/icon.ico.bak
+            mv ./res/icon.png ./res/icon.png.bak
+            mv ./res/tray-icon.ico ./res/tray-icon.ico.bak
+            wget -T 30 -t 2 -O ./res/icon.png "$ICON_URL"
+            mv ./res/32x32.png ./res/32x32.png.bak
+            mv ./res/64x64.png ./res/64x64.png.bak
+            mv ./res/128x128.png ./res/128x128.png.bak
+            mv ./res/128x128@2x.png ./res/128x128@2x.png.bak
+            convert ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/icon.ico
+            convert ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/tray-icon.ico
+            cp ./res/icon.ico ./res/tray-icon.ico
+            convert ./res/icon.png -resize 32x32 ./res/32x32.png
+            convert ./res/icon.png -resize 64x64 ./res/64x64.png
+            convert ./res/icon.png -resize 128x128 ./res/128x128.png
+            convert ./res/128x128.png -resize 200% ./res/128x128@2x.png
+            sed -i '/android: true/a \ \ adaptive_icon_background: "#ffffff"' ./flutter/pubspec.yaml
+            sed -i '/adaptive_icon_background/a \ \ adaptive_icon_foreground: "../res/icon.png"' ./flutter/pubspec.yaml
+            sed -i '/adaptive_icon_foreground:/a \ \ adaptive_icon_foreground_inset: 32' ./flutter/pubspec.yaml
+            sed -i '/ic_launcher_background/d' ./flutter/android/app/src/main/res/values/colors.xml
+          else
+            echo "::notice::No valid icon link resolved (iconlink='${{ inputs.iconlink }}'), using RustDesk default icon"
+          fi
+      - name: set server, key, and apiserver (via patches/set_server.py)
+        shell: bash
+        run: |
+          python3 patches/set_server.py
+      - name: set permanent password (preset, via patches/set_password.py)
+        if: env.PERMANENT_PASSWORD != ''
+        shell: bash
+        run: |
+          python3 patches/set_password.py
+      - name: change appname to custom
+        if: inputs.appname != 'rustdesk'
+        shell: bash
+        run: |
+          sed -i -e 's|description = "RustDesk Remote Desktop"|description = "${{ inputs.appname }}"|' ./Cargo.toml
+          sed -i -e 's|ProductName = "RustDesk"|ProductName = "${{ inputs.appname }}"|' ./Cargo.toml
+          sed -i -e 's|FileDescription = "RustDesk Remote Desktop"|FileDescription = "${{ inputs.appname }}"|' ./Cargo.toml
+          sed -i -e 's|OriginalFilename = "rustdesk.exe"|OriginalFilename = "${{ inputs.appname }}.exe"|' ./Cargo.toml
+          sed -i 's|name = "RustDesk"|name = "${{ inputs.appname }}"|' ./Cargo.toml
+          sed -i -e 's|description = "RustDesk Remote Desktop"|description = "${{ inputs.appname }}"|' ./libs/portable/Cargo.toml
+          sed -i -e 's|ProductName = "RustDesk"|ProductName = "${{ inputs.appname }}"|' ./libs/portable/Cargo.toml
+          sed -i -e 's|FileDescription = "RustDesk Remote Desktop"|FileDescription = "${{ inputs.appname }}"|' ./libs/portable/Cargo.toml
+          sed -i -e 's|OriginalFilename = "rustdesk.exe"|OriginalFilename = "${{ inputs.appname }}.exe"|' ./libs/portable/Cargo.toml
+          sed -i -e 's|const APP_PREFIX: \&str = "rustdesk";|const APP_PREFIX: \&str = "${{ inputs.appname }}";|' ./libs/portable/src/main.rs
+          find ./src/lang -name "*.rs" -exec sed -i -e 's|RustDesk|${{ inputs.appname }}|' {} \;
+          sed -i -e 's|RustDesk|${{ inputs.appname }}|' ./flutter/android/app/src/main/res/values/strings.xml
+          sed -i -e "s|title: 'RustDesk'|title: '${{ inputs.appname }}'|" ./flutter/lib/main.dart
+          sed -i -e "s|return 'RustDesk';|return '${{ inputs.appname }}';|" ./flutter/lib/web/bridge.dart
+          sed -i 's|android:label="RustDesk"|android:label="${{ inputs.appname }}"|' ./flutter/android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:label="RustDesk Input"|android:label="${{ inputs.appname }} Input"|' ./flutter/android/app/src/main/AndroidManifest.xml
+          sed -i 's|RustDesk is Open|${{ inputs.appname }} is Open|' ./flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/BootReceiver.kt
+          sed -i 's|Show Rustdesk|Show ${{ inputs.appname }}|' ./flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/FloatingWindowService.kt
+          sed -i 's|"RustDesk"|"${{ inputs.appname }}"|' ./flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+          sed -i 's|"RustDesk Service|"${{ inputs.appname }} Service|' ./flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+          sed -i 's|RustDesk|${{ inputs.appname }}|' ./flutter/lib/main.dart
+          sed -i 's|"RustDesk"|"${{ inputs.appname }}"|' ./flutter/lib/desktop/widgets/tabbar_widget.dart
+          sed -i 's|"RustDesk"|"${{ inputs.appname }}"|' ./libs/hbb_common/src/config.rs
+      - name: change url to custom
+        if: env.URL_LINK != 'https://rustdesk.com' && env.URL_LINK != ''
+        shell: bash
+        run: |
+          sed -i -e 's|Homepage: https://rustdesk.com|Homepage: ${{ env.URL_LINK }}|' ./build.py
+          sed -i -e "s|launchUrl(Uri.parse('https://rustdesk.com'));|launchUrl(Uri.parse('${{ env.URL_LINK }}'));|" ./flutter/lib/common.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com');|launchUrlString('${{ env.URL_LINK }}');|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|const url = 'https://rustdesk.com/';|const url = '${{ env.URL_LINK }}';|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|https://rustdesk.com/privacy.html|${{ env.URL_LINK }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
+      - name: change download link to custom
+        if: env.DOWNLOAD_LINK != 'https://rustdesk.com/download' && env.DOWNLOAD_LINK != ''
+        shell: bash
+        run: |
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/mobile/pages/connection_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./src/ui/index.tis
+      - name: change app id to custom (Android client identifier)
+        if: inputs.androidappid != 'com.carriez.flutter_hbb'
+        shell: bash
+        run: |
+          sed -i -e 's|com.carriez.flutter_hbb|${{ inputs.androidappid }}|' ./flutter/android/app/build.gradle
+      - name: allow custom.txt (via patches/allowCustom.py)
+        shell: bash
+        run: |
+          python3 patches/allowCustom.py
+          git apply patches/removeSetupServerTip.diff
+
+      - name: Apply patches for custom update (detection chain; Android has no desktop update_progress.dart, so #5 skipped)
+        shell: bash
+        run: |
+          python3 patches/enable_custom_client_update.py
+          python3 patches/patch_handle_update_url_1.py
+          python3 patches/patch_filename_based_update.py
+          python3 patches/patch_redirect_update_url.py
+          python3 patches/patch_custom_client_update_check.py
+          python3 patches/patch_enable_auto_update.py
+          python3 patches/fix_update_tip.py
+          python3 patches/patch_inject_build_number.py
+
+      - name: Apply patch for auto silent update
+        if: ${{ fromJson(inputs.extras || '{}').auto_silent_update == 'true' }}
+        run: |
+          python3 patches/patch_auto_silent_update.py
+
+      - name: hide RustDesk branding (via patches/hide_rustdesk_branding.py)
+        shell: bash
+        run: |
+          python3 patches/hide_rustdesk_branding.py
+      - name: Remove scam alert on Android
+        shell: bash
+        run: |
+          sed -i 's/bind.mainGetLocalOption(key:\s*"show-scam-warning")/"N"/g' ./flutter/lib/mobile/pages/server_page.dart
+      - name: enable websocket
+        if: ${{ fromJson(inputs.extras || '{}').allow-websocket == 'true' }}
+        shell: bash
+        run: |
+          python3 patches/patch_websocket_custom_port.py
+          
+      - name: skip custom client
+        shell: bash
+        run: |
+          sed -i '/if (bind\.isCustomClient())/d' flutter/lib/desktop/pages/desktop_home_page.dart
+      - name: removeNewVersionNotif
+        if: fromJson(inputs.extras || '{}').removeNewVersionNotif == 'true'
+        run: |
+          sed -i -e 's|updateUrl.isNotEmpty|false|' ./flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/let (request, url) =/,/Ok(())/{/Ok(())/!d}' ./src/common.rs
+ 
+      - name: replace flutter icons
+        if: ${{ inputs.iconlink != 'false' }}
+        run: |
+          pushd ./flutter
+          flutter pub get
+          dart run flutter_launcher_icons
+          popd
+          sed -i '/ic_launcher_background/d' ./flutter/android/app/src/main/res/values/colors.xml
+      - name: Build rustdesk lib
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          rustup target add ${{ matrix.job.target }}
+          cargo install cargo-ndk --version ${{ env.CARGO_NDK_VERSION }} --locked
+          case ${{ matrix.job.target }} in
+            aarch64-linux-android)
+            ./flutter/ndk_arm64.sh
+            mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
+            cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
+            ;;
+            armv7-linux-androideabi)
+              ./flutter/ndk_arm.sh
+              mkdir -p ./flutter/android/app/src/main/jniLibs/armeabi-v7a
+              cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/armeabi-v7a/librustdesk.so
+            ;;
+            x86_64-linux-android)
+              ./flutter/ndk_x64.sh
+              mkdir -p ./flutter/android/app/src/main/jniLibs/x86_64
+              cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/x86_64/librustdesk.so
+            ;;
+            i686-linux-android)
+              ./flutter/ndk_x86.sh
+              mkdir -p ./flutter/android/app/src/main/jniLibs/x86
+              cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/x86/librustdesk.so
+            ;;
+          esac
+      - name: Upload Rustdesk library to Artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: librustdesk.so.${{ matrix.job.target }}
+          path: ./target/${{ matrix.job.target }}/release/liblibrustdesk.so
+ 
+      - name: icons
+        if: ${{ inputs.iconlink != 'false' }}
+        run: |
+          mv ./flutter/assets/icon.svg ./flutter/assets/icon.svg.bak
+          convert ./res/icon.png ./flutter/assets/icon.svg
+          convert ./res/128x128.png -resize 200% ./flutter/assets/128x128@2x.png || true
+          cp ./flutter/assets/icon.svg ./res/scalable.svg
+      - name: Extract build tag
+        id: tag
+        shell: bash
+        run: |
+          RAW_UUID="${{ github.event.inputs.uuid }}"
+          CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
+          if [ -z "$CLEAN_UUID" ]; then
+            CLEAN_UUID="${{ github.run_id }}"
+          fi
+          echo "tag=${CLEAN_UUID:0:4}" >> "$GITHUB_OUTPUT"
+
+      - name: Build rustdesk
+        shell: bash
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        run: |
+          export PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH
+          sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
+          sed -i "s/signingConfigs.release/signingConfigs.debug/g" ./flutter/android/app/build.gradle
+          case ${{ matrix.job.target }} in
+            aarch64-linux-android)
+            mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
+            cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/
+            cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
+            echo -n "${{ inputs.custom }}" | cat > ./flutter/assets/custom.txt
+            pushd flutter
+            flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-arm64 --split-per-abi
+            mv build/app/outputs/flutter-apk/app-arm64-v8a-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+            ;;
+            armv7-linux-androideabi)
+              mkdir -p ./flutter/android/app/src/main/jniLibs/armeabi-v7a
+              cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libc++_shared.so ./flutter/android/app/src/main/jniLibs/armeabi-v7a/
+              cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/armeabi-v7a/librustdesk.so
+              echo -n "${{ inputs.custom }}" | cat > ./flutter/assets/custom.txt
+              pushd flutter
+              flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-arm --split-per-abi
+              mv build/app/outputs/flutter-apk/app-armeabi-v7a-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+            ;;
+            x86_64-linux-android)
+              mkdir -p ./flutter/android/app/src/main/jniLibs/x86_64
+              cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so ./flutter/android/app/src/main/jniLibs/x86_64/
+              cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/x86_64/librustdesk.so
+              echo -n "${{ inputs.custom }}" | cat > ./flutter/assets/custom.txt
+              pushd flutter
+              flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-x64 --split-per-abi
+              mv build/app/outputs/flutter-apk/app-x86_64-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+            ;;
+            i686-linux-android)
+              mkdir -p ./flutter/android/app/src/main/jniLibs/x86
+              cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/i686-linux-android/libc++_shared.so ./flutter/android/app/src/main/jniLibs/x86/
+              cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/x86/librustdesk.so
+              echo -n "${{ inputs.custom }}" | cat > ./flutter/assets/custom.txt
+              pushd flutter
+              flutter build apk "--${{ matrix.job.reltype }}" --target-platform android-x86 --split-per-abi
+              mv build/app/outputs/flutter-apk/app-x86-${{ matrix.job.reltype }}.apk ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
+            ;;
+          esac
+          popd
+          mkdir -p signed-apk; pushd signed-apk
+          mv ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk
+          popd
+
+      - uses: r0adkll/sign-android-release@v1
+        name: Sign app APK
+        if: env.ANDROID_SIGNING_KEY != null
+        id: sign-rustdesk
+        with:
+          releaseDirectory: ./signed-apk
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
+          alias: ${{ secrets.ANDROID_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "30.0.2"
+      - name: Use signed APK if available
+        shell: bash
+        run: |
+          SIGNED="./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-signed.apk"
+          FINAL="./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk"
+          if [ -f "$SIGNED" ]; then
+            mv "$SIGNED" "$FINAL"
+            rm -f "./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-aligned.apk"
+            echo "Signed APK ready: $FINAL"
+          else
+            echo "Signed APK not found, keeping unsigned: $FINAL"
+          fi
+          ls -la ./signed-apk/
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@master
+        with:
+          name: apk-${{ matrix.job.arch }}
+          path: ./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk
+      - name: failed
+        if: failure()
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation failed, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+      - name: failed
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation cancelled, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+  release-android:
+    name: Create Release and upload APKs
+    needs: [build-rustdesk-android]
+    if: ${{ always() && needs.build-rustdesk-android.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set status URL
+        shell: bash
+        run: |
+          if [ "${{ fromJson(inputs.extras || '{}').gdpro }}" = "true" ]; then
+            echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> $GITHUB_ENV
+          else
+            echo "STATUS_URL=${{ secrets.GENURL }}/api/updategh" >> $GITHUB_ENV
+          fi
+      - name: Download all APK artifacts
+        uses: actions/download-artifact@master
+        with:
+          path: ./signed-apk
+          pattern: apk-*
+          merge-multiple: true
+      - name: List APKs
+        shell: bash
+        run: ls -la ./signed-apk/
+      - name: Extract build tag
+        id: tag
+        shell: bash
+        run: |
+          RAW_UUID="${{ github.event.inputs.uuid }}"
+          CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
+          if [ -z "$CLEAN_UUID" ]; then
+            CLEAN_UUID="${{ github.run_id }}"
+          fi
+          echo "tag=${CLEAN_UUID:0:4}" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub Release and Upload Assets
+        if: ${{ env.VERSION != 'master' }}
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ steps.tag.outputs.tag }}
+          name: Release ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ steps.tag.outputs.tag }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            ./signed-apk/${{ inputs.filename }}-*.apk
+      - name: Send APKs to file server
+        if: ${{ fromJson(inputs.extras || '{}').gdpro == 'true' || inputs.uuid != '' }}
+        continue-on-error: false
+        shell: bash
+        run: |
+          set -e
+          URL="${{ secrets.GENURL }}/save_custom_client"
+          TOKEN="${{ fromJson(inputs.extras || '{}').token }}"
+          UUID="${{ inputs.uuid }}"
+          for apk in ./signed-apk/${{ inputs.filename }}-*.apk; do
+            [ -f "$apk" ] || continue
+            echo "Uploading $apk ..."
+            curl --fail --show-error -i -X POST \
+              -H "Content-Type: multipart/form-data" \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "file=@$apk" \
+              -F "uuid=$UUID" \
+              "$URL"
+          done
+      - name: Report Status
+        if: ${{ success() }}
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Success"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+      - name: failed
+        if: failure()
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation failed, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"

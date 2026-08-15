@@ -1,0 +1,55 @@
+name: Clean
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 */3 * *'
+
+jobs:
+  clean-runs:
+    name: Force delete all workflow runs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all runs via GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.REPO }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          echo "Starting to delete all workflow runs for $REPO..."
+
+          page=1
+          while true; do
+            echo "Fetching page $page..."
+            response=$(curl -sSL \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/runs?page=$page&per_page=100")
+
+            total_count=$(echo "$response" | jq -r '.total_count // empty')
+            if [ -z "$total_count" ]; then
+              echo "Error: Failed to fetch runs. Check token permissions."
+              exit 1
+            fi
+
+            runs=$(echo "$response" | jq -r '.workflow_runs[].id')
+            if [ -z "$runs" ]; then
+              echo "No more runs to delete."
+              break
+            fi
+
+            echo "Deleting $(echo "$runs" | wc -l) runs on page $page..."
+            for run_id in $runs; do
+              if [ "$run_id" = "${{ github.run_id }}" ]; then
+                echo "Skipping current run ($run_id)"
+                continue
+              fi
+              curl -sSL -X DELETE \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$REPO/actions/runs/$run_id"
+              echo "Deleted run $run_id"
+            done
+            page=$((page + 1))
+          done
+
+          echo " All workflow runs cleaned!"

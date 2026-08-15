@@ -1,0 +1,754 @@
+
+
+name: Custom Linux Client Generator (Flutter)
+run-name: Custom Linux Client Generator
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform'
+        required: false
+        default: 'linux'
+        type: string
+      serverinfo:
+        description: 'Encrypted serverinfo (Fernet)'
+        required: true
+        default: ''
+        type: string
+      custom:
+        description: "Custom JSON"
+        required: true
+        default: ''
+        type: string
+      uuid:
+        description: "uuid of request"
+        required: true
+        default: ''
+        type: string
+      ui_mode:
+        description: "Custom User Interface (reserved)"
+        required: false
+        type: string
+      iconlink:
+        description: "Icon source"
+        required: false
+        default: 'false'
+        type: string
+      logolink:
+        description: "logo link"
+        required: false
+        default: 'false'
+        type: string
+      appname:
+        description: "app name (display)"
+        required: true
+        default: 'rustdesk'
+        type: string
+      filename:
+        description: "output file base name (used in Release/tag)"
+        required: true
+        default: 'rustdesk'
+        type: string
+      compname:
+        description: "Company name shown in About"
+        required: false
+        default: 'Purslane Tech Pte. Ltd.'
+        type: string
+      extras:
+        description: "extra inputs in json (version, gdpro, allow-websocket, ws_port, delayFix, Slogan_tip, compname, urlLink, downloadLink, updateLink)"
+        required: true
+        default: '{}'
+        type: string
+
+env:
+  RUST_VERSION: "1.78.0"
+  FLUTTER_VERSION: "3.24.5"
+  FLUTTER_ELINUX_VERSION: "3.16.9"
+  LLVM_VERSION: "15.0.6"
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
+  TAG_NAME: "${{ inputs.filename }}-${{ fromJson(inputs.extras || '{}').version || 'master' }}"
+  VERSION: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
+  RUSTDESK_BUILD_NUMBER: "${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
+  VER_SUFFIX: "${{ (fromJson(inputs.extras || '{}').build_number || '0') != '0' && format('.{0}', fromJson(inputs.extras || '{}').build_number || '0') || '' }}"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  UPLOAD_ARTIFACT: 'true'
+  STATUS_URL: "${{ secrets.GENURL }}/updategh"
+  GENURL: ${{ secrets.GENURL }}
+  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
+
+jobs:
+  generate-bridge:
+    # 本仓库 bridge.yml 接受 version 入参, 内部 checkout rustdesk/rustdesk
+    uses: ./.github/workflows/bridge.yml
+    with:
+      version: ${{ fromJson(inputs.extras).version }}
+
+  build-rustdesk-linux:
+    needs: [generate-bridge]
+    name: build rustdesk linux ${{ matrix.job.target }}
+    runs-on: ${{ matrix.job.on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { arch: x86_64, target: x86_64-unknown-linux-gnu, distro: ubuntu18.04, on: ubuntu-22.04, deb_arch: amd64, vcpkg-triplet: x64-linux }
+          - { arch: aarch64, target: aarch64-unknown-linux-gnu, distro: ubuntu18.04, on: ubuntu-22.04-arm, deb_arch: arm64, vcpkg-triplet: arm64-linux }
+    steps:
+      - name: Extract build tag
+        id: tag
+        shell: bash
+        run: |
+          RAW_UUID="${{ github.event.inputs.uuid }}"
+          CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
+          echo "tag=${CLEAN_UUID:0:4}" >> "$GITHUB_OUTPUT"
+      - name: Export GitHub Actions cache env
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Maximize build space
+        run: |
+          sudo rm -rf /opt/ghc /usr/local/lib/android /usr/share/dotnet
+          sudo apt-get update -y && sudo apt-get install -y nasm
+          if [[ "${{ matrix.job.arch }}" == "x86_64" ]]; then sudo apt-get install -y qemu-user-static; fi
+
+      - name: Decrypt and mask secrets (Fernet serverinfo)
+        id: decrypt
+        shell: bash
+        env:
+          SERVERINFO: ${{ github.event.inputs.serverinfo }}
+          BUILD_SECRET_KEY: ${{ secrets.BUILD_SECRET_KEY }}
+        run: |
+          set +x
+          if [ -z "${SERVERINFO:-}" ] || [ "${SERVERINFO:-}" = "placeholder" ]; then
+            echo "::warning::serverinfo empty/placeholder -> building with default server (no custom server/relay embedded)"
+            exit 0
+          fi
+          pip install cryptography
+          python -c "
+          import os, json, sys
+          try:
+              from cryptography.fernet import Fernet
+              key = os.environ['BUILD_SECRET_KEY'].encode()
+              enc = os.environ['SERVERINFO'].encode()
+              data = json.loads(Fernet(key).decrypt(enc).decode())
+          except Exception as e:
+              print('::warning::serverinfo decrypt failed ('+str(e)+') -> building with default server')
+              sys.exit(0)
+          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+              v = data.get(field)
+              if v: print('::add-mask::' + v)
+          with open(os.environ['GITHUB_ENV'],'a') as e:
+              e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
+              e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
+              e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
+              e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
+              e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
+              e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
+              e.write(f\"DOWNLOAD_LINK={data.get('downloadLink','')}\n\")
+              e.write(f\"UPDATE_LINK={data.get('updateLink','')}\n\")
+          "
+
+      - name: Checkout rustdesk source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ (env.VERSION != 'master' && env.VERSION != 'main') && format('refs/tags/{0}', env.VERSION) || env.VERSION }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Checkout patches (private)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: 857074609/patches
+          token: ${{ secrets.REPO }}
+          path: patches
+          clean: false
+
+      # ---------- 自定义补丁链 (跨平台部分) ----------
+      - name: change appname to custom
+        if: inputs.appname != 'rustdesk'
+        env:
+          APP_NAME: ${{ inputs.appname }}
+        shell: bash
+        run: |
+          sed -i -e "s|description = \"RustDesk Remote Desktop\"|description = \"${APP_NAME}\"|" ./Cargo.toml
+          sed -i -e "s|ProductName = \"RustDesk\"|ProductName = \"${APP_NAME}\"|" ./Cargo.toml
+          sed -i -e "s|FileDescription = \"RustDesk Remote Desktop\"|FileDescription = \"${APP_NAME}\"|" ./Cargo.toml
+          sed -i -e "s|OriginalFilename = \"rustdesk.exe\"|OriginalFilename = \"${APP_NAME}.exe\"|" ./Cargo.toml
+          sed -i -e '/pub static ref APP_NAME/s/"RustDesk"/"'"${APP_NAME}"'"/' ./libs/hbb_common/src/config.rs
+          find ./src/lang -name "*.rs" -exec sed -i -e 's|RustDesk|${{ inputs.appname }}|' {} \;
+
+      - name: change company name
+        if: fromJson(inputs.extras).compname != 'Purslane Ltd'
+        shell: bash
+        run: |
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./Cargo.toml
+
+      - name: change url to custom
+        if: env.URL_LINK != '' && env.URL_LINK != 'https://rustdesk.com'
+        shell: bash
+        run: |
+          sed -i -e 's|Homepage: https://rustdesk.com|Homepage: ${{ env.URL_LINK }}|' ./build.py
+          sed -i -e "s|launchUrl(Uri.parse('https://rustdesk.com'));|launchUrl(Uri.parse('${{ env.URL_LINK }}'));|" ./flutter/lib/common.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com');|launchUrlString('${{ env.URL_LINK }}');|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|const url = 'https://rustdesk.com/';|const url = '${{ env.URL_LINK }}';|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|https://rustdesk.com/privacy.html|${{ env.URL_LINK }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
+          sed -i 's|rustdesk\.com|${{ env.URL_LINK }}|g' ./flutter/lib/desktop/pages/desktop_setting_page.dart
+
+      - name: change download link to custom
+        if: env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
+        shell: bash
+        run: |
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/mobile/pages/connection_page.dart
+
+      - name: change update link to custom
+        if: env.UPDATE_LINK != '' && env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest'
+        shell: bash
+        run: |
+          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.UPDATE_LINK }}|' ./libs/hbb_common/src/lib.rs
+
+      - name: change about text
+        if: ${{ fromJson(inputs.extras).Slogan_tip != '' }}
+        env:
+          SLOGAN: ${{ fromJson(inputs.extras).Slogan_tip }}
+        shell: bash
+        run: |
+          ESCAPED=$(printf '%s' "$SLOGAN" | sed "s/'/'\\\\''/g; s/[&/\]/\\&/g")
+          sed -i "s|translate('Slogan_tip')|'${ESCAPED}'|g" flutter/lib/desktop/pages/desktop_setting_page.dart
+
+      - name: Apply patches for custom update
+        if: env.UPDATE_LINK != '' && env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
+        run: |
+          python3 patches/enable_custom_client_update.py
+          python3 patches/patch_handle_update_url_1.py
+          python3 patches/patch_filename_based_update.py
+          python3 patches/patch_handle_update_url_2.py
+          python3 patches/patch_custom_client_update_check.py
+          python3 patches/patch_enable_auto_update.py
+          python3 patches/fix_update_tip.py
+
+      - name: Apply patch for auto silent update
+        if: ${{ (env.UPDATE_LINK != '' && env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download') && fromJson(inputs.extras || '{}').auto_silent_update == 'true' }}
+        run: |
+          python3 patches/patch_auto_silent_update.py
+
+      - name: Set server
+        shell: bash
+        run: |
+          if [ -z "${CUSTOM_SERVER:-}" ]; then
+            echo "::warning::CUSTOM_SERVER not set (no serverinfo / test build) -> skip set_server, building with default server"
+            exit 0
+          fi
+          python3 patches/set_server.py
+
+      - name: Apply permanent password patch
+        shell: bash
+        run: python3 patches/patch_permanent_password_new.py
+
+      - name: Apply unlock PIN patch
+        shell: bash
+        run: python3 patches/patch_unlock_pin.py
+
+      - name: allow custom _.txt + remove Flutter "setup your own server" tip
+        run: |
+          python3 patches/allowCustom.py
+          git apply patches/removeSetupServerTip.diff || true
+          python3 patches/patch_inject_build_number.py
+
+      - name: disable_e2ee
+        shell: bash
+        run: python3 patches/patch_common_client_disable_e2ee.py
+
+      - name: enable websocket
+        if: ${{ fromJson(inputs.extras).allow-websocket == 'true' }}
+        shell: bash
+        run: python3 patches/patch_websocket_custom_port.py
+
+      - name: fix connection delay
+        if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
+        shell: bash
+        run: sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+
+      - name: Apply silent-install & cert patches
+        shell: bash
+        run: |
+          python3 patches/patch_silent_install.py .
+          python3 patches/patch_install_cert.py .
+
+      - name: hide RustDesk branding
+        shell: bash
+        run: python3 patches/hide_rustdesk_branding.py
+
+      - name: Disable rust bridge staticlib
+        run: sed -i "s/\[\"cdylib\", \"staticlib\", \"rlib\"\]/\[\"cdylib\"\]/g" Cargo.toml
+
+      # ---------- 构建环境 (宿主侧) ----------
+      - name: Set Swap Space
+        if: ${{ matrix.job.arch == 'x86_64' }}
+        uses: pierotofy/set-swap-space@49819abfb41bd9b44fb781159c033dba90353a7c # v1.0
+        with:
+          swap-size-gb: 12
+
+      - name: Install Rust toolchain (host, version probe)
+        if: env.UPLOAD_ARTIFACT == 'true'
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.job.target }}
+          components: "rustfmt"
+
+      - name: Save Rust toolchain version
+        if: env.UPLOAD_ARTIFACT == 'true'
+        run: echo "RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')" >> $GITHUB_ENV
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Setup vcpkg
+        if: env.UPLOAD_ARTIFACT == 'true'
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        if: env.UPLOAD_ARTIFACT == 'true'
+        run: |
+          sudo apt install -y libva-dev
+          # 降低并发: 减少同时发起的下载连接, 避免 vcpkg 下载源间歇性返回 503/connection died
+          export VCPKG_MAX_CONCURRENCY=3
+          # 步骤级重试: vcpkg 自带 curl 仅重试 5 次仍可能撞上 503; 整步循环重跑会复用
+          # $VCPKG_ROOT/downloads 缓存与已编译端口, 等下载源恢复后再继续, 直到全过
+          attempt=0
+          max_attempts=8
+          until $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"; do
+            attempt=$((attempt+1))
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::vcpkg install failed after $attempt attempts (download server flakiness)"
+              find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do echo "$_1:"; cat "$_1"; done
+              exit 1
+            fi
+            echo "vcpkg install attempt $attempt failed (likely transient download 503); retrying in 90s..."
+            sleep 90
+          done
+          echo "vcpkg install succeeded on attempt $((attempt+1))"
+        shell: bash
+
+      # ---------- ubuntu18.04 容器内构建 (deb + rpm + suse-rpm) ----------
+      - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # commit 2026-05-26
+        name: Build rustdesk (cargo lib + flutter + deb + rpm + suse-rpm)
+        id: vcpkg
+        with:
+          arch: ${{ matrix.job.arch }}
+          distro: ${{ matrix.job.distro }}
+          githubToken: ${{ github.token }}
+          setup: |
+            ls -l "${PWD}"
+            ls -l /opt/artifacts/vcpkg/installed
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+            --volume "/opt/artifacts:/opt/artifacts"
+          shell: /bin/bash
+          install: |
+            apt-get update -y
+            apt-get install -y build-essential clang cmake curl gcc git g++ \
+              libayatana-appindicator3-dev libasound2-dev libclang-10-dev \
+              libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libpam0g-dev \
+              libpulse-dev libva-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+              libxdo-dev libxfixes-dev llvm-10-dev nasm ninja-build pkg-config python3 rpm \
+              unzip wget xz-utils libssl-dev
+            apt-get remove -y libopus-dev || true
+          run: |
+            git config --global --add safe.directory "*"
+            pushd /opt
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
+            tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
+            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
+            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
+            mkdir -p ~/.cargo/
+            printf '[source.crates-io]\nregistry = '"'"'https://github.com/rust-lang/crates.io-index'"'"'\n' > ~/.cargo/config
+            cat ~/.cargo/config
+            pushd /workspace
+            export VCPKG_ROOT=/opt/artifacts/vcpkg
+            JOBS=""; if [[ "${{ matrix.job.arch }}" == "aarch64" ]]; then JOBS="--jobs 3"; fi
+            cargo build --locked --lib $JOBS --features hwcodec,flutter,unix-file-copy-paste --release
+            rm -rf target/release/deps target/release/build ~/.cargo
+
+            # Flutter toolchain (aarch64 用 flutter-elinux)
+            pushd /workspace
+            case ${{ matrix.job.arch }} in
+              aarch64)
+                export PATH=/opt/flutter-elinux/bin:$PATH
+                sed -i "s/flutter build linux --release/flutter-elinux build linux --verbose/g" ./build.py
+                sed -i "s/x64\/release/arm64\/release/g" ./build.py
+                ;;
+              x86_64)
+                export PATH=/opt/flutter/bin:$PATH
+                ;;
+            esac
+            popd
+            pushd /opt
+            wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${{ env.FLUTTER_VERSION }}-stable.tar.xz
+            tar xf flutter_linux_${{ env.FLUTTER_VERSION }}-stable.tar.xz
+            case ${{ matrix.job.arch }} in
+              aarch64)
+                git clone https://github.com/sony/flutter-elinux.git || true
+                pushd flutter-elinux
+                  git fetch
+                  git reset --hard ${{ env.FLUTTER_VERSION }}
+                  bin/flutter-elinux doctor -v
+                  bin/flutter-elinux precache --linux
+                popd
+                cp -R flutter/bin/cache/artifacts/engine/linux-x64/shader_lib flutter-elinux/flutter/bin/cache/artifacts/engine/linux-arm64
+                rm -rf flutter
+                ;;
+              x86_64)
+                flutter doctor -v
+                ;;
+            esac
+            if [[ "3.24.5" == ${{ env.FLUTTER_VERSION }} ]]; then
+              case ${{ matrix.job.arch }} in
+                aarch64) pushd /opt/flutter-elinux/flutter ;;
+                x86_64) pushd /opt/flutter ;;
+              esac
+              git apply /workspace/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+              popd
+            fi
+
+            # build deb
+            pushd /workspace
+            export CARGO_INCREMENTAL=0
+            export DEB_ARCH=${{ matrix.job.deb_arch }}
+            python3 ./build.py --flutter --skip-cargo
+            for name in *.deb; do [ -e "$name" ] || continue; mv "$name" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb"; done
+
+            # rpm (fedora)
+            case ${{ matrix.job.arch }} in
+              aarch64) sed -i "s/linux\/x64/linux\/arm64/g" ./res/rpm-flutter.spec ;;
+            esac
+            HBB=`pwd` rpmbuild ./res/rpm-flutter.spec -bb
+            pushd ~/rpmbuild/RPMS/${{ matrix.job.arch }}
+            for name in *.rpm; do [ -e "$name" ] || continue; mv "$name" /workspace/"${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.rpm"; done
+            popd
+
+            # rpm (suse)
+            case ${{ matrix.job.arch }} in
+              aarch64) sed -i "s/linux\/x64/linux\/arm64/g" ./res/rpm-flutter-suse.spec ;;
+            esac
+            HBB=`pwd` rpmbuild ./res/rpm-flutter-suse.spec -bb
+            pushd ~/rpmbuild/RPMS/${{ matrix.job.arch }}
+            for name in *.rpm; do [ -e "$name" ] || continue; mv "$name" /workspace/"${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-suse.rpm"; done
+            popd
+
+      # ---------- archlinux (.pkg.tar.zst): 仅 x86_64 (rustdesk-org/arch-makepkg-action 在 Arch 容器内只能产 x86_64 包; aarch64 无法构建故跳过) ----------
+      - name: Patch archlinux PKGBUILD
+        if: matrix.job.arch == 'x86_64'
+        run: |
+          sed -i "s/x86_64/${{ matrix.job.arch }}/g" res/PKGBUILD
+      - name: Build archlinux package
+        if: matrix.job.arch == 'x86_64'
+        uses: rustdesk-org/arch-makepkg-action@04200739ed1d0bf6f2188b6736b26a767c57a7f9 # commit 2026-05-26
+        with:
+          scripts: cd res && HBB=`pwd`/.. FLUTTER=1 makepkg -f
+      - name: Collect archlinux artifact
+        if: matrix.job.arch == 'x86_64'
+        run: |
+          shopt -s nullglob
+          # 排除 makepkg 镜像开启 debug 选项产出的 rustdesk-debug-* 包, 只取主包
+          files=(res/rustdesk-[0-9]*.pkg.tar.zst)
+          if [ ${#files[@]} -eq 0 ]; then echo "::error::no archlinux package produced"; exit 1; fi
+          # arch-makepkg-action 以非 root uid 产出文件, 外层容器用户无权限写入仓库根目录, 故用 sudo cp (无 sudo 时回退到普通 cp)
+          sudo cp "${files[0]}" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst" 2>/dev/null || cp "${files[0]}" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst"
+          sudo chmod 644 "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst" 2>/dev/null || true
+          sudo chown "$(id -u):$(id -g)" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst" 2>/dev/null || true
+          echo "collected: ${files[0]} -> ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst"
+      - name: Upload pkg.tar.zst
+        if: matrix.job.arch == 'x86_64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst
+          path: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst
+
+      - name: Upload deb
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb
+          path: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb
+
+      - name: Upload rpm
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.rpm
+          path: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.rpm
+
+      - name: Upload suse rpm
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-suse.rpm
+          path: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-suse.rpm
+
+  build-appimage:
+    name: Build appimage ${{ matrix.job.arch }}
+    needs: [build-rustdesk-linux]
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { arch: x86_64 }
+          - { arch: aarch64 }
+    steps:
+      - name: Extract build tag
+        id: tag
+        shell: bash
+        run: |
+          RAW_UUID="${{ github.event.inputs.uuid }}"
+          CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
+          echo "tag=${CLEAN_UUID:0:4}" >> "$GITHUB_OUTPUT"
+      - name: Checkout rustdesk source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ (env.VERSION != 'master' && env.VERSION != 'main') && format('refs/tags/{0}', env.VERSION) || env.VERSION }}
+          submodules: recursive
+          fetch-depth: 1
+      - name: Download deb
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb
+          path: .
+      - name: Rename deb
+        run: mv ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb appimage/rustdesk.deb
+      - name: Build appimage package
+        shell: bash
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libarchive-tools libfuse2
+          sudo pip3 install "setuptools_scm<10"
+          sudo pip3 install git+https://github.com/rustdesk-org/appimage-builder.git
+          pushd appimage
+          # appimage-builder 在最后一步下载 AppImage runtime-x86_64 时偶发 GitHub 远端断连
+          # (RemoteDisconnected), 属网络抖动而非构建错误。用重试循环吸收, 命中即停。
+          for i in 1 2 3 4 5; do
+            echo "::group::appimage-builder attempt $i"
+            if sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml; then
+              echo "::endgroup::appimage-builder succeeded on attempt $i"
+              break
+            fi
+            echo "::warning::appimage-builder attempt $i failed (likely transient runtime download), retrying in 20s..."
+            echo "::endgroup::"
+            sleep 20
+          done
+          # appimage-builder 以 root 运行, 产物归 root; 必须在容器内 sudo 改名并 chown 给 runner 以便上传
+          sudo mv rustdesk-*.AppImage "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage"
+          sudo chown "$(id -u):$(id -g)" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage"
+          popd
+      - name: Upload appimage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage
+          path: appimage/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage
+
+  build-flatpak:
+    name: Build flatpak ${{ matrix.job.arch }}
+    needs: [build-rustdesk-linux]
+    runs-on: ${{ matrix.job.on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { arch: x86_64, distro: ubuntu22.04, on: ubuntu-22.04 }
+          - { arch: aarch64, distro: ubuntu22.04, on: ubuntu-22.04-arm }
+    steps:
+      - name: Extract build tag
+        id: tag
+        shell: bash
+        run: |
+          RAW_UUID="${{ github.event.inputs.uuid }}"
+          CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
+          echo "tag=${CLEAN_UUID:0:4}" >> "$GITHUB_OUTPUT"
+      - name: Checkout rustdesk source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ (env.VERSION != 'master' && env.VERSION != 'main') && format('refs/tags/{0}', env.VERSION) || env.VERSION }}
+          submodules: recursive
+          fetch-depth: 1
+      - name: Download deb
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb
+          path: .
+      - name: Rename deb
+        run: mv ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb flatpak/rustdesk.deb
+      - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # commit 2026-05-26
+        name: Build flatpak package
+        with:
+          arch: ${{ matrix.job.arch }}
+          distro: ${{ matrix.job.distro }}
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+          shell: /bin/bash
+          install: |
+            apt-get update -y
+            apt-get install -y git flatpak flatpak-builder
+          run: |
+            git config --global --add safe.directory "*"
+            pushd /workspace
+            flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+            pushd flatpak
+            git clone https://github.com/flathub/shared-modules.git --depth=1
+            flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk.json
+            flatpak build-bundle ./repo "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.flatpak" com.rustdesk.RustDesk
+      - name: Upload flatpak
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.flatpak
+          path: flatpak/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.flatpak
+
+  release-linux:
+    name: Release linux client
+    needs: [build-rustdesk-linux, build-appimage, build-flatpak]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Extract build tag
+        id: tag
+        shell: bash
+        run: |
+          RAW_UUID="${{ github.event.inputs.uuid }}"
+          CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
+          echo "tag=${CLEAN_UUID:0:4}" >> "$GITHUB_OUTPUT"
+      - name: Download x86_64 artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.deb
+          path: .
+      - name: Download x86_64 rpm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.rpm
+          path: .
+      - name: Download x86_64 suse rpm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm
+          path: .
+      - name: Download x86_64 zst
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst
+          path: .
+      - name: Download x86_64 AppImage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.AppImage
+          path: .
+      - name: Download x86_64 flatpak
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.flatpak
+          path: .
+      - name: Download aarch64 deb
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.deb
+          path: .
+      - name: Download aarch64 rpm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.rpm
+          path: .
+      - name: Download aarch64 suse rpm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm
+          path: .
+      - name: Download aarch64 AppImage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.AppImage
+          path: .
+      - name: Download aarch64 flatpak
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.flatpak
+          path: .
+
+      - name: Create GitHub Release and Upload Assets
+        if: ${{ success() && env.VERSION != 'master' }}
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}
+          name: Release ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}
+          prerelease: true
+          fail_on_unmatched_files: false
+          files: |
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.deb
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.AppImage
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.flatpak
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.deb
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.AppImage
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.flatpak
+
+      - name: Send to file server
+        if: ${{ fromJson(inputs.extras || '{}').gdpro == 'true' || inputs.uuid != '' }}
+        shell: bash
+        run: |
+          URL="${{ secrets.GENURL }}/save_custom_client"
+          TOKEN="${{ fromJson(inputs.extras || '{}').token }}"
+          UUID="${{ inputs.uuid }}"
+          for F in \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.deb" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.AppImage" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.flatpak" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.deb" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.AppImage" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.flatpak" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-aarch64-${{ steps.tag.outputs.tag }}.pkg.tar.zst"; do
+            [ -f "$F" ] || continue
+            curl --fail --show-error -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer $TOKEN" -F "file=@$F" -F "uuid=$UUID" "$URL" || { echo "Upload failed for $F"; exit 1; }
+          done
+
+      - name: Report Status
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Success"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+      - name: Report cancellation
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation cancelled, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"

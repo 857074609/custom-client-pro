@@ -1,0 +1,40 @@
+name:  Delete all Tags
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 */3 * *'
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Delete all Releases
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "Deleting all Releases..."
+          for id in $(curl -s -H "Authorization: token $TOKEN" \
+              https://api.github.com/repos/$REPO/releases | jq -r '.[].id'); do
+            echo "Deleting release ID $id"
+            curl -X DELETE -H "Authorization: token $TOKEN" \
+              https://api.github.com/repos/$REPO/releases/$id
+          done
+
+      - name: Delete all Tags
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "Deleting all Tags..."
+          for tag in $(curl -s -H "Authorization: token $TOKEN" \
+              https://api.github.com/repos/$REPO/git/refs/tags | jq -r '.[].ref | split("/")[-1]'); do
+            echo "Deleting tag $tag"
+            curl -X DELETE -H "Authorization: token $TOKEN" \
+              https://api.github.com/repos/$REPO/git/refs/tags/$tag
+          done

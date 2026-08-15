@@ -1,0 +1,1041 @@
+name: Custom Windows Client Generator
+run-name: Custom Windows Client Generator
+on: 
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform'
+        required: true
+        type: string
+      serverinfo:
+        description: 'serverinfo'
+        required: true
+        type: string
+      custom:
+        description: "Custom JSON"
+        required: true
+        default: ''
+        type: string
+      uuid:
+        description: "uuid of request"
+        required: true
+        default: ''
+        type: string
+      ui_mode:
+        description: "Custom User Interface"
+        required: false
+        type: string
+      iconlink:
+        description: "icon link"
+        required: false
+        default: 'false'
+        type: string
+      logolink:
+        description: "logo link"
+        required: false
+        default: 'false'
+        type: string
+      appname:
+        description: "app name"
+        required: true
+        default: 'rustdesk'
+        type: string
+      filename:
+        description: "Filename"
+        required: true
+        default: 'rustdesk'
+        type: string
+      extras:
+        description: "extra inputs in json"
+        required: true
+        default: '{}'
+        type: string
+
+
+env:
+  SCITER_RUST_VERSION: "1.78.0" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
+  RUST_VERSION: "1.75" # 对齐官方 1.4.9 Windows Flutter 构建（官方 Windows 用 1.75；1.78 的 std/codegen 在 Win7 上更易触发 0xc0000005）
+  MAC_RUST_VERSION: "1.81.0" # 1.81 is requred for macos, because of https://github.com/yury/cidre requires 1.81
+  CARGO_NDK_VERSION: "3.1.2"
+  SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
+  SCITER_NASM_DEBVERSION: "2.15.05-1"
+  LLVM_VERSION: "15.0.6"
+  FLUTTER_VERSION: "3.24.5"
+  ANDROID_FLUTTER_VERSION: "3.24.5" 
+  # for arm64 linux because official Dart SDK does not work
+  FLUTTER_ELINUX_VERSION: "3.16.9"
+  TAG_NAME: "${{ inputs.upload-tag }}"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  # vcpkg version: 2024.07.12
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
+  VERSION: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
+  RUSTDESK_BUILD_NUMBER: "${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
+  NDK_VERSION: "r27c"
+  #signing keys env variable checks
+  ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
+  MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
+  UPLOAD_ARTIFACT: 'true'
+  SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  STATUS_URL: "${{ secrets.GENURL }}/updategh"
+  GENURL: ${{ secrets.GENURL }}
+  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}" 
+  
+
+
+jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+    with:
+      version: ${{ fromJson(inputs.extras).version }}
+
+  build-RustDeskTempTopMostWindow:
+    uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
+    secrets: inherit
+    with:
+      upload-artifact: true
+      target: windows-2022
+      configuration: Release
+      platform: x64
+      target_version: Windows10
+
+
+
+
+  build-for-windows-flutter:
+    name: Build Windows
+    needs: [build-RustDeskTempTopMostWindow, generate-bridge]
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          # - { target: i686-pc-windows-msvc        , os: windows-2022                  }
+          # - { target: x86_64-pc-windows-gnu       , os: windows-2022                  }
+          - {
+              target: x86_64-pc-windows-msvc,
+              os: windows-2022,
+              arch: x86_64,
+              vcpkg-triplet: x64-windows-static,
+            }
+          # - { target: aarch64-pc-windows-msvc, os: windows-2022, arch: aarch64 }
+    steps:
+     
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Set gdpro value
+        if: ${{ fromJson(inputs.extras).gdpro == 'true' }}
+        run: |
+          echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> "$GITHUB_ENV"
+
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ (env.VERSION != 'master' && env.VERSION != 'main') && format('refs/tags/{0}', env.VERSION) || env.VERSION }}
+          submodules: recursive
+          fetch-depth: 1
+      
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@v4
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Checkout patches scripts
+        uses: actions/checkout@v4
+        with:
+          repository: 857074609/patches
+          path: patches 
+          token: ${{ secrets.REPO }}
+          ref: main
+      
+      - name: Report Status
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "环境准备就绪，开始卖力工作"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+      
+      - name: Decrypt and mask secrets
+        id: decrypt
+        shell: bash
+        env:
+          SERVERINFO: ${{ github.event.inputs.serverinfo }}
+          BUILD_SECRET_KEY: ${{ secrets.BUILD_SECRET_KEY }}
+        run: |
+          set +x
+          pip install cryptography
+          python -c "
+          import os, json
+          from cryptography.fernet import Fernet
+          key = os.environ['BUILD_SECRET_KEY'].encode()
+          encrypted = os.environ['SERVERINFO'].encode()
+          f = Fernet(key)
+          decrypted = f.decrypt(encrypted).decode()
+          data = json.loads(decrypted)
+          fields_to_handle = [
+              'server',
+              'RS_PUB_KEY',
+              'apiServer',
+              'permanentPassword',
+              'unlockPin',
+              'urlLink',
+              'downloadLink', 
+              'updateLink'
+          ]
+          for field in fields_to_handle:
+              val = data.get(field)
+              if val:
+                 print('::add-mask::' + val)
+          with open(os.environ['GITHUB_ENV'], 'a') as env_file:
+              env_file.write(f\"CUSTOM_SERVER={data.get('server', '')}\n\")
+              env_file.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY', '')}\n\")
+              env_file.write(f\"CUSTOM_APISERVER={data.get('apiServer', '')}\n\")
+              env_file.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword', '')}\n\")
+              env_file.write(f\"UNLOCK_PIN={data.get('unlockPin', '')}\n\")
+              env_file.write(f\"URL_LINK={data.get('urlLink', '')}\n\")
+              env_file.write(f\"DOWNLOAD_LINK={data.get('downloadLink', '')}\n\")
+              env_file.write(f\"UPDATE_LINK={data.get('updateLink', '')}\n\")
+          "  
+
+      - name: Display last
+        shell: bash
+        run: |
+          echo "CUSTOM_SERVER suffix:  ${CUSTOM_SERVER: -5}"
+          echo "CUSTOM_KEY suffix:  ${CUSTOM_KEY: -5}"
+          echo "CUSTOM_APISERVER suffix:  ${CUSTOM_APISERVER: -5}"
+          echo "UNLOCK_PIN suffix:  ${UNLOCK_PIN: -1}"
+          echo "PERMANENT_PASSWORD suffix:  ${PERMANENT_PASSWORD: -2}"
+      
+      - name: Install ImageMagick on Windows
+        run: |
+          choco install -y imagemagick.app --no-progress
+          Get-ChildItem -Path "${env:ProgramFiles}" | % { $_.FullName } | Select-String -Pattern "[\/\\]ImageMagick[^\/\\]*$" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+      
+      - name: fix flutter_gpu_texture_renderer (fixed in master rustdesk)
+        shell: bash
+        run: |
+          sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.lock
+          sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.yaml
+
+      - name: Replace custom patch files 
+        if: inputs.ui_mode == 'true'
+        shell: bash
+        run: |
+          mkdir -p src/lang/
+          mkdir -p flutter/lib/desktop/pages/
+          cp -f patches/cn.rs  src/lang/cn.rs
+          cp -f patches/en.rs src/lang/en.rs
+       
+         
+          VER="${{ env.VERSION }}"
+          echo "Building version: $VER"
+          version_ge() {
+            printf '%s\n%s\n' "$2" "$1" | sort -V -C
+          }
+
+          if version_ge "$VER" "1.4.7"; then
+            echo ">>> Version $VER >= 1.4.7, using new patch"
+            cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
+          else
+            echo ">>> Version $VER < 1.4.7, using old patch"
+            cp -f patches/desktop_home_page_old.dart flutter/lib/desktop/pages/desktop_home_page.dart
+          fi
+
+
+          python3 patches/hand_stun.py
+
+      - name: skip custom client
+        shell: bash
+        run: |
+          sed -i '/if (bind\.isCustomClient())/d' flutter/lib/desktop/pages/desktop_home_page.dart
+    
+
+      - name: enable websocket
+        if: ${{ fromJson(inputs.extras).allow-websocket == 'true' }}
+        shell: bash
+        run: |
+           python3 patches/patch_websocket_custom_port.py
+
+      - name: disable_e2ee
+        shell: bash
+        run: |
+           python3 patches/patch_common_client_disable_e2ee.py
+
+      - name: change appname to custom
+        if: inputs.appname != 'rustdesk'
+        env:
+          APP_NAME: ${{ inputs.appname }}
+          FILE_NAME: ${{ inputs.filename }}
+        shell: bash
+        run: |
+          # ./Cargo.toml
+          sed -i -e "s|description = \"RustDesk Remote Desktop\"|description = \"${APP_NAME}\"|" ./Cargo.toml
+          sed -i -e "s|ProductName = \"RustDesk\"|ProductName = \"${APP_NAME}\"|" ./Cargo.toml
+          sed -i -e "s|FileDescription = \"RustDesk Remote Desktop\"|FileDescription = \"${APP_NAME}\"|" ./Cargo.toml
+          sed -i -e "s|OriginalFilename = \"rustdesk.exe\"|OriginalFilename = \"${APP_NAME}.exe\"|" ./Cargo.toml
+
+          # ./libs/portable/Cargo.toml
+          sed -i -e "s|description = \"RustDesk Remote Desktop\"|description = \"${APP_NAME}\"|" ./libs/portable/Cargo.toml
+          sed -i -e "s|ProductName = \"RustDesk\"|ProductName = \"${APP_NAME}\"|" ./libs/portable/Cargo.toml
+          sed -i -e "s|FileDescription = \"RustDesk Remote Desktop\"|FileDescription = \"${APP_NAME}\"|" ./libs/portable/Cargo.toml
+          sed -i -e "s|OriginalFilename = \"rustdesk.exe\"|OriginalFilename = \"${APP_NAME}.exe\"|" ./libs/portable/Cargo.toml
+
+          # ./flutter/windows/runner/Runner.rc
+          sed -i -e "s|\"RustDesk Remote Desktop\"|\"${APP_NAME}\"|" ./flutter/windows/runner/Runner.rc
+          sed -i -e "s|VALUE \"InternalName\", \"rustdesk\" \"\\\\0\"|VALUE \"InternalName\", \"${APP_NAME}\" \"\\\\0\"|" ./flutter/windows/runner/Runner.rc
+          sed -i -e "s|\"rustdesk.exe\"|\"${FILE_NAME}\"|" ./flutter/windows/runner/Runner.rc
+          sed -i -e "s|\"RustDesk\"|\"${APP_NAME}\"|" ./flutter/windows/runner/Runner.rc
+          sed -i -e '/pub static ref APP_NAME/s/"RustDesk"/"'"${APP_NAME}"'"/' ./libs/hbb_common/src/config.rs
+
+          # ./src/lang/en.rs
+          find ./src/lang -name "*.rs" -exec sed -i -e 's|RustDesk|${{ inputs.appname }}|' {} \;
+          sed -i -e 's|RustDesk|${{ inputs.appname }}|' ./res/msi/Package/License.rtf
+          
+
+      - name: fix registry if appname has a space
+        if: contains(inputs.appname, ' ')
+        shell: bash
+        run: |
+          #./src/platform/windows.rs
+          sed -i -e 's|reg add {}|reg add \\\"{}\\\"|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext} /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\DefaultIcon /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\DefaultIcon\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\\command|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\\command\\\"|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext} /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext}\\\\shell /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open\\\\command /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open\\\\command\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|{subkey}|\\\"{subkey}\\\"|' ./src/platform/windows.rs
+          sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\.{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
+          
+      - name: change company name
+        if: fromJson(inputs.extras).compname != 'Purslane Ltd'
+        shell: bash
+        run: |
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e 's|PURSLANE|${{ fromJson(inputs.extras).compname }}|' ./res/msi/preprocess.py
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./res/msi/preprocess.py
+          sed -i -e 's|"Copyright © 2025 Purslane Ltd. All rights reserved."|"Copyright © 2025 ${{ fromJson(inputs.extras).compname }}. All rights reserved."|' ./flutter/windows/runner/Runner.rc
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./flutter/windows/runner/Runner.rc
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./Cargo.toml
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./libs/portable/Cargo.toml
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./res/msi/Package/License.rtf
+     
+      - name: change url to custom
+        if: env.URL_LINK != 'https://rustdesk.com' 
+        shell: bash
+        run: |
+          sed -i -e 's|Homepage: https://rustdesk.com|Homepage: ${{ env.URL_LINK }}|' ./build.py
+          sed -i -e "s|launchUrl(Uri.parse('https://rustdesk.com'));|launchUrl(Uri.parse('${{ env.URL_LINK }}'));|" ./flutter/lib/common.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com');|launchUrlString('${{ env.URL_LINK }}');|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|const url = 'https://rustdesk.com/';|const url = '${{ env.URL_LINK }}';|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|https://rustdesk.com/privacy.html|${{ env.URL_LINK }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
+          sed -i -e "s|rustdesk.com|${{ env.URL_LINK }}|" ./res/msi/Package/License.rtf
+      
+      - name: change download link to custom
+        if: env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
+        shell: bash
+        run: |
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/mobile/pages/connection_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./src/ui/index.tis
+          
+      - name: change update link to custom
+        if: env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest'
+        shell: bash
+        run: |
+          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.UPDATE_LINK }}|' ./libs/hbb_common/src/lib.rs     
+
+      - name: change about text
+        if: ${{ fromJson(inputs.extras).Slogan_tip != '' }}
+        env:
+          SLOGAN: ${{ fromJson(inputs.extras).Slogan_tip }}
+        shell: bash
+        run: |
+          ESCAPED=$(printf '%s' "$SLOGAN" | sed "s/'/'\\\\''/g; s/[&/\]/\\&/g")
+          sed -i "s|translate('Slogan_tip')|'${ESCAPED}'|g" flutter/lib/desktop/pages/desktop_setting_page.dart
+
+      
+      - name: Apply patches for custom update
+        if:  env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
+        run: |
+          python3 patches/enable_custom_client_update.py
+          python3 patches/disabled_custom_client.py
+          python3 patches/patch_handle_update_url_1.py
+          python3 patches/patch_redirect_update_url.py
+          python3 patches/patch_accept_invalid_cert.py
+          python3 patches/patch_filename_based_update.py
+          python3 patches/patch_handle_update_url_2.py
+          python3 patches/patch_custom_client_update_check.py
+          python3 patches/patch_enable_auto_update.py
+          python3 patches/fix_update_tip.py
+
+      - name: Apply patch for auto silent update
+        if: ${{ (env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') && fromJson(inputs.extras || '{}').auto_silent_update == 'true' }}
+        run: |
+          python3 patches/patch_auto_silent_update.py
+
+      - name: Apply patches for fix__updateWindowSize
+        if: ${{(env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') && inputs.ui_mode == 'false' }}
+        run: |
+          python3 patches/fix__updateWindowSize.py
+      
+      
+      #- name: custom Security Alert fontSize
+      #  
+       # shell: bash
+       # run: |
+        #  sed -i 's/^\([[:space:]]*\)color: Colors\.yellow,/\1\/\/ color: Colors.yellow,/' ./flutter/lib/common.dart
+         # sed -i '/style: TextStyle(color: Colors\.red),/a\    textAlign: TextAlign.center,'  ./flutter/lib/common.dart
+          #sed -i 's/\(style: TextStyle(color: Colors\.red\)\([),]\)/\1, fontSize: 18\2/g' ./flutter/lib/common.dart
+          #sed -i '/if (bind\.mainGetBuildinOption(key: kOptionRemovePresetPasswordWarning) !=/,/^  }$/d' ./flutter/lib/common.dart
+        #  sed -i '/fontSize:/ { N; s/18,/16,/; }' ./flutter/lib/common.dart
+            
+      - name: Set server
+        shell: bash
+        run: |
+          python3 patches/set_server.py
+
+      - name: Apply permanent password patch
+        shell: bash
+        run: |
+          VER="${{ env.VERSION }}"
+
+          version_ge() {
+            printf '%s\n%s\n' "$2" "$1" | sort -V -C
+          }
+
+          if version_ge "$VER" "1.4.7"; then
+            echo ">>> Version $VER >= 1.4.7, using new password patch"
+            python3 patches/patch_permanent_password_new.py
+          else
+            echo ">>> Version $VER < 1.4.7, using old password patch"
+            python3 patches/patch_permanent_password_old.py
+          fi
+
+      - name: Apply unlock PIN patch
+        shell: bash
+        run: |
+          python3 patches/patch_unlock_pin.py
+                      
+      - name: allow custom_.txt
+        run: |
+          python3 patches/allowCustom.py
+          git apply patches/removeSetupServerTip.diff
+          python3 patches/patch_inject_build_number.py
+
+      - name: Apply silent-install & cert patches (#0011)
+        shell: bash
+        run: |
+          python3 patches/patch_silent_install.py .
+          python3 patches/patch_install_cert.py .
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: ${{ env.LLVM_VERSION }}
+
+
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2.12.0 #https://github.com/subosito/flutter-action/issues/277
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      # https://github.com/flutter/flutter/issues/155685
+      - name: Replace engine with rustdesk custom flutter engine
+        run: |
+          flutter doctor -v
+          flutter precache --windows
+          Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
+          Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
+          mv -Force windows-x64-release/*  C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
+
+      - name: Patch flutter
+        shell: bash
+        run: |
+          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
+          cd $(dirname $(dirname $(which flutter)))
+          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.job.target }}
+          components: "rustfmt"
+
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.job.os }}
+       
+      - name: Setup vcpkg with Github Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: C:\vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+          
+      - name: Install vcpkg dependencies
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
+        shell: bash
+        run: |
+          if ! $VCPKG_ROOT/vcpkg \
+            install \
+            --triplet ${{ matrix.job.vcpkg-triplet }} \
+            --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+          head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
+       
+
+      - name: magick stuff
+        if: ${{ inputs.iconlink == 'true' }}
+        shell: pwsh
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        run: |
+          $url = "${env:GENURL}/png/${env:UUID}/icon.png"
+          Write-Host "Downloading icon from: $url"
+          Invoke-WebRequest -Uri $url -OutFile ./res/icon.png -ErrorAction Stop
+          
+          magick ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/icon.ico
+          Copy-Item ./res/icon.ico ./res/tray-icon.ico
+          magick ./res/icon.png -resize 32x32 ./res/32x32.png
+          magick ./res/icon.png -resize 64x64 ./res/64x64.png
+          magick ./res/icon.png -resize 128x128 ./res/128x128.png
+          magick ./res/128x128.png -resize 200% ./res/128x128@2x.png
+
+
+      - name: ui.rs icon
+        if: ${{ inputs.iconlink == 'true' }}
+        shell: bash
+        run: |
+          if [ ! -f "./res/icon.png" ]; then
+            echo "::error::icon.png missing after magick step"
+            exit 1
+          fi
+          b64=$(base64 -w0 ./res/icon.png)
+          perl -i.bak -pe '
+            BEGIN { $b64 = shift @ARGV }
+            s/iVBORw0KGgo[A-Za-z0-9+\/=]{100,}/$b64/g;
+          ' "$b64" ./src/ui.rs
+
+# === 用户附加功能（Custom Enhancements）===
+      
+      - name: fix connection delay  
+        if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
+        shell: bash
+        run: |
+          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+
+
+      
+      - name: use X for offline display instead of orange circle
+        if: fromJson(inputs.extras).xOffline == 'true'
+        run: |
+          git apply patches/xoffline.diff
+      
+      - name: Spoofing outgoing
+        if: fromJson(inputs.extras).hide_sensitive_ui == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "Building version: ${{ env.VERSION }}"
+          
+          version_ge() {
+            printf '%s\n%s\n' "$2" "$1" | sort -V -C
+          }
+          
+          if version_ge "${{ env.VERSION }}" "1.4.7"; then
+            echo ">>> Version ${{ env.VERSION }} >= 1.4.7, using new patch"
+            python3 patches/hide_sensitive_ui_new.py
+          else
+            echo ">>> Version ${{ env.VERSION }} < 1.4.7, using old patch"
+            python3 patches/hide_sensitive_ui.py
+          fi
+      
+      - name: hide-password_uimode_true
+        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        run: | 
+          sed -i 's|^\([[:space:]]*\)buildPasswordBoard(context),|// \1buildPasswordBoard(context),|' flutter/lib/desktop/pages/desktop_home_page.dart
+          
+      - name: hide-password_uimode_false
+        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'false'
+        shell: bash
+        run: | 
+          python3  patches/hide_password_board_uimode_false.py
+      
+      - name: hide menu
+        if: fromJson(inputs.extras).hideMenuBar == 'true'
+        shell: bash
+        run: |
+          sed -i '/^[[:space:]]*buildPopupMenu(context)$/d' flutter/lib/desktop/pages/desktop_home_page.dart
+          python3  patches/dis_setting.py
+
+      - name:  Remove Quit Button_uimode_true  
+        if: fromJson(inputs.extras).hideQuit == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        run: |
+            sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart       
+     
+      - name:  Remove Quit Button_uimode_false  
+        if: fromJson(inputs.extras).hideQuit == 'true' && inputs.ui_mode == 'false'
+        shell: bash
+        run: |
+            python3 patches/hide_quit_button_uimode_false.py
+      
+      - name:  Add Copy key
+        if: fromJson(inputs.extras).addcopy == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        run: |
+          sed -i '/COPY_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          
+      - name: Superhidecm
+        if: fromJson(inputs.extras).supercm == 'true'
+        shell: bash
+        run: |
+          python3  patches/patch_hide_cm_1.py
+          python3  patches/patch_hide_cm_2.py
+
+      - name: Passpolicy
+        if: fromJson(inputs.extras).passpolicy  == 'true'
+        shell: bash
+        run: |
+          chmod +x patches/passpolicy_1.sh
+          bash patches/passpolicy_1.sh
+          python3 patches/passpolicy_2.py
+      
+      - name: Privacy
+        if: fromJson(inputs.extras).applyprivacy  == 'true'
+        shell: bash
+        run: |
+          #python3 patches/apply_privacy1.py &&  python3 patches/apply_privacy2.py
+           python3 patches/patch_privacy_block_input.py
+           python3 patches/patch_win7_privacy_degrade.py
+
+      - name: hide_chat_voice
+        if: fromJson(inputs.extras).hide_chat_voice  == 'true'
+        shell: bash
+        run: |
+          python3 patches/hide_chat_voice.py
+
+      - name: No_uninstall
+        if: fromJson(inputs.extras).no_uninstall == 'true'
+        shell: bash
+        run: |
+          python3 patches/no_uninstall.py
+
+      - name: Disable_install
+        if: fromJson(inputs.extras).disable_install == 'true'
+        shell: bash
+        run: |
+          python3 patches/disable_install.py
+      
+      - name: Hide_general_server and tray_stop_service.py
+        if: fromJson(inputs.extras).hideService_Start_Stop == 'true'
+        shell: bash
+        run: |
+          python3 patches/hide_general_server.py
+          python3 patches/hide_tray_stop_service.py
+
+      - name: hide account
+        if: fromJson(inputs.extras).hide_account == 'true'
+        shell: bash
+        run: |
+          python3 patches/hide_account.py
+
+      - name: restart_srver
+        if: fromJson(inputs.extras).restart_server == 'true' 
+        shell: bash
+        run: |
+           python3 patches/patch_restart_service.py
+
+
+      
+      # - name: run as admin
+      #   
+      #   if: ${{ fromJson(inputs.extras).runasadmin == 'true' }}
+      #   shell: bash
+      #   run: |
+      #     sed -i '/<\/compatibility>/a \
+      #           <security> \
+      #             <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/> \
+      #           </security>' ./flutter/windows/runner/runner.exe.manifest
+
+      - name: replace flutter icons
+        if: ${{ inputs.iconlink != 'false' }}
+        
+        run: |
+          cd ./flutter
+          #flutter pub upgrade win32
+          flutter pub get
+          flutter pub run flutter_launcher_icons
+          cd ..
+
+     
+      - name: Build rustdesk
+        run: |
+          # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
+          python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
+          mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+ 
+          # Download usbmmidd_v2.zip and extract it to ./rustdesk
+          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
+          Expand-Archive usbmmidd_v2.zip -DestinationPath . -Force
+          Remove-Item -Path usbmmidd_v2\Win32 -Recurse
+          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
+          mv -Force .\usbmmidd_v2 ./rustdesk   
+
+          # Download printer driver files and extract them to ./rustdesk
+           try {
+             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip
+             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/printer_driver_adapter.zip -OutFile printer_driver_adapter.zip
+             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/sha256sums -OutFile sha256sums
+
+             # Check and move the files
+             $checksum_driver = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*rustdesk_printer_driver_v4-1.4\.zip$').Matches.Groups[1].Value
+             $downloadsum_driver = Get-FileHash -Path rustdesk_printer_driver_v4-1.4.zip -Algorithm SHA256
+             $checksum_adapter = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*printer_driver_adapter\.zip$').Matches.Groups[1].Value
+             $downloadsum_adapter = Get-FileHash -Path printer_driver_adapter.zip -Algorithm SHA256
+             if ($checksum_driver -eq $downloadsum_driver.Hash -and $checksum_adapter -eq $downloadsum_adapter.Hash) {
+                 Write-Output "rustdesk_printer_driver_v4-1.4, checksums match, extract the file."
+                 Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath .
+                 mkdir ./rustdesk/drivers
+                 mv -Force .\rustdesk_printer_driver_v4-1.4 ./rustdesk/drivers/RustDeskPrinterDriver
+                 Expand-Archive printer_driver_adapter.zip -DestinationPath .
+                 mv -Force .\printer_driver_adapter.dll ./rustdesk
+             } elseif ($checksum_driver -ne $downloadsum_driver.Hash) {
+                 Write-Output "rustdesk_printer_driver_v4-1.4, checksums do not match, ignore the file."
+             } else {
+                 Write-Output "printer_driver_adapter.dll, checksums do not match, ignore the file."
+             }
+           } catch {
+               Write-Host "Ingore the printer driver error."
+           }
+          
+      - name: icon stuff
+        if: ${{ inputs.iconlink == 'true' }}
+        shell: bash
+        run: |
+          if [ ! -f "./res/icon.png" ]; then
+            echo "::error::icon.png not found"
+            exit 1
+          fi
+          ASSET_DIR="./rustdesk/data/flutter_assets/assets"
+          ICON_SVG="$ASSET_DIR/icon.svg"
+          [ -f "$ICON_SVG" ] && mv "$ICON_SVG" "$ICON_SVG.bak"
+          magick ./res/icon.png "$ICON_SVG"
+      
+      - name: Download logo.png
+        if: ${{ inputs.logolink == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          $outDir = "./rustdesk/data/flutter_assets/assets"
+          if (!(Test-Path $outDir)) {
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          }
+          $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
+          Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
+      
+      - name: find Runner.res
+        # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res
+        # Runner.rc does not contain actual version, but Runner.res does
+        shell: bash
+        run: |
+          runner_res=$(find . -name "Runner.res");
+          if [ "$runner_res" == "" ]; then
+            echo "Runner.res: not found";
+          else
+            echo "Runner.res: $runner_res";
+            cp $runner_res ./libs/portable/Runner.res;
+            echo "list ./libs/portable/Runner.res";
+            ls -l ./libs/portable/Runner.res;
+          fi
+
+      - name: Download RustDeskTempTopMostWindow artifacts
+        uses: actions/download-artifact@v4
+        if: env.UPLOAD_ARTIFACT == 'true'
+        with:
+          name: topmostwindow-artifacts-x64
+          path: "./rustdesk"
+                      
+      
+      - name: Create custom_.txt file
+        shell: bash
+        run: |
+          echo -n "${{ inputs.custom }}" | cat > ./rustdesk/custom_.txt
+
+
+      - name: Stage code-signing public cert into package
+        if: env.UPLOAD_ARTIFACT == 'true'
+        shell: bash
+        run: |
+          cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
+          echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
+
+      - name: Build self-extracted executable
+        shell: bash
+        if: env.UPLOAD_ARTIFACT == 'true'
+        run: |
+          mv "./rustdesk/rustdesk.exe" "./rustdesk/${{ inputs.appname }}.exe" || echo "rustdesk.exe"
+          sed -i '/dpiAware/d' res/manifest.xml
+          pushd ./libs/portable
+          pip3 install -r requirements.txt
+          python3 ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${{ inputs.appname }}.exe"
+          popd
+          mkdir -p ./SignOutput
+          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/rustdesk.exe"
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build msi
+        
+        if: env.UPLOAD_ARTIFACT == 'true'
+        run: |
+          $myappname = "${{ inputs.appname }}" -replace '\s','_'
+          cp "rustdesk/${{ inputs.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
+          pushd ./res/msi
+          python preprocess.py --app-name "$myappname" --arp -d ../../rustdesk
+          nuget restore msi.sln
+          msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+          cp ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi
+          mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
+          sha256sum ../../SignOutput/rustdesk.msi
+
+      - name: Sign Windows binaries (EXE and MSI)
+        if: env.UPLOAD_ARTIFACT == 'true' && (success() || failure())
+        shell: powershell
+        env:
+          PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.CODE_SIGN_PASS_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PFX_BASE64)) {
+            Write-Host "Skipping signing: CODE_SIGN_PFX_BASE64 secret is not set."
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:PFX_PASSWORD)) {
+            Write-Host "Skipping signing: CODE_SIGN_PASS_PASSWORD secret is not set."
+            exit 0
+          }
+          Write-Host "Creating certificate file from CODE_SIGN_PFX_BASE64"
+          New-Item -ItemType Directory -Path certificate -Force | Out-Null
+          $certBytes = [System.Convert]::FromBase64String($env:PFX_BASE64)
+          [System.IO.File]::WriteAllBytes("certificate\certificate.pfx", $certBytes)
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Directory.FullName -like "*x64*" } |
+                      Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
+                      Select-Object -First 1
+      
+          if (-not $signtool) {
+            $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" -ErrorAction SilentlyContinue |
+                        Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
+                        Select-Object -First 1
+          }
+      
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found in Windows SDK paths."
+            exit 1
+          }
+          Write-Host "Using signtool: $($signtool.FullName)"
+      
+          $exePath = ".\SignOutput\rustdesk.exe"
+          $msiPath = ".\SignOutput\rustdesk.msi"
+      
+          if (Test-Path $exePath) {
+            Write-Host "Signing EXE: $exePath"
+            & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $exePath
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host "EXE not found at $exePath, skipping."
+          }
+      
+          if (Test-Path $msiPath) {
+            Write-Host "Signing MSI: $msiPath"
+            & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $msiPath
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host "MSI not found at $msiPath, skipping."
+          }
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+
+      - name: Extract conn-type 
+        id: conn
+        shell: pwsh
+        run: |
+          $c = "${{ inputs.custom }}"
+          $t = "default" 
+          if ($c -eq "") {
+              Write-Host "::warning::Input is empty, using default conn-type: $t"
+          } else {
+              try {
+                $bytes = [System.Convert]::FromBase64String($c)
+                  $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes)
+                  $obj = $jsonStr | ConvertFrom-Json
+      
+                  if ($null -ne $obj.'conn-type' -and $obj.'conn-type' -ne "") {
+                      $t = $obj.'conn-type'
+                      Write-Host "Successfully extracted conn-type: $t"
+                  } else {
+                      Write-Host "::warning::'conn-type' field is missing or empty in input JSON"
+                  }
+              } catch {
+                  Write-Host "::error::Failed to parse custom input. Error: $($_.Exception.Message)"
+                  $t = "default"
+              }
+          }
+          $sanitized = $t -replace '[^a-zA-Z0-9_.-]', '_'
+          if ($sanitized -ne $t) {
+              Write-Host " Sanitized conn-type from '$t' to '$sanitized'"
+              $t = $sanitized
+          }
+          "conn=$t" >> $env:GITHUB_OUTPUT
+          Write-Host " Final conn-type output: $t"
+                  
+      - name: Extract first 4 chars of UUID
+        id: tag
+        shell: bash
+        run: |
+          RAW_UUID="${{ github.event.inputs.uuid }}"
+          CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
+          SHORT_UUID=${CLEAN_UUID:0:4}
+          echo "tag=$SHORT_UUID" >> "$GITHUB_OUTPUT"
+          
+      - name: Set build filename
+        id: build_name
+        shell: bash
+        run: |
+          VER="${{ env.VERSION }}"
+          W="${{ env.RUSTDESK_BUILD_NUMBER }}"
+          if [ -n "$W" ] && [ "$W" != "0" ]; then
+            VER_SUFFIX=".${W}"
+          else
+            VER_SUFFIX=""
+          fi
+          NAME="${{ inputs.filename }}-${VER}${VER_SUFFIX}-win-x86_64-${{ steps.tag.outputs.tag }}"
+          echo "BUILD_FILENAME=$NAME" >> "$GITHUB_ENV"
+          echo "value=$NAME" >> "$GITHUB_OUTPUT"
+          echo "✅ Build filename set to: $NAME"
+      
+      - name: Rename EXE
+        shell: bash
+        run: |
+          mv "./SignOutput/rustdesk.exe" "./SignOutput/${BUILD_FILENAME}-install.exe"
+          echo "✅ EXE renamed to ${BUILD_FILENAME}-install.exe (double-click = silent install)"
+      
+      - name: Rename MSI (optional)
+        shell: bash
+        run: |
+          test -f "./SignOutput/rustdesk.msi" && \
+            mv "./SignOutput/rustdesk.msi" "./SignOutput/${BUILD_FILENAME}.msi" && \
+            echo "✅ MSI renamed to ${BUILD_FILENAME}.msi" || \
+            echo "⚠️ MSI not found, skipping rename."
+
+      - name: Create GitHub Release and Upload Assets
+        if: success()
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.build_name.outputs.value }}
+          name: Release ${{ steps.build_name.outputs.value }}
+          prerelease: true
+          files: |
+            ./SignOutput/${{ steps.build_name.outputs.value }}-install.exe
+            ./SignOutput/${{ steps.build_name.outputs.value }}.msi
+      
+      - name: Send to file server
+        if: ${{ fromJson(inputs.extras).gdpro == 'true' }}
+        shell: bash
+        run: |
+          EXE="./SignOutput/${BUILD_FILENAME}-install.exe"
+          MSI="./SignOutput/${BUILD_FILENAME}.msi"
+          URL="${{ secrets.GENURL }}/save_custom_client"
+          TOKEN="${{ fromJson(inputs.extras).token }}"
+          UUID="${{ inputs.uuid }}"
+          curl -i -X POST \
+            -H "Content-Type: multipart/form-data" \
+            -H "Authorization: Bearer $TOKEN" \
+            -F "file=@$EXE" \
+            -F "uuid=$UUID" \
+            "$URL"
+          test -f "$MSI" && \
+            curl -i -X POST \
+              -H "Content-Type: multipart/form-data" \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "file=@$MSI" \
+              -F "uuid=$UUID" \
+              "$URL" && \
+            echo " MSI uploaded" || \
+            echo "⚠ MSI not found, skipping upload."
+           
+      - name: Report Status
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Success"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+          timeout: 50000
+      - name: failed
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "无良老板把牛马累坏了，已经宣布罢工"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+      - name: failed
+        if: cancelled()
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "无良老板把牛马累坏了，已经宣布罢工"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
