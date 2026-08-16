@@ -3,18 +3,13 @@ run-name: Custom macOS Client Generator
 on: 
   workflow_dispatch:
     inputs:
-      server:
-        description: 'Rendezvous Server'
-        required: true
-        default: ''
+      platform:
+        description: 'Target platform'
+        required: false
+        default: 'macos'
         type: string
-      key:
-        description: 'Public Key'
-        required: true
-        default: ''
-        type: string
-      apiServer:
-        description: 'API Server'
+      serverinfo:
+        description: 'Encrypted serverinfo (Fernet) — contains server / RS_PUB_KEY / apiServer / permanentPassword / unlockPin / urlLink / downloadLink / updateLink'
         required: true
         default: ''
         type: string
@@ -27,6 +22,10 @@ on:
         description: "uuid of request"
         required: true
         default: ''
+        type: string
+      ui_mode:
+        description: "Custom User Interface (reserved)"
+        required: false
         type: string
       iconlink:
         description: "icon link"
@@ -49,7 +48,7 @@ on:
         default: 'rustdesk'
         type: string
       extras:
-        description: "extra inputs in json"
+        description: "extra inputs in json (version, build_number, gdpro, token, ...)"
         required: true
         default: '{}'
         type: string
@@ -66,7 +65,6 @@ env:
   ANDROID_FLUTTER_VERSION: "3.24.5" # >= 3.16 is very slow on my android phone, but work well on most of others. We may switch to new flutter after changing to texture rendering (I believe it can solve my problem).
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"  # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
-  TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2024.07.12
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
@@ -80,6 +78,15 @@ env:
   MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
   UPLOAD_ARTIFACT: 'true'
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  # 以下变量由 "Decrypt and mask secrets" 步骤从 serverinfo 解密后写入 $GITHUB_ENV；此处给默认空值避免步骤前引用报错
+  CUSTOM_SERVER: ''
+  CUSTOM_KEY: ''
+  CUSTOM_APISERVER: ''
+  PERMANENT_PASSWORD: ''
+  UNLOCK_PIN: ''
+  URL_LINK: ''
+  DOWNLOAD_LINK: ''
+  UPDATE_LINK: ''
 
 jobs:
   generate-bridge:
@@ -111,7 +118,7 @@ jobs:
               vcpkg-triplet: arm64-osx,
             }
     env:
-      STATUS_URL: ${{ fromJson(inputs.extras).gdpro == 'true' && format('{0}/updategh', secrets.GENURL) || format('{0}/api/updategh', inputs.apiServer) }}
+      STATUS_URL: ${{ secrets.GENURL }}/updategh
 
     steps:
       - name: Export GitHub Actions cache environment variables
@@ -120,6 +127,68 @@ jobs:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Decrypt and mask secrets
+        id: decrypt
+        shell: bash
+        env:
+          SERVERINFO: ${{ github.event.inputs.serverinfo }}
+          BUILD_SECRET_KEY: ${{ secrets.BUILD_SECRET_KEY }}
+          EXTRAS_JSON: ${{ inputs.extras }}
+        run: |
+          set +x
+          SI="${{ github.event.inputs.serverinfo }}"
+          if [ -z "$SI" ] || [ "$SI" = "placeholder" ]; then
+            echo "::warning::serverinfo empty/placeholder -> no custom server from serverinfo"
+          else
+            pip install cryptography
+          fi
+          python -c "
+          import os, json, sys
+          try:
+              from cryptography.fernet import Fernet
+          except Exception:
+              Fernet = None
+          data = {}
+          SI = os.environ.get('SERVERINFO','')
+          if SI and SI != 'placeholder' and Fernet is not None:
+              try:
+                  key = os.environ['BUILD_SECRET_KEY'].encode()
+                  data = json.loads(Fernet(key).decrypt(SI.encode()).decode())
+              except Exception as e:
+                  print('::warning::serverinfo decrypt failed ('+str(e)+') -> ignoring')
+          ex_raw = os.environ.get('EXTRAS_JSON','')
+          if ex_raw:
+              try:
+                  ex = json.loads(ex_raw)
+                  for k in ('server','RS_PUB_KEY','apiServer','updateLink','downloadLink'):
+                      if ex.get(k) and not data.get(k):
+                          data[k] = ex[k]
+              except Exception:
+                  pass
+          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+              v = data.get(field)
+              if v: print('::add-mask::' + v)
+          with open(os.environ['GITHUB_ENV'],'a') as e:
+              e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
+              e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
+              e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
+              e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
+              e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
+              e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
+              e.write(f\"DOWNLOAD_LINK={data.get('downloadLink','')}\n\")
+              e.write(f\"UPDATE_LINK={data.get('updateLink','')}\n\")
+          "
+
+      - name: Set STATUS_URL (gdpro)
+        if: ${{ fromJson(inputs.extras || '{}').gdpro == 'true' }}
+        run: |
+          echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> $GITHUB_ENV
+
+      - name: Set STATUS_URL (non-gdpro -> api server)
+        if: ${{ fromJson(inputs.extras || '{}').gdpro == 'false' }}
+        run: |
+          echo "STATUS_URL=${{ env.CUSTOM_APISERVER }}/api/updategh" >> $GITHUB_ENV
 
       - name: Report Status
         continue-on-error: true
@@ -201,23 +270,27 @@ jobs:
           cp ./src/lang/nl.rs ./src/lang/nl.rs.bak
           find ./src/lang -name "*.rs" -exec sed -i '' -e 's|RustDesk|${{ inputs.appname }}|' {} \;
           sed -i '' -e 's|RustDesk|${{ inputs.appname }}|' ./src/lang/nl.rs
-           
-          sed -i '' -e 's|https://rustdesk.com|${{ fromJson(inputs.extras).urlLink }}|' ./build.py
-          sed -i '' -e "s|launchUrl(Uri.parse('https://rustdesk.com'));|launchUrl(Uri.parse('${{ fromJson(inputs.extras).urlLink }}'));|" ./flutter/lib/common.dart
-          sed -i '' -e "s|launchUrlString('https://rustdesk.com');|launchUrlString('${{ fromJson(inputs.extras).urlLink }}');|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
-          sed -i '' -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ fromJson(inputs.extras).urlLink }}/privacy.html')|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
-          sed -i '' -e "s|const url = 'https://rustdesk.com/';|const url = '${{ fromJson(inputs.extras).urlLink }}';|" ./flutter/lib/mobile/pages/settings_page.dart
-          sed -i '' -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ fromJson(inputs.extras).urlLink }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
-          sed -i '' -e "s|https://rustdesk.com/privacy.html|${{ fromJson(inputs.extras).urlLink }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
+
+      - name: change url to custom
+        if: env.URL_LINK != '' && env.URL_LINK != 'https://rustdesk.com'
+        shell: bash
+        run: |
+          sed -i '' -e 's|https://rustdesk.com|${{ env.URL_LINK }}|' ./build.py
+          sed -i '' -e "s|launchUrl(Uri.parse('https://rustdesk.com'));|launchUrl(Uri.parse('${{ env.URL_LINK }}'));|" ./flutter/lib/common.dart
+          sed -i '' -e "s|launchUrlString('https://rustdesk.com');|launchUrlString('${{ env.URL_LINK }}');|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i '' -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i '' -e "s|const url = 'https://rustdesk.com/';|const url = '${{ env.URL_LINK }}';|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i '' -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i '' -e "s|https://rustdesk.com/privacy.html|${{ env.URL_LINK }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
 
       - name: change download link to custom
-        if: fromJson(inputs.extras).downloadLink != 'https://rustdesk.com/download'
+        if: env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
         continue-on-error: true
         shell: bash
         run: |
-          sed -i -e 's|https://rustdesk.com/download|${{ fromJson(inputs.extras).downloadLink }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
-          sed -i -e 's|https://rustdesk.com/download|${{ fromJson(inputs.extras).downloadLink }}|' ./flutter/lib/mobile/pages/connection_page.dart
-          sed -i -e 's|https://rustdesk.com/download|${{ fromJson(inputs.extras).downloadLink }}|' ./src/ui/index.tis
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/mobile/pages/connection_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./src/ui/index.tis
 
           # Update slogan
           #sed -i '' '/<key>NSHumanReadableCopyright<\/key>/{n;s/<string>.*<\/string>/<string>Copyright 2025 ${{ inputs.appname }}. All rights reserved.<\/string>/;}' ./flutter/macos/Runner/Info.plist
@@ -233,9 +306,9 @@ jobs:
           sed -i '' -e 's/("About RustDesk", "Over RustDesk")/("About RustDesk", "Over ${{ inputs.appname }}")/' ./src/lang/nl.rs
           sed -i '' -e 's/("About", "Over")/("About", "Over ${{ inputs.appname }}")/' ./src/lang/nl.rs
 
-          sed -i -e 's|rs-ny.rustdesk.com|${{ inputs.server }}|' ./libs/hbb_common/src/config.rs
-          sed -i -e 's|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${{ inputs.key }}|' ./libs/hbb_common/src/config.rs
-          sed -i -e 's|https://admin.rustdesk.com|${{ inputs.apiServer }}|' ./src/common.rs
+          # 用解密后的 serverinfo 注入 rendezvous server / key / apiServer（与 android/linux/windows 一致）
+          python3 patches/set_server.py
+          python3 patches/set_password.py
           
           wget https://raw.githubusercontent.com/857074609/gdpro/refs/heads/master/.github/patches/allowCustom.diff
           git apply allowCustom.diff
@@ -245,6 +318,7 @@ jobs:
           # 自动更新补丁链（与 windows 一致；macOS 为桌面构建，含 update_progress.dart，#5 适用）
           python3 patches/enable_custom_client_update.py
           python3 patches/patch_handle_update_url_1.py
+          python3 patches/patch_redirect_update_url.py
           python3 patches/patch_filename_based_update.py
           python3 patches/patch_handle_update_url_2.py
           python3 patches/patch_custom_client_update_check.py
@@ -775,7 +849,7 @@ jobs:
             -H "Content-Type: multipart/form-data" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
             -F "file=@$GITHUB_WORKSPACE/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-mac-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.dmg" \
-            "${{ inputs.apiServer }}/api/save_custom_client"
+            "${{ env.CUSTOM_APISERVER }}/api/save_custom_client"
 
       - name: Report Status
         continue-on-error: true
