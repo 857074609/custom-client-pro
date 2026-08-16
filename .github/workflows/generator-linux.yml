@@ -121,23 +121,39 @@ jobs:
         env:
           SERVERINFO: ${{ github.event.inputs.serverinfo }}
           BUILD_SECRET_KEY: ${{ secrets.BUILD_SECRET_KEY }}
+          EXTRAS_JSON: ${{ inputs.extras }}
         run: |
           set +x
-          if [ -z "${SERVERINFO:-}" ] || [ "${SERVERINFO:-}" = "placeholder" ]; then
-            echo "::warning::serverinfo empty/placeholder -> building with default server (no custom server/relay embedded)"
-            exit 0
+          SI="${{ github.event.inputs.serverinfo }}"
+          if [ -z "$SI" ] || [ "$SI" = "placeholder" ]; then
+            echo "::warning::serverinfo empty/placeholder -> no custom server from serverinfo"
+          else
+            pip install cryptography
           fi
-          pip install cryptography
           python -c "
           import os, json, sys
           try:
               from cryptography.fernet import Fernet
-              key = os.environ['BUILD_SECRET_KEY'].encode()
-              enc = os.environ['SERVERINFO'].encode()
-              data = json.loads(Fernet(key).decrypt(enc).decode())
-          except Exception as e:
-              print('::warning::serverinfo decrypt failed ('+str(e)+') -> building with default server')
-              sys.exit(0)
+          except Exception:
+              Fernet = None
+          data = {}
+          SI = os.environ.get('SERVERINFO','')
+          if SI and SI != 'placeholder' and Fernet is not None:
+              try:
+                  key = os.environ['BUILD_SECRET_KEY'].encode()
+                  data = json.loads(Fernet(key).decrypt(SI.encode()).decode())
+              except Exception as e:
+                  print('::warning::serverinfo decrypt failed ('+str(e)+') -> ignoring')
+          # extras fallback (non-secret; never overrides real serverinfo values)
+          ex_raw = os.environ.get('EXTRAS_JSON','')
+          if ex_raw:
+              try:
+                  ex = json.loads(ex_raw)
+                  for k in ('updateLink','downloadLink'):
+                      if ex.get(k) and not data.get(k):
+                          data[k] = ex[k]
+              except Exception:
+                  pass
           for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
               v = data.get(field)
               if v: print('::add-mask::' + v)

@@ -142,50 +142,52 @@ jobs:
         env:
           SERVERINFO: ${{ github.event.inputs.serverinfo }}
           BUILD_SECRET_KEY: ${{ secrets.BUILD_SECRET_KEY }}
+          EXTRAS_JSON: ${{ inputs.extras }}
         run: |
           set +x
           SI="${{ github.event.inputs.serverinfo }}"
           if [ -z "$SI" ] || [ "$SI" = "placeholder" ]; then
-            echo "::warning::serverinfo empty/placeholder — skipping decrypt, build with default server"
-            exit 0
+            echo "::warning::serverinfo empty/placeholder -> no custom server from serverinfo"
+          else
+            pip install cryptography
           fi
-          pip install cryptography
           python -c "
           import os, json, sys
-          from cryptography.fernet import Fernet
           try:
-              key = os.environ['BUILD_SECRET_KEY'].encode()
-              encrypted = os.environ['SERVERINFO'].encode()
-              f = Fernet(key)
-              decrypted = f.decrypt(encrypted).decode()
-              data = json.loads(decrypted)
-          except Exception as e:
-              print('::warning::decrypt failed (' + str(e) + ') — build with default server')
-              sys.exit(0)
-          fields_to_handle = [
-              'server',
-              'RS_PUB_KEY',
-              'apiServer',
-              'permanentPassword',
-              'unlockPin',
-              'urlLink',
-              'downloadLink',
-              'updateLink'
-          ]
-          for field in fields_to_handle:
-              val = data.get(field)
-              if val:
-                 print('::add-mask::' + val)
-          with open(os.environ['GITHUB_ENV'], 'a') as env_file:
-              env_file.write(f\"CUSTOM_SERVER={data.get('server', '')}\n\")
-              env_file.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY', '')}\n\")
-              env_file.write(f\"CUSTOM_APISERVER={data.get('apiServer', '')}\n\")
-              env_file.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword', '')}\n\")
-              env_file.write(f\"UNLOCK_PIN={data.get('unlockPin', '')}\n\")
-              env_file.write(f\"URL_LINK={data.get('urlLink', '')}\n\")
-              env_file.write(f\"DOWNLOAD_LINK={data.get('downloadLink', '')}\n\")
-              env_file.write(f\"UPDATE_LINK={data.get('updateLink', '')}\n\")
-          "  
+              from cryptography.fernet import Fernet
+          except Exception:
+              Fernet = None
+          data = {}
+          SI = os.environ.get('SERVERINFO','')
+          if SI and SI != 'placeholder' and Fernet is not None:
+              try:
+                  key = os.environ['BUILD_SECRET_KEY'].encode()
+                  data = json.loads(Fernet(key).decrypt(SI.encode()).decode())
+              except Exception as e:
+                  print('::warning::serverinfo decrypt failed ('+str(e)+') -> ignoring')
+          # extras fallback (non-secret; never overrides real serverinfo values)
+          ex_raw = os.environ.get('EXTRAS_JSON','')
+          if ex_raw:
+              try:
+                  ex = json.loads(ex_raw)
+                  for k in ('updateLink','downloadLink'):
+                      if ex.get(k) and not data.get(k):
+                          data[k] = ex[k]
+              except Exception:
+                  pass
+          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+              v = data.get(field)
+              if v: print('::add-mask::' + v)
+          with open(os.environ['GITHUB_ENV'],'a') as e:
+              e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
+              e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
+              e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
+              e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
+              e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
+              e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
+              e.write(f\"DOWNLOAD_LINK={data.get('downloadLink','')}\n\")
+              e.write(f\"UPDATE_LINK={data.get('updateLink','')}\n\")
+          "
 
       - name: Display last
         shell: bash
