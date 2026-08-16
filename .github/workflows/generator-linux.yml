@@ -70,7 +70,7 @@ env:
   TAG_NAME: "${{ inputs.filename }}-${{ fromJson(inputs.extras || '{}').version || 'master' }}"
   VERSION: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
   RUSTDESK_BUILD_NUMBER: "${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
-  VER_SUFFIX: "${{ (fromJson(inputs.extras || '{}').build_number || '0') != '0' && format('.{0}', fromJson(inputs.extras || '{}').build_number || '0') || '' }}"
+  VER_SUFFIX: ".${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   UPLOAD_ARTIFACT: 'true'
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
@@ -236,7 +236,7 @@ jobs:
           python3 patches/fix_update_tip.py
 
       - name: Apply patch for auto silent update
-        if: ${{ (env.UPDATE_LINK != '' && env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download') && fromJson(inputs.extras || '{}').auto_silent_update == 'true' }}
+        if: ${{ (env.UPDATE_LINK != '' && env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download') }}
         run: |
           python3 patches/patch_auto_silent_update.py
 

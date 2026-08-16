@@ -78,7 +78,7 @@ env:
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VERSION: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
   RUSTDESK_BUILD_NUMBER: "${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
-  VER_SUFFIX: "${{ (fromJson(inputs.extras || '{}').build_number || '0') != '0' && format('.{0}', fromJson(inputs.extras || '{}').build_number || '0') || '' }}"
+  VER_SUFFIX: ".${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
   NDK_VERSION: "r27c"
   ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
   MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
@@ -243,19 +243,19 @@ jobs:
                imagemagick
       - name: Checkout source code
         if: ${{ env.VERSION != 'master' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: rustdesk/rustdesk
           ref: refs/tags/${{ env.VERSION }}
           submodules: recursive
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: rustdesk/rustdesk
           submodules: recursive
       - name: Checkout patches scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: 857074609/patches
           path: patches
@@ -437,7 +437,6 @@ jobs:
           python3 patches/patch_inject_build_number.py
 
       - name: Apply patch for auto silent update
-        if: ${{ fromJson(inputs.extras || '{}').auto_silent_update == 'true' }}
         run: |
           python3 patches/patch_auto_silent_update.py
 
