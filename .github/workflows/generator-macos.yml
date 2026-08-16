@@ -397,11 +397,24 @@ jobs:
           mkdir -p ./macos/Runner/Assets.xcassets/AppIcon.appiconset
           mkdir -p ./rustdesk/data/flutter_assets/assets
 
-          # Download icon using curl with additional SSL options
-          curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
-            -H "User-Agent: Mozilla/5.0" \
-            "${{ fromJson(inputs.iconlink).url }}/get_png?filename=${{ fromJson(inputs.iconlink).file }}&uuid=${{ fromJson(inputs.iconlink).uuid }}" \
-            -o ./res/icon.png || wget --no-check-certificate -O ./res/icon.png "${{ fromJson(inputs.iconlink).url }}/get_png?filename=${{ fromJson(inputs.iconlink).file }}&uuid=${{ fromJson(inputs.iconlink).uuid }}"
+          # Download icon —— 与 android 一致：iconlink 为字符串契约（'false'=默认图标；'true'=GENURL/png/<uuid>/icon.png；或直链 URL）
+          ICON_URL="${{ inputs.iconlink }}"
+          if [ "$ICON_URL" = "true" ] || [ "$ICON_URL" = "True" ]; then
+            if [ -n "${{ secrets.GENURL }}" ] && [ -n "${{ inputs.uuid }}" ]; then
+              ICON_URL="${{ secrets.GENURL }}/png/${{ inputs.uuid }}/icon.png"
+            else
+              echo "::warning::iconlink=true but GENURL/uuid missing, keeping default icon"
+              ICON_URL=""
+            fi
+          fi
+          if [ -n "$ICON_URL" ] && { [ "${ICON_URL#http}" != "$ICON_URL" ]; }; then
+            curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
+              -H "User-Agent: Mozilla/5.0" \
+              "$ICON_URL" \
+              -o ./res/icon.png || wget --no-check-certificate -O ./res/icon.png "$ICON_URL"
+          else
+            echo "::notice::No valid icon link resolved (iconlink='${{ inputs.iconlink }}'), using RustDesk default icon"
+          fi
             
           # Backup existing files (if they exist)
           [ -f "./res/32x32.png" ] && mv ./res/32x32.png ./res/32x32.png.bak
@@ -694,18 +707,31 @@ jobs:
 
       - name: logo handling
         if: ${{ inputs.logolink != 'false' }}
-        continue-on-error: false
+        continue-on-error: true
         shell: bash
         run: |
           ASSETS_DIR="build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets"
           mkdir -p "$ASSETS_DIR"
-          curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
-            -H "User-Agent: Mozilla/5.0" \
-            "${{ fromJson(inputs.logolink).url }}/get_png?filename=${{ fromJson(inputs.logolink).file }}&uuid=${{ fromJson(inputs.logolink).uuid }}" \
-            -o "$ASSETS_DIR/logo.png" || \
-          wget --no-check-certificate \
-            -O "$ASSETS_DIR/logo.png" \
-            "${{ fromJson(inputs.logolink).url }}/get_png?filename=${{ fromJson(inputs.logolink).file }}&uuid=${{ fromJson(inputs.logolink).uuid }}"
+          LOGO_URL="${{ inputs.logolink }}"
+          if [ "$LOGO_URL" = "true" ] || [ "$LOGO_URL" = "True" ]; then
+            if [ -n "${{ secrets.GENURL }}" ] && [ -n "${{ inputs.uuid }}" ]; then
+              LOGO_URL="${{ secrets.GENURL }}/png/${{ inputs.uuid }}/logo.png"
+            else
+              echo "::warning::logolink=true but GENURL/uuid missing, keeping default logo"
+              LOGO_URL=""
+            fi
+          fi
+          if [ -n "$LOGO_URL" ] && { [ "${LOGO_URL#http}" != "$LOGO_URL" ]; }; then
+            curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
+              -H "User-Agent: Mozilla/5.0" \
+              "$LOGO_URL" \
+              -o "$ASSETS_DIR/logo.png" || \
+            wget --no-check-certificate \
+              -O "$ASSETS_DIR/logo.png" \
+              "$LOGO_URL"
+          else
+            echo "::warning::No valid logo link resolved (logolink='${{ inputs.logolink }}'), keeping default logo"
+          fi
 
       - name: Report Status
         continue-on-error: true
