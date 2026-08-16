@@ -212,7 +212,7 @@ jobs:
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
-            -d '{"uuid": "${{ inputs.uuid }}", "status": "准备就绪，开始卖力工作"}' \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "\u51c6\u5907\u5c31\u7eea\uff0c\u5f00\u59cb\u5356\u529b\u5de5\u4f5c"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
       - name: Install dependencies
         run: |

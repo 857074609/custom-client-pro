@@ -169,7 +169,7 @@ jobs:
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
-            -d '{"uuid": "${{ inputs.uuid }}", "status": "环境准备就绪，开始卖力工作"}' \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "\u73af\u5883\u51c6\u5907\u5c31\u7eea\uff0c\u5f00\u59cb\u5356\u529b\u5de5\u4f5c"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
       
       - name: Decrypt and mask secrets
@@ -1034,7 +1034,7 @@ jobs:
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
-            -d '{"uuid": "${{ inputs.uuid }}", "status": "无良老板把牛马累坏了，已经宣布罢工"}' \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "\u65e0\u826f\u8001\u677f\u628a\u725b\u9a6c\u7d2f\u574f\u4e86\uff0c\u5df2\u7ecf\u5ba3\u5e03\u7f62\u5de5"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
       - name: failed
@@ -1045,5 +1045,5 @@ jobs:
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
-            -d '{"uuid": "${{ inputs.uuid }}", "status": "无良老板把牛马累坏了，已经宣布罢工"}' \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "\u65e0\u826f\u8001\u677f\u628a\u725b\u9a6c\u7d2f\u574f\u4e86\uff0c\u5df2\u7ecf\u5ba3\u5e03\u7f62\u5de5"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
