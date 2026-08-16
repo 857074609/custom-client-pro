@@ -302,6 +302,40 @@ jobs:
           ESCAPED=$(printf '%s' "$SLOGAN" | sed "s/'/'\\\\''/g; s/[&/\]/\\&/g")
           sed -i "s|translate('Slogan_tip')|'${ESCAPED}'|g" flutter/lib/desktop/pages/desktop_setting_page.dart
       
+      - name: Extract conn-type (client type) 
+        id: conn
+        shell: pwsh
+        run: |
+          $c = "${{ inputs.custom }}"
+          $t = "default"
+          if ([string]::IsNullOrEmpty($c) -or $c -eq "placeholder") {
+              Write-Host "::warning::Input empty/placeholder, using default conn-type: $t"
+          } else {
+              try {
+                $bytes = [System.Convert]::FromBase64String($c)
+                  $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes)
+                  $obj = $jsonStr | ConvertFrom-Json
+
+                  if ($null -ne $obj.'conn-type' -and $obj.'conn-type' -ne "") {
+                      $t = $obj.'conn-type'
+                      Write-Host "Successfully extracted conn-type: $t"
+                  } else {
+                      Write-Host "::warning::'conn-type' field is missing or empty in input JSON"
+                  }
+              } catch {
+                  Write-Host "::warning::Failed to parse custom input, using default. Error: $($_.Exception.Message)"
+                  $t = "default"
+              }
+          }
+          $sanitized = $t -replace '[^a-zA-Z0-9_.-]', '_'
+          if ($sanitized -ne $t) {
+              Write-Host " Sanitized conn-type from '$t' to '$sanitized'"
+              $t = $sanitized
+          }
+          "conn=$t" >> $env:GITHUB_OUTPUT
+          "CLIENT_TYPE=$t" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host " Final conn-type output: $t"
+
       - name: Apply patches for custom update
         if:  env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
         run: |
@@ -311,6 +345,7 @@ jobs:
           python3 patches/patch_handle_update_url_2.py
           python3 patches/patch_custom_client_update_check.py
           python3 patches/patch_enable_auto_update.py
+          python3 patches/patch_inject_client_type.py
           python3 patches/fix_update_tip.py
 
       - name: Apply patch for auto silent update
@@ -673,39 +708,6 @@ jobs:
           }
           Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" | ForEach-Object { Write-Host "Found: $($_.FullName)" }
 
-      - name: Extract conn-type 
-        id: conn
-        shell: pwsh
-        run: |
-          $c = "${{ inputs.custom }}"
-          $t = "default"
-          if ([string]::IsNullOrEmpty($c) -or $c -eq "placeholder") {
-              Write-Host "::warning::Input empty/placeholder, using default conn-type: $t"
-          } else {
-              try {
-                $bytes = [System.Convert]::FromBase64String($c)
-                  $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes)
-                  $obj = $jsonStr | ConvertFrom-Json
-
-                  if ($null -ne $obj.'conn-type' -and $obj.'conn-type' -ne "") {
-                      $t = $obj.'conn-type'
-                      Write-Host "Successfully extracted conn-type: $t"
-                  } else {
-                      Write-Host "::warning::'conn-type' field is missing or empty in input JSON"
-                  }
-              } catch {
-                  Write-Host "::warning::Failed to parse custom input, using default. Error: $($_.Exception.Message)"
-                  $t = "default"
-              }
-          }
-          $sanitized = $t -replace '[^a-zA-Z0-9_.-]', '_'
-          if ($sanitized -ne $t) {
-              Write-Host " Sanitized conn-type from '$t' to '$sanitized'"
-              $t = $sanitized
-          }
-          "conn=$t" >> $env:GITHUB_OUTPUT
-          Write-Host " Final conn-type output: $t"
-                  
       - name: Extract first 4 chars of UUID
         id: tag
         shell: bash
@@ -723,7 +725,7 @@ jobs:
           W="${{ env.RUSTDESK_BUILD_NUMBER }}"
           # 始终带第4段构建号（W，即使 0 -> .0）：保证构建文件名与下载链接一致，且始终显示4段版本号
           VER_SUFFIX=".${W:-0}"
-          NAME="${{ inputs.filename }}-${VER}${VER_SUFFIX}-win-i686-${{ steps.tag.outputs.tag }}"
+          NAME="${{ inputs.filename }}-${VER}${VER_SUFFIX}-win-${{ steps.conn.outputs.conn }}-i686-${{ steps.tag.outputs.tag }}"
           echo "BUILD_FILENAME=$NAME" >> "$GITHUB_ENV"
           echo "value=$NAME" >> "$GITHUB_OUTPUT"
           echo "✅ Build filename set to: $NAME"
