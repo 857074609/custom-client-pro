@@ -1022,13 +1022,13 @@ jobs:
       - name: Report Status
         continue-on-error: true
         shell: bash
+        timeout-minutes: 60
         run: |
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
             -d '{"uuid": "${{ inputs.uuid }}", "status": "Success"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
-          timeout: 50000
       - name: failed
         if: failure()
         continue-on-error: true
