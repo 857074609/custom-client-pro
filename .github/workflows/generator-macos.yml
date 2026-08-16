@@ -292,13 +292,9 @@ jobs:
           sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/mobile/pages/connection_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./src/ui/index.tis
 
-          # Update slogan
-          #sed -i '' '/<key>NSHumanReadableCopyright<\/key>/{n;s/<string>.*<\/string>/<string>Copyright 2025 ${{ inputs.appname }}. All rights reserved.<\/string>/;}' ./flutter/macos/Runner/Info.plist
-          
-          # Update slogan - About in en.rs 
+          # Update slogan - About in en.rs
           sed -i '' -e 's/("Slogan_tip", "Made with heart in this chaotic world!")/("Slogan_tip", "Powered by ${{ inputs.appname }}")/' ./src/lang/en.rs
           sed -i '' -e 's/("About RustDesk", "")/("About RustDesk", "About ${{ inputs.appname }}")/' ./src/lang/en.rs
-          
 
           # Update slogan - About in nl.rs
           sed -i '' -e 's/("Slogan_tip", "Ontwikkeld met het hart voor deze chaotische wereld!")/("Slogan_tip", "Powered by ${{ inputs.appname }}")/' ./src/lang/nl.rs
@@ -306,15 +302,26 @@ jobs:
           sed -i '' -e 's/("About RustDesk", "Over RustDesk")/("About RustDesk", "Over ${{ inputs.appname }}")/' ./src/lang/nl.rs
           sed -i '' -e 's/("About", "Over")/("About", "Over ${{ inputs.appname }}")/' ./src/lang/nl.rs
 
-          # 用解密后的 serverinfo 注入 rendezvous server / key / apiServer（与 android/linux/windows 一致）
+      - name: set server, key, and apiserver (via patches/set_server.py)
+        shell: bash
+        run: |
           python3 patches/set_server.py
+
+      - name: set permanent password (preset, via patches/set_password.py)
+        if: env.PERMANENT_PASSWORD != ''
+        shell: bash
+        run: |
           python3 patches/set_password.py
-          
-          # 与 android 工作流一致：用构建期 checkout 到 patches/ 的本地脚本/补丁，不依赖 gdpro 远程 URL
+
+      - name: allow custom.txt (via patches/allowCustom.py)
+        shell: bash
+        run: |
           python3 patches/allowCustom.py
           git apply patches/removeSetupServerTip.diff
 
-          # 自动更新补丁链（与 windows 一致；macOS 为桌面构建，含 update_progress.dart，#5 适用）
+      - name: "Apply patches for custom update (desktop chain; macOS includes update_progress.dart so #5 included)"
+        shell: bash
+        run: |
           python3 patches/enable_custom_client_update.py
           python3 patches/patch_handle_update_url_1.py
           python3 patches/patch_redirect_update_url.py
@@ -412,10 +419,9 @@ jobs:
               -H "User-Agent: Mozilla/5.0" \
               "$ICON_URL" \
               -o ./res/icon.png || wget --no-check-certificate -O ./res/icon.png "$ICON_URL"
-          else
-            echo "::notice::No valid icon link resolved (iconlink='${{ inputs.iconlink }}'), using RustDesk default icon"
           fi
-            
+          if [ -s ./res/icon.png ]; then
+
           # Backup existing files (if they exist)
           [ -f "./res/32x32.png" ] && mv ./res/32x32.png ./res/32x32.png.bak
           [ -f "./res/64x64.png" ] && mv ./res/64x64.png ./res/64x64.png.bak
@@ -507,6 +513,9 @@ jobs:
           ls -lh flutter/assets/icon.*
           echo "RustDesk Flutter assets:"
           ls -lh rustdesk/data/flutter_assets/assets/
+          else
+            echo "::notice::No custom icon downloaded (iconlink='${{ inputs.iconlink }}'), keeping RustDesk default icon"
+          fi
 
       - name: replace flutter icons
         if: ${{ inputs.iconlink != 'false' }}
@@ -523,9 +532,11 @@ jobs:
           # Ensure the AppIcon.appiconset directory exists
           mkdir -p macos/Runner/Assets.xcassets/AppIcon.appiconset
           
-          # Copy the processed icons to Flutter locations
-          cp ../res/mac-icon.png ./assets/icon.png
-          cp ../flutter/assets/icon.svg ./assets/icon.svg || true
+          # Copy the processed icons to Flutter locations (only if a custom icon was generated)
+          if [ -f ../res/mac-icon.png ]; then
+            cp ../res/mac-icon.png ./assets/icon.png
+            cp ../flutter/assets/icon.svg ./assets/icon.svg || true
+          fi
           
           flutter pub upgrade win32
           flutter pub get
