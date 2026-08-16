@@ -94,6 +94,9 @@ jobs:
         job:
           - { arch: x86_64, target: x86_64-unknown-linux-gnu, distro: ubuntu18.04, on: ubuntu-22.04, deb_arch: amd64, vcpkg-triplet: x64-linux }
           - { arch: aarch64, target: aarch64-unknown-linux-gnu, distro: ubuntu18.04, on: ubuntu-22.04-arm, deb_arch: arm64, vcpkg-triplet: arm64-linux }
+    outputs:
+      conn: ${{ steps.conn.outputs.conn }}
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - name: Extract build tag
         id: tag
@@ -550,10 +553,10 @@ jobs:
       - name: Download deb
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.deb
           path: .
       - name: Rename deb
-        run: mv ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb appimage/rustdesk.deb
+        run: mv ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.deb appimage/rustdesk.deb
       - name: Build appimage package
         shell: bash
         run: |
@@ -575,14 +578,14 @@ jobs:
             sleep 20
           done
           # appimage-builder 以 root 运行, 产物归 root; 必须在容器内 sudo 改名并 chown 给 runner 以便上传
-          sudo mv rustdesk-*.AppImage "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage"
-          sudo chown "$(id -u):$(id -g)" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage"
+          sudo mv rustdesk-*.AppImage "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage"
+          sudo chown "$(id -u):$(id -g)" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage"
           popd
       - name: Upload appimage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage
-          path: appimage/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.AppImage
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage
+          path: appimage/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage
 
   build-flatpak:
     name: Build flatpak ${{ matrix.job.arch }}
@@ -612,10 +615,10 @@ jobs:
       - name: Download deb
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.deb
           path: .
       - name: Rename deb
-        run: mv ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.deb flatpak/rustdesk.deb
+        run: mv ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.deb flatpak/rustdesk.deb
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # commit 2026-05-26
         name: Build flatpak package
         with:
@@ -635,12 +638,12 @@ jobs:
             pushd flatpak
             git clone https://github.com/flathub/shared-modules.git --depth=1
             flatpak-builder --user --install-deps-from=flathub -y --force-clean --repo=repo ./build ./rustdesk.json
-            flatpak build-bundle ./repo "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.flatpak" com.rustdesk.RustDesk
+            flatpak build-bundle ./repo "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.flatpak" com.rustdesk.RustDesk
       - name: Upload flatpak
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.flatpak
-          path: flatpak/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.flatpak
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.flatpak
+          path: flatpak/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.flatpak
 
   release-linux:
     name: Release linux client
@@ -657,57 +660,57 @@ jobs:
       - name: Download x86_64 artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.deb
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.deb
           path: .
       - name: Download x86_64 rpm
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.rpm
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.rpm
           path: .
       - name: Download x86_64 suse rpm
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm
           path: .
       - name: Download x86_64 zst
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst
           path: .
       - name: Download x86_64 AppImage
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.AppImage
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.AppImage
           path: .
       - name: Download x86_64 flatpak
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.flatpak
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.flatpak
           path: .
       - name: Download aarch64 deb
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.deb
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.deb
           path: .
       - name: Download aarch64 rpm
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.rpm
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.rpm
           path: .
       - name: Download aarch64 suse rpm
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm
           path: .
       - name: Download aarch64 AppImage
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.AppImage
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.AppImage
           path: .
       - name: Download aarch64 flatpak
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.flatpak
+          name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.flatpak
           path: .
 
       - name: Create GitHub Release and Upload Assets
@@ -716,22 +719,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}
-          name: Release ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}
+          tag_name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}
+          name: Release ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}
           prerelease: true
           fail_on_unmatched_files: false
           files: |
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.deb
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.rpm
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.AppImage
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.flatpak
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.deb
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.rpm
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.AppImage
-            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.flatpak
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.deb
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.AppImage
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.flatpak
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.deb
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.AppImage
+            ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.flatpak
 
       - name: Send to file server
         if: ${{ fromJson(inputs.extras || '{}').gdpro == 'true' || inputs.uuid != '' }}
@@ -741,18 +744,18 @@ jobs:
           TOKEN="${{ fromJson(inputs.extras || '{}').token }}"
           UUID="${{ inputs.uuid }}"
           for F in \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.deb" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.rpm" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.AppImage" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.flatpak" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.deb" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.rpm" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.AppImage" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.flatpak" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm" \
-            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.pkg.tar.zst"; do
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.deb" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.AppImage" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.flatpak" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}-suse.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}.pkg.tar.zst" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.deb" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.AppImage" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.flatpak" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}-suse.rpm" \
+            "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-aarch64-${{ steps.tag.outputs.tag }}.pkg.tar.zst"; do
             [ -f "$F" ] || continue
             curl --fail --show-error -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer $TOKEN" -F "file=@$F" -F "uuid=$UUID" "$URL" || { echo "Upload failed for $F"; exit 1; }
           done
