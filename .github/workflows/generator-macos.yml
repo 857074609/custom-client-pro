@@ -310,10 +310,9 @@ jobs:
           python3 patches/set_server.py
           python3 patches/set_password.py
           
-          wget https://raw.githubusercontent.com/857074609/gdpro/refs/heads/master/.github/patches/allowCustom.diff
-          git apply allowCustom.diff
-          wget https://raw.githubusercontent.com/857074609/gdpro/refs/heads/master/.github/patches/removeSetupServerTip.diff
-          git apply removeSetupServerTip.diff
+          # 与 android 工作流一致：用构建期 checkout 到 patches/ 的本地脚本/补丁，不依赖 gdpro 远程 URL
+          python3 patches/allowCustom.py
+          git apply patches/removeSetupServerTip.diff
 
           # 自动更新补丁链（与 windows 一致；macOS 为桌面构建，含 update_progress.dart，#5 适用）
           python3 patches/enable_custom_client_update.py
