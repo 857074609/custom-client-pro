@@ -446,6 +446,7 @@ jobs:
           python3 patches/patch_enable_auto_update.py
           python3 patches/fix_update_tip.py
           python3 patches/patch_inject_build_number.py
+          python3 patches/patch_mobile_custom_update.py
 
       - name: Apply patch for auto silent update
         run: |
