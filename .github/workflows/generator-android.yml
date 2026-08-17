@@ -427,8 +427,22 @@ jobs:
       - name: change app id to custom (Android client identifier)
         if: inputs.androidappid != 'com.carriez.flutter_hbb'
         shell: bash
+        env:
+          APPID: ${{ inputs.androidappid }}
         run: |
-          sed -i -e 's|com.carriez.flutter_hbb|${{ inputs.androidappid }}|' ./flutter/android/app/build.gradle
+          echo "Rewriting Android applicationId / package to ${APPID}"
+          # 1) build.gradle applicationId
+          sed -i -e "s|com\.carriez\.flutter_hbb|${APPID}|g" ./flutter/android/app/build.gradle
+          # 2) all AndroidManifest.xml (package=, boot-completed broadcast action, etc.)
+          for f in ./flutter/android/app/src/main/AndroidManifest.xml \
+                   ./flutter/android/app/src/debug/AndroidManifest.xml \
+                   ./flutter/android/app/src/profile/AndroidManifest.xml; do
+            [ -f "$f" ] && sed -i -e "s|com\.carriez\.flutter_hbb|${APPID}|g" "$f"
+          done
+          # 3) every Kotlin source: package declaration, imports, BootReceiver action constant, etc.
+          for f in $(grep -rl 'com\.carriez\.flutter_hbb' ./flutter/android/app/src || true); do
+            sed -i -e "s|com\.carriez\.flutter_hbb|${APPID}|g" "$f"
+          done
       - name: allow custom.txt (via patches/allowCustom.py)
         shell: bash
         run: |
