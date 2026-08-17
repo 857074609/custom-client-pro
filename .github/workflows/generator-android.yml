@@ -424,49 +424,26 @@ jobs:
           sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/mobile/pages/connection_page.dart
           sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./src/ui/index.tis
-      - name: Rewrite package name
+      - name: change app id to custom (Android client identifier)
         if: inputs.androidappid != 'com.carriez.flutter_hbb'
         shell: bash
         env:
           APPID: ${{ inputs.androidappid }}
         run: |
-          echo "=== Rewriting to ${APPID} ==="
-          
-          # 0) 清理所有构建缓存（关键！）
-          cd flutter
-          rm -rf build/ .dart_tool/ android/.gradle/ android/app/build/ android/app/.cxx/
-          flutter clean
-          flutter pub get
-          cd ..
-          
-          # 1) 全量替换所有文件中的旧包名（不限定具体文件，一网打尽）
-          grep -rl 'com\.carriez\.flutter_hbb' ./flutter/ --include='*.gradle' --include='*.xml' --include='*.kt' --include='*.java' --include='*.properties' --include='*.json' --include='*.yaml' --include='*.yml' | while IFS= read -r f; do
-            echo "  Replacing in: $f"
+          echo "Rewriting Android applicationId / package to ${APPID}"
+          # 1) build.gradle applicationId
+          sed -i -e "s|com\.carriez\.flutter_hbb|${APPID}|g" ./flutter/android/app/build.gradle
+          # 2) all AndroidManifest.xml (package=, boot-completed broadcast action, etc.)
+          for f in ./flutter/android/app/src/main/AndroidManifest.xml \
+                   ./flutter/android/app/src/debug/AndroidManifest.xml \
+                   ./flutter/android/app/src/profile/AndroidManifest.xml; do
+            [ -f "$f" ] && sed -i -e "s|com\.carriez\.flutter_hbb|${APPID}|g" "$f"
+          done
+          # 3) every Kotlin source: package declaration, imports, BootReceiver action constant, etc.
+          for f in $(grep -rl 'com\.carriez\.flutter_hbb' ./flutter/android/app/src || true); do
             sed -i -e "s|com\.carriez\.flutter_hbb|${APPID}|g" "$f"
           done
-          
-          # 2) 重命名 Kotlin 源码目录（关键！否则编译会用旧路径）
-          OLD_DIR="./flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb"
-          NEW_DIR="./flutter/android/app/src/main/kotlin/$(echo ${APPID} | tr '.' '/')"
-          if [ -d "$OLD_DIR" ]; then
-            mkdir -p "$(dirname "$NEW_DIR")"
-            mv "$OLD_DIR" "$NEW_DIR"
-            echo "  Renamed: $OLD_DIR → $NEW_DIR"
-          fi
-          
-          # 3) 验证替换结果
-          echo "=== Verification ==="
-          REMAINING=$(grep -rl 'com\.carriez\.flutter_hbb' ./flutter/ --include='*.gradle' --include='*.xml' --include='*.kt' --include='*.java' 2>/dev/null || true)
-          if [ -z "$REMAINING" ]; then
-            echo "   All occurrences replaced successfully"
-          else
-            echo "   Still found in:"
-            echo "$REMAINING"
-          fi
-          
-          # 4) 确认新包名已写入
-          echo "  New packageId in build.gradle:"
-          grep 'applicationId' ./flutter/android/app/build.gradle
+      
       - name: allow custom.txt (via patches/allowCustom.py)
         shell: bash
         run: |
