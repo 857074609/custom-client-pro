@@ -435,10 +435,11 @@ jobs:
           python3 patches/allowCustom.py
           git apply patches/removeSetupServerTip.diff
 
-      - name: Apply patches for custom update (detection chain; Android has no desktop update_progress.dart, so #5 skipped)
+      - name: Apply patches for custom update (detection chain; mirrors Windows — disabled_custom_client makes is_custom_client() false so every update gate opens)
         shell: bash
         run: |
           python3 patches/enable_custom_client_update.py
+          python3 patches/disabled_custom_client.py
           python3 patches/patch_handle_update_url_1.py
           python3 patches/patch_filename_based_update.py
           python3 patches/patch_redirect_update_url.py
