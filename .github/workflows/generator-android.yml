@@ -496,10 +496,12 @@ jobs:
         run: |
           sed -i '/if (bind\.isCustomClient())/d' flutter/lib/desktop/pages/desktop_home_page.dart
       - name: removeNewVersionNotif
+        # 注意：绝不可用 sed 删除 do_check_software_update() 的函数体，
+        # 那样会把整个更新检查掏空（客户端不再发请求、不比较、不弹窗）。
+        # 仅桌面端可按需抑制「新版本」UI 横幅；安卓端该文件不参与编译，此 sed 为 no-op。
         if: fromJson(inputs.extras || '{}').removeNewVersionNotif == 'true'
         run: |
           sed -i -e 's|updateUrl.isNotEmpty|false|' ./flutter/lib/desktop/pages/desktop_home_page.dart
-          sed -i '/let (request, url) =/,/Ok(())/{/Ok(())/!d}' ./src/common.rs
  
       - name: replace flutter icons
         if: ${{ inputs.iconlink != 'false' }}
