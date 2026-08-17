@@ -190,6 +190,16 @@ jobs:
         run: |
           echo "STATUS_URL=${{ env.CUSTOM_APISERVER }}/api/updategh" >> $GITHUB_ENV
 
+      - name: Save STATUS_URL for final notification
+        run: echo "${{ env.STATUS_URL }}" > status-url-${{ matrix.job.arch }}.txt
+
+      - name: Upload STATUS_URL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-status-url-${{ matrix.job.arch }}
+          path: status-url-${{ matrix.job.arch }}.txt
+          if-no-files-found: ignore
+
       - name: Report Status
         continue-on-error: true
         run: |
@@ -895,20 +905,62 @@ jobs:
             -d '{"uuid": "${{ inputs.uuid }}", "status": "Success"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
-      - name: failed
-        if: failure()
-        continue-on-error: true
-        run: |
-          curl -fsS --max-time 30 -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation failed, try again"}' \
-            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+      - name: Create success flag
+        if: success()
+        run: echo "${{ matrix.job.arch }}" > ${{ matrix.job.arch }}-success.flag
 
-      - name: failed
-        if: cancelled()
-        continue-on-error: true
+      - name: Upload success flag
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-success-${{ matrix.job.arch }}
+          path: ${{ matrix.job.arch }}-success.flag
+          if-no-files-found: ignore
+
+  notify-final-status:
+    name: Notify final status
+    needs: [build-for-macos]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout patches scripts
+        uses: actions/checkout@v4
+        with:
+            repository: 857074609/patches
+            path: patches
+            token: ${{ secrets.REPO }}
+            ref: main
+            clean: false
+
+      - name: Download STATUS_URL artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: status-urls
+          pattern: macos-status-url-*
+          merge-multiple: true
+
+      - name: Load STATUS_URL
         run: |
-          curl -fsS --max-time 30 -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation cancelled, try again"}' \
-            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+          if [ -f status-urls/status-url-x86_64.txt ]; then
+            echo "STATUS_URL=$(cat status-urls/status-url-x86_64.txt)" >> $GITHUB_ENV
+          elif [ -f status-urls/status-url-aarch64.txt ]; then
+            echo "STATUS_URL=$(cat status-urls/status-url-aarch64.txt)" >> $GITHUB_ENV
+          else
+            echo "::warning::No STATUS_URL artifact found, falling back to GENURL"
+            echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> $GITHUB_ENV
+          fi
+
+      - name: Download success flags
+        uses: actions/download-artifact@v4
+        with:
+          path: success-flags
+          pattern: macos-success-*
+          merge-multiple: true
+
+      - name: Report final status
+        continue-on-error: true
+        env:
+          STATUS_URL: ${{ env.STATUS_URL }}
+          INPUT_UUID: ${{ inputs.uuid }}
+          RESULT: ${{ needs.build-for-macos.result }}
+        run: python3 patches/notify_final_status.py
