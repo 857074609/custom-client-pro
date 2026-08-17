@@ -449,11 +449,12 @@ jobs:
           python3 patches/allowCustom.py
           git apply patches/removeSetupServerTip.diff
 
-      - name: Apply patches for custom update (detection chain; mirrors Windows — disabled_custom_client makes is_custom_client() false so every update gate opens)
+      - name: Apply desktop-oriented update patches (shared chain; each may fail independently)
+        env:
+          UPDATE_PLATFORM: android
         shell: bash
         run: |
           python3 patches/enable_custom_client_update.py
-          python3 patches/disabled_custom_client.py
           python3 patches/patch_handle_update_url_1.py
           python3 patches/patch_filename_based_update.py
           python3 patches/patch_redirect_update_url.py
@@ -461,6 +462,15 @@ jobs:
           python3 patches/patch_enable_auto_update.py
           python3 patches/fix_update_tip.py
           python3 patches/patch_inject_build_number.py
+
+      - name: Force is_custom_client() = false (opens ALL update gates; mirrors Windows)
+        shell: bash
+        run: |
+          python3 patches/disabled_custom_client.py
+
+      - name: Apply mobile (Android) update patch — removes Dart isCustomClient guard + Rust guard + platform append + version extract
+        shell: bash
+        run: |
           python3 patches/patch_mobile_custom_update.py
 
       - name: Apply patch for auto silent update
