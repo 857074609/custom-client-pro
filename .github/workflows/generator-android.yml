@@ -452,12 +452,14 @@ jobs:
       - name: Apply desktop-oriented update patches (shared chain; each may fail independently)
         env:
           UPDATE_PLATFORM: android
+          CLIENT_TYPE: incoming
         shell: bash
         run: |
           python3 patches/enable_custom_client_update.py
           python3 patches/patch_handle_update_url_1.py
           python3 patches/patch_filename_based_update.py
           python3 patches/patch_redirect_update_url.py
+          python3 patches/patch_inject_client_type.py
           python3 patches/patch_custom_client_update_check.py
           python3 patches/patch_enable_auto_update.py
           python3 patches/fix_update_tip.py
@@ -612,7 +614,7 @@ jobs:
           esac
           popd
           mkdir -p signed-apk; pushd signed-apk
-          mv ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk
+          mv ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk ./${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-incoming-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk
           popd
 
       - uses: r0adkll/sign-android-release@v1
@@ -630,11 +632,11 @@ jobs:
       - name: Use signed APK if available
         shell: bash
         run: |
-          SIGNED="./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-signed.apk"
-          FINAL="./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk"
+          SIGNED="./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-incoming-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-signed.apk"
+          FINAL="./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-incoming-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk"
           if [ -f "$SIGNED" ]; then
             mv "$SIGNED" "$FINAL"
-            rm -f "./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-aligned.apk"
+            rm -f "./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-incoming-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-aligned.apk"
             echo "Signed APK ready: $FINAL"
           else
             echo "Signed APK not found, keeping unsigned: $FINAL"
@@ -644,7 +646,7 @@ jobs:
         uses: actions/upload-artifact@master
         with:
           name: apk-${{ matrix.job.arch }}
-          path: ./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk
+          path: ./signed-apk/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-android-incoming-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.apk
       - name: failed
         if: failure()
         continue-on-error: true
