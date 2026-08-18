@@ -7,10 +7,6 @@ on:
         description: 'Target platform'
         required: true
         type: string
-      androidappid:
-        description: 'Android Application ID'
-        required: false 
-        type: string
       serverinfo:
         description: 'serverinfo'
         required: true
