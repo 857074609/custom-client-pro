@@ -8,6 +8,10 @@ on:
         required: false
         default: 'macos'
         type: string
+      androidappid:
+        description: 'Android Application ID'
+        required: false 
+        type: string  
       serverinfo:
         description: 'Encrypted serverinfo (Fernet) — contains server / RS_PUB_KEY / apiServer / permanentPassword / unlockPin / urlLink / downloadLink / updateLink'
         required: true
