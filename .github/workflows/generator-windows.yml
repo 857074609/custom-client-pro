@@ -30,6 +30,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ip_direct_board:
+        description: "LAN IP Direct Access board (show local LAN IP + direct port on left panel)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -299,6 +304,23 @@ jobs:
             grep -q '"Screen Wall"' "$f" || { echo "[FAIL] $f 缺少 Screen Wall 翻译 key"; exit 1; }
           done
           echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
+
+      - name: Inject LAN IP direct access board
+        if: inputs.ip_direct_board == 'true'
+        shell: bash
+        env:
+          # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内也已 reconfigure，双保险）。
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 内网 IP 直连看板（左面板「临时密码」下方显示 本机内网IP:直连端口 + 状态灯 + 复制按钮）：
+          # patch_direct_access.py 对上游 1.4.9 源码做锚点注入（新增 src/direct_access.rs，
+          # 增强 rendezvous_mediator::direct_server 状态写入、flutter_ffi::main_check_connect_status
+          # 强制启用 direct-server + LAN IP 发现、desktop_home_page 内网看板 + 双语 key）。
+          # 任一锚点缺失/歧义即报错退出，构建显式失败。
+          python3 patches/patch_direct_access.py .
+          grep -q '"IP Direct"' src/lang/en.rs || { echo "[FAIL] en.rs 缺少 IP Direct key"; exit 1; }
+          echo "[OK] 内网 IP 直连看板注入完成"
 
       - name: skip custom client
         shell: bash
@@ -637,21 +659,9 @@ jobs:
         if: fromJson(inputs.extras).hide_sensitive_ui == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          
-          echo "Building version: ${{ env.VERSION }}"
-          
-          version_ge() {
-            printf '%s\n%s\n' "$2" "$1" | sort -V -C
-          }
-          
-          if version_ge "${{ env.VERSION }}" "1.4.7"; then
-            echo ">>> Version ${{ env.VERSION }} >= 1.4.7, using new patch"
+
             python3 patches/hide_sensitive_ui_new.py
-          else
-            echo ">>> Version ${{ env.VERSION }} < 1.4.7, using old patch"
-            python3 patches/hide_sensitive_ui.py
-          fi
+  
       
       - name: hide-password_uimode_true
         if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'

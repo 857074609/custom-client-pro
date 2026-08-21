@@ -31,6 +31,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ip_direct_board:
+        description: "LAN IP Direct Access board (reserved; not applicable to x86 Sciter builds)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false

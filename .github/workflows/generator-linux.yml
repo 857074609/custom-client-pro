@@ -34,6 +34,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ip_direct_board:
+        description: "LAN IP Direct Access board (show local LAN IP + direct port on left panel)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "Icon source"
         required: false
@@ -302,6 +307,18 @@ jobs:
         if: ${{ fromJson(inputs.extras).allow-websocket == 'true' }}
         shell: bash
         run: python3 patches/patch_websocket_custom_port.py
+
+      - name: Inject LAN IP direct access board
+        if: inputs.ip_direct_board == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 内网 IP 直连看板：patch_direct_access.py 注入（direct-server 强制启用 +
+          # LAN IP 发现 + desktop_home_page 内网看板 + 双语 key）。
+          python3 patches/patch_direct_access.py .
+          grep -q '"IP Direct"' src/lang/en.rs || { echo "[FAIL] en.rs 缺少 IP Direct key"; exit 1; }
+          echo "[OK] 内网 IP 直连看板注入完成"
 
       - name: fix connection delay
         if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
