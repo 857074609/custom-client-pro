@@ -318,7 +318,7 @@ jobs:
           # 增强 rendezvous_mediator::direct_server 状态写入、flutter_ffi::main_check_connect_status
           # 强制启用 direct-server + LAN IP 发现、desktop_home_page 内网看板 + 双语 key）。
           # 任一锚点缺失/歧义即报错退出，构建显式失败。
-          python3 patches/patch_direct_access.py .
+          python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
           grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           echo "[OK] 内网 IP 直连看板注入完成"
 
