@@ -26,6 +26,11 @@ on:
         description: "Custom User Interface (ignored for Sciter build)"
         required: false
         type: string
+      screen_wall:
+        description: "Enable Screen Wall (multi-view window)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false

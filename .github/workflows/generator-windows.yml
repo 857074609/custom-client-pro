@@ -25,6 +25,11 @@ on:
         description: "Custom User Interface"
         required: false
         type: string
+      screen_wall:
+        description: "Enable Screen Wall (multi-view window)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -271,6 +276,15 @@ jobs:
 
 
           python3 patches/hand_stun.py
+
+      - name: Apply screen wall patch
+        if: inputs.screen_wall == 'true'
+        shell: bash
+        run: |
+          # 屏幕墙功能（多设备独立窗口）注入：patch_screen_wall.py 对上游 1.4.9
+          # 源码做锚点注入（新增 screen_wall_page.dart / mini_remote_view.dart +
+          # 修改 8 个既有文件）。任一锚点缺失/歧义即报错退出，构建显式失败。
+          python3 patches/patch_screen_wall.py .
 
       - name: skip custom client
         shell: bash
