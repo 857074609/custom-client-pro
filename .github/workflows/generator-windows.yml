@@ -280,6 +280,10 @@ jobs:
       - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true'
         shell: bash
+        env:
+          # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内也已 reconfigure，双保险）。
+          PYTHONIOENCODING: utf-8
         run: |
           # 屏幕墙功能（多设备独立窗口）+ 中英文多语言【同时】注入：
           # patch_screen_wall.py 对上游 1.4.9 源码做锚点注入（新增
