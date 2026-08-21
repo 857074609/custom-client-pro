@@ -277,14 +277,24 @@ jobs:
 
           python3 patches/hand_stun.py
 
-      - name: Apply screen wall patch
+      - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true'
         shell: bash
         run: |
-          # 屏幕墙功能（多设备独立窗口）注入：patch_screen_wall.py 对上游 1.4.9
-          # 源码做锚点注入（新增 screen_wall_page.dart / mini_remote_view.dart +
-          # 修改 8 个既有文件）。任一锚点缺失/歧义即报错退出，构建显式失败。
+          # 屏幕墙功能（多设备独立窗口）+ 中英文多语言【同时】注入：
+          # patch_screen_wall.py 对上游 1.4.9 源码做锚点注入（新增
+          # screen_wall_page.dart / mini_remote_view.dart + 修改 8 个既有文件），
+          # 并在 src/lang/en.rs / src/lang/cn.rs 尾部插入屏幕墙 UI 翻译 key
+          # （Screen Wall 等 23 组，已存在自动跳过）——勾选"开启屏幕墙"时，
+          # 客户端中文环境显示"屏幕墙"、英文环境显示 "Screen Wall"。
+          # 任一锚点缺失/歧义即报错退出，构建显式失败。
           python3 patches/patch_screen_wall.py .
+
+          # 注入后验证多语言 key 已就位（en.rs/cn.rs 必须含 Screen Wall）
+          for f in src/lang/en.rs src/lang/cn.rs; do
+            grep -q '"Screen Wall"' "$f" || { echo "[FAIL] $f 缺少 Screen Wall 翻译 key"; exit 1; }
+          done
+          echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
       - name: skip custom client
         shell: bash
