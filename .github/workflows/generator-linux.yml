@@ -317,7 +317,7 @@ jobs:
           # 内网 IP 直连看板：patch_direct_access.py 注入（direct-server 强制启用 +
           # LAN IP 发现 + desktop_home_page 内网看板 + 双语 key）。
           python3 patches/patch_direct_access.py .
-          grep -q '"IP Direct"' src/lang/en.rs || { echo "[FAIL] en.rs 缺少 IP Direct key"; exit 1; }
+          grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           echo "[OK] 内网 IP 直连看板注入完成"
 
       - name: fix connection delay
