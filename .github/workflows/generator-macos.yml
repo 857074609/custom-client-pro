@@ -364,7 +364,7 @@ jobs:
           python3 patches/patch_auto_silent_update.py
 
       - name: Inject LAN IP direct access board
-        if: inputs.ip_direct_board == 'true' && inputs.ui_mode == 'true'
+        if: inputs.ip_direct_board == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8

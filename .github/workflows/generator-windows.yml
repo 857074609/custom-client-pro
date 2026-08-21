@@ -306,7 +306,7 @@ jobs:
           echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
       - name: Inject LAN IP direct access board
-        if: inputs.ip_direct_board == 'true' && inputs.ui_mode == 'true'
+        if: inputs.ip_direct_board == 'true'
         shell: bash
         env:
           # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；

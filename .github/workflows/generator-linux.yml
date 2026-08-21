@@ -309,7 +309,7 @@ jobs:
         run: python3 patches/patch_websocket_custom_port.py
 
       - name: Inject LAN IP direct access board
-        if: inputs.ip_direct_board == 'true' && inputs.ui_mode == 'true'
+        if: inputs.ip_direct_board == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
