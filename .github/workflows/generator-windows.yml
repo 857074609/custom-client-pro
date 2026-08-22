@@ -325,6 +325,10 @@ jobs:
       - name: Inject direct connection E2EE (IPv4/IPv6)
         if: inputs.ip_direct_board == 'true'
         shell: bash
+        env:
+          # Windows runner 默认 cp1252，脚本内中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内已 reconfigure，双保险）。
+          PYTHONIOENCODING: utf-8
         run: |
           # IP 直连端到端加密：服务端 direct_server 改以 secure=true 接受（复用上游
           # create_tcp_connection 的 SignedId+PublicKey+set_key 握手）；客户端新增
