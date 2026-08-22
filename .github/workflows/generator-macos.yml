@@ -375,6 +375,16 @@ jobs:
           grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           echo "[OK] 内网 IP 直连看板注入完成"
 
+      - name: Inject direct connection E2EE (IPv4/IPv6)
+        if: inputs.ip_direct_board == 'true'
+        shell: bash
+        run: |
+          # IP 直连端到端加密（含 IPv6）：服务端 secure=true + 客户端 secure_direct_connection。
+          python3 patches/patch_direct_e2ee.py .
+          grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
+          grep -q "force secure handshake" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记"; exit 1; }
+          echo "[OK] IP 直连 E2EE 注入完成"
+
       - name: Report Status
         continue-on-error: true
         run: |
