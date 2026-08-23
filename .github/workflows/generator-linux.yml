@@ -65,7 +65,7 @@ on:
         default: 'Purslane Tech Pte. Ltd.'
         type: string
       extras:
-        description: "extra inputs in json (version, gdpro, allow-websocket, ws_port, delayFix, Slogan_tip, compname, urlLink, downloadLink, updateLink)"
+        description: "extra inputs in json (version, gdpro, allow-websocket, ws_port, ws_tls, delayFix, Slogan_tip, compname, urlLink, downloadLink, updateLink)"
         required: true
         default: '{}'
         type: string
@@ -86,6 +86,7 @@ env:
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
   WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
+  WS_TLS: "${{ fromJson(inputs.extras || '{}').ws_tls || '' }}"
 
 jobs:
   generate-bridge:

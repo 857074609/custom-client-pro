@@ -89,7 +89,8 @@ env:
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
-  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}" 
+  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
+  WS_TLS: "${{ fromJson(inputs.extras || '{}').ws_tls || '' }}"
   
 
 

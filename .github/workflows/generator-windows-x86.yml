@@ -78,6 +78,7 @@ env:
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
   WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
+  WS_TLS: "${{ fromJson(inputs.extras || '{}').ws_tls || '' }}"
   # cargo 走 git CLI 拉 git 依赖, 避免 Windows schannel 代理下 SEC_E_UNTRUSTED_ROOT
   CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
   # 强制 cargo 默认目标为 i686, 使自解压 packer 也编成 32 位
