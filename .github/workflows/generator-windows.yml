@@ -352,6 +352,7 @@ jobs:
         shell: bash
         run: |
            python3 patches/patch_websocket_custom_port.py
+           python3 patches/patch_ws_tls_menu.py
 
       - name: disable_e2ee
         shell: bash
