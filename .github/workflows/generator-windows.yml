@@ -336,7 +336,8 @@ jobs:
           # 直连分支调用。失败即断开，不回退明文。
           python3 patches/patch_direct_e2ee.py .
           grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
-          grep -q "force secure handshake" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记"; exit 1; }
+          grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
+          grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
 
       - name: skip custom client
