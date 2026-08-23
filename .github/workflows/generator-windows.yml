@@ -354,6 +354,11 @@ jobs:
            python3 patches/patch_websocket_custom_port.py
            python3 patches/patch_ws_tls_menu.py
 
+      - name: fix win_device SetupDi error spam
+        shell: bash
+        run: |
+           python3 patches/patch_win_device_setupdi.py
+
       - name: disable_e2ee
         shell: bash
         run: |
