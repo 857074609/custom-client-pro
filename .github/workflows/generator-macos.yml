@@ -88,6 +88,9 @@ env:
   MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
   UPLOAD_ARTIFACT: 'true'
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  # Custom WebSocket port (consumed by patches/patch_websocket_custom_port.py
+  # via option_env!("WS_PORT") when "enable websocket" runs below).
+  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
   # 以下变量由 "Decrypt and mask secrets" 步骤从 serverinfo 解密后写入 $GITHUB_ENV；此处给默认空值避免步骤前引用报错
   CUSTOM_SERVER: ''
   CUSTOM_KEY: ''
@@ -338,6 +341,13 @@ jobs:
         run: |
           python3 patches/allowCustom.py
           git apply patches/removeSetupServerTip.diff
+
+      - name: enable websocket
+        if: ${{ fromJson(inputs.extras || '{}').allow-websocket == 'true' }}
+        shell: bash
+        run: |
+          python3 patches/patch_websocket_custom_port.py
+          python3 patches/patch_ws_tls_menu.py
 
       - name: "Apply patches for custom update (desktop chain; macOS includes update_progress.dart so #5 included)"
         shell: bash
