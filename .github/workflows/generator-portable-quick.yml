@@ -66,7 +66,6 @@ env:
   RUST_VERSION: "1.75" # 对齐官方 1.4.9 Windows Flutter 构建
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
-  TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2024.07.12
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
