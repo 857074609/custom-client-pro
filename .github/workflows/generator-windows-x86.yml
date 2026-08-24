@@ -434,8 +434,6 @@ jobs:
         run: |
           python3 patches/patch_silent_install.py .
           python3 patches/patch_install_cert.py .
-          # C-scheme (exe): self-extracting packer 安装/静默安装时删除 %APPDATA%\<appname>（当前用户）
-          python3 patches/patch_portable_clean_user_config.py . "${{ inputs.appname }}"
 
       - name: Enlarge Sciter window minimum size
         shell: bash
@@ -656,10 +654,11 @@ jobs:
           echo "sciter.dll size: $(stat -c%s ./rustdesk/sciter.dll 2>/dev/null || echo unknown)"
 
 
-      - name: Create custom_.txt file
+      - name: Create custom_.txt file (+ override-settings server lock)
         shell: bash
         run: |
           echo -n "${{ inputs.custom }}" | cat > ./rustdesk/custom_.txt
+          python3 patches/patch_custom_txt_override_server.py ./rustdesk/custom_.txt
 
       - name: Stage code-signing public cert into package
         if: env.UPLOAD_ARTIFACT == 'true'
