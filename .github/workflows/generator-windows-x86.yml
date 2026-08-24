@@ -402,7 +402,14 @@ jobs:
           APP_NAME=${{ inputs.appname }} python3 patches/allowCustom.py
           python3 patches/remove_self_server_hint.py
           python3 patches/patch_inject_build_number.py
-     
+
+      - name: Set monitor switch button defaults
+        shell: bash
+        env:
+          EXTRAS: '${{ inputs.extras }}'
+        run: |
+          # 显示器切换按钮构建期默认值注入（见 generator-windows.yml 同名步骤说明）。
+          python3 patches/patch_monitor_switch.py .
 
       - name: enable websocket
         if: ${{ fromJson(inputs.extras).allow-websocket == 'true' }}

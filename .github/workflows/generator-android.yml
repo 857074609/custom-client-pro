@@ -461,6 +461,15 @@ jobs:
           APP_NAME=${{ inputs.appname }} python3 patches/allowCustom.py
           git apply patches/removeSetupServerTip.diff
 
+      - name: Set monitor switch button defaults
+        shell: bash
+        env:
+          EXTRAS: '${{ inputs.extras }}'
+        run: |
+          # 显示器切换按钮构建期默认值注入（见 generator-windows.yml 同名步骤说明）。
+          # Android 侧 option2bool 同样存在，注入空值默认无害；移动端不渲染工具栏按钮。
+          python3 patches/patch_monitor_switch.py .
+
       - name: Apply desktop-oriented update patches (shared chain; each may fail independently)
         env:
           UPDATE_PLATFORM: android

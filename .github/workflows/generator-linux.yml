@@ -300,6 +300,14 @@ jobs:
           git apply patches/removeSetupServerTip.diff || true
           python3 patches/patch_inject_build_number.py
 
+      - name: Set monitor switch button defaults
+        shell: bash
+        env:
+          EXTRAS: '${{ inputs.extras }}'
+        run: |
+          # 显示器切换按钮构建期默认值注入（见 generator-windows.yml 同名步骤说明）。
+          python3 patches/patch_monitor_switch.py .
+
       - name: disable_e2ee
         shell: bash
         run: python3 patches/patch_common_client_disable_e2ee.py
