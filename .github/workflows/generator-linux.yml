@@ -303,6 +303,17 @@ jobs:
         shell: bash
         run: python3 patches/patch_unlock_pin.py
 
+      - name: Lock settings without install (unlock PIN gate)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 未安装（便携态）也锁定安全/网络设置：注入了 UNLOCK_PIN 即恒锁，
+          # 需输 PIN 才能进设置（上游只看 mainIsInstalled，便携态裸奔）。
+          # UNLOCK_PIN 未配置时补丁自动退化为上游行为。
+          python3 patches/patch_lock_settings_always.py
+          grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 设置锁定补丁未生效"; exit 1; }
+
       - name: allow custom _.txt + remove Flutter "setup your own server" tip
         run: |
           python3 patches/allowCustom.py
