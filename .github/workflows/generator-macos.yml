@@ -174,18 +174,19 @@ jobs:
           if ex_raw:
               try:
                   ex = json.loads(ex_raw)
-                  for k in ('server','RS_PUB_KEY','apiServer','updateLink','downloadLink'):
+                  for k in ('server','RS_PUB_KEY','apiServer','relayServer','updateLink','downloadLink'):
                       if ex.get(k) and not data.get(k):
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+          for field in ['server','RS_PUB_KEY','apiServer','relayServer','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
               e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
               e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
+              e.write(f\"CUSTOM_RELAYSERVER={data.get('relayServer','')}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
               e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
@@ -329,6 +330,15 @@ jobs:
         shell: bash
         run: |
           python3 patches/set_server.py
+
+      - name: Apply compile-time server lock (OVERWRITE_SETTINGS)
+        # Compiles ID/key/api/relay servers into the OVERWRITE_SETTINGS static
+        # (highest option priority): locked, overrides saved config, no
+        # sidecar custom_.txt server fields. set_server.py above stays as the
+        # DEFAULT-layer fallback.
+        shell: bash
+        run: |
+          python3 patches/patch_server_lock_compiletime.py
 
       - name: set permanent password (preset, via patches/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
