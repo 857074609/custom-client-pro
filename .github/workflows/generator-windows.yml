@@ -585,6 +585,9 @@ jobs:
         run: |
           python3 patches/patch_silent_install.py .
           python3 patches/patch_install_cert.py .
+          # C-scheme: MSI 安装/升级/修复时删除所有用户 %APPDATA%\<appname> 配置目录
+          # （纯卸载不删；旧 RustDesk2.toml 无法再覆盖编译期内置服务器）
+          python3 patches/patch_msi_clean_user_config.py .
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
