@@ -244,7 +244,50 @@ jobs:
             cp -f patches/desktop_home_page_old.dart flutter/lib/desktop/pages/desktop_home_page.dart
           fi
 
+          # portable-quick 专用：覆盖为精简单面板版首页（仅左面板，无右侧连接面板）。
+          # desktop_home_page_quick.dart 基于 new 基准精简，>=1.4.7 结构。
+          if version_ge "$VER" "1.4.7"; then
+            cp -f patches/desktop_home_page_quick.dart flutter/lib/desktop/pages/desktop_home_page.dart
+            echo "[OK] portable-quick 首页已替换为 desktop_home_page_quick.dart (单面板)"
+            grep -q "// portable-quick 精简版" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quick 首页标记缺失"; exit 1; }
+          fi
+
           python3 patches/hand_stun.py
+
+      - name: Enable copy ID & password button
+        if: inputs.ui_mode == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # buildCopyIdPasswordButton 基准文件里默认被提前 return 关闭：
+          #   // COPY_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # 删除该提前 return 使按钮逻辑生效；同时移除 isIncomingOnly 显示门槛，
+          # 让非 incoming-only 的 portable-quick 单面板也能显示复制按钮。
+          PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
+          python3 - "$PAGE" <<'EOF'
+          import sys, re
+          p = sys.argv[1]
+          t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
+          m = re.search(r"[ \t]*// COPY_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
+          if not m:
+              print("[FAIL] 未找到 COPY_BUTTON_CONTROL 提前 return")
+              sys.exit(3)
+          t = t[:m.start()] + t[m.end():]
+          t2, n = re.subn(
+              r"if \(!bind\.isIncomingOnly\(\) \|\|\n(\s+)model\.serverId",
+              "if (\n\\g<1>model.serverId",
+              t, count=1)
+          if n != 1:
+              print("[FAIL] 未找到复制按钮 isIncomingOnly 门槛")
+              sys.exit(3)
+          open(p, "w", encoding="utf-8").write(t2)
+          print("[OK] 复制按钮已启用（移除 COPY_BUTTON_CONTROL 提前 return + isIncomingOnly 门槛）")
+          EOF
+          ! grep -q "COPY_BUTTON_CONTROL" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净"; exit 1; }
+          grep -q "buildCopyIdPasswordButton" "$PAGE" || { echo "[FAIL] 缺少 buildCopyIdPasswordButton"; exit 1; }
+          echo "[OK] 复制按钮启用完成"
 
       - name: Inject LAN IP direct access board
         if: inputs.ip_direct_board == 'true'
