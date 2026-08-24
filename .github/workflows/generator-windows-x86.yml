@@ -397,6 +397,7 @@ jobs:
           python3 patches/patch_unlock_pin.py
                       
       - name: allow custom_.txt
+        shell: bash
         run: |
           APP_NAME=${{ inputs.appname }} python3 patches/allowCustom.py
           python3 patches/remove_self_server_hint.py
