@@ -659,6 +659,18 @@ jobs:
         run: |
           echo -n "${{ inputs.custom }}" | cat > ./rustdesk/custom_.txt
 
+      - name: Inject server override into custom_.txt (lock built-in server)
+        shell: bash
+        run: |
+          # 向 custom.txt 的 override-settings 注入服务器三键（custom-rendezvous-server/key/api-server）。
+          # 利用官方 OVERWRITE_SETTINGS > CONFIG2.options > DEFAULT_SETTINGS 优先级链，
+          # 使内置服务器覆盖用户旧 RustDesk2.toml 中已保存的服务器配置，UI 无法再改写。
+          # CUSTOM_SERVER 为空（无 serverinfo / 测试构建）时跳过。
+          if [ -n "${CUSTOM_SERVER:-}" ]; then
+            python3 patches/patch_custom_txt_server_override.py ./rustdesk/custom_.txt
+          else
+            echo "::warning::CUSTOM_SERVER empty -> skip server override injection (test build)"
+          fi
 
       - name: Stage code-signing public cert into package
         if: env.UPLOAD_ARTIFACT == 'true'
