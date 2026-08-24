@@ -564,7 +564,7 @@ jobs:
                       
       - name: allow custom_.txt
         run: |
-          python3 patches/allowCustom.py
+          APP_NAME=${{ inputs.appname }} python3 patches/allowCustom.py
           git apply patches/removeSetupServerTip.diff
           python3 patches/patch_inject_build_number.py
 

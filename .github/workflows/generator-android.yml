@@ -458,7 +458,7 @@ jobs:
       - name: allow custom.txt (via patches/allowCustom.py)
         shell: bash
         run: |
-          python3 patches/allowCustom.py
+          APP_NAME=${{ inputs.appname }} python3 patches/allowCustom.py
           git apply patches/removeSetupServerTip.diff
 
       - name: Apply desktop-oriented update patches (shared chain; each may fail independently)
