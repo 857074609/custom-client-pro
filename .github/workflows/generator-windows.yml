@@ -941,8 +941,10 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build msi
-        
+
         if: env.UPLOAD_ARTIFACT == 'true'
+        # MSI 是附带产物（分发主力是 -install.exe）：MSI 编译失败仅告警跳过，不阻断工作流
+        continue-on-error: true
         run: |
           $myappname = "${{ inputs.appname }}" -replace '\s','_'
           cp "rustdesk/${{ inputs.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
