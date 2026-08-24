@@ -194,19 +194,18 @@ jobs:
           if ex_raw:
               try:
                   ex = json.loads(ex_raw)
-                  for k in ('server','RS_PUB_KEY','apiServer','relayServer'):
+                  for k in ('server','RS_PUB_KEY','apiServer'):
                       if ex.get(k) and not data.get(k):
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','relayServer','permanentPassword','unlockPin']:
+          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
               e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
               e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
-              e.write(f\"CUSTOM_RELAYSERVER={data.get('relayServer','')}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
           "
