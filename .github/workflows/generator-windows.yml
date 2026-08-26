@@ -338,10 +338,12 @@ jobs:
           cp -f patches/desktop_home_page_both.dart flutter/lib/desktop/pages/desktop_home_page.dart
           # UI_MODE_BOTH 上下布局：同时替换 connection_page.dart，拆出顶部卡片与底部列表
           cp -f patches/connection_page_both.dart flutter/lib/desktop/pages/connection_page.dart
+          # UI_MODE_BOTH 扁平化：设备卡片默认 1px 细边框 + 透明背景，与窗口背景形成层次感
+          cp -f patches/peer_card_both.dart flutter/lib/common/widgets/peer_card.dart
           mkdir -p src/lang/
           cp -f patches/cn.rs  src/lang/cn.rs
           cp -f patches/en.rs src/lang/en.rs
-          echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart 并覆盖中英文语言文件"
+          echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
 
           python3 patches/hand_stun.py
 
