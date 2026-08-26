@@ -280,6 +280,22 @@ jobs:
             cp -f patches/desktop_home_page_old.dart flutter/lib/desktop/pages/desktop_home_page.dart
           fi
 
+      - name: Replace desktop_home_page for direction=both (隐藏左面板 + 右面板右上角显示本机 ID/验证码)
+        if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE == 'both'
+        shell: bash
+        run: |
+          # direction=both 专属 UI：仅在「连接类型=both」且「勾选隐藏左侧面板(hide_sensitive_ui)」
+          # 同时满足时触发。与上方「Replace custom patch files」同类机制（直接 cp 覆盖
+          # desktop_home_page.dart），仅触发条件不同（需 both + 隐藏左侧面板，而非 ui_mode=='true'）。
+          # desktop_home_page_both.dart 已在 patches/ 中烘焙好（隐藏左面板 + 右面板右上角
+          # 显示本机 ID/验证码/网络信息，信息默认折叠隐藏、点「显示」展开），无需运行时锚点注入。
+          # 注意：direction in ("outgoing","both") 时 services.py 强制 ui_mode=False，
+          # 故本步骤独立于「Replace custom patch files」（其被 ui_mode 门控跳过）运行。
+          # 网络信息是否显示完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)：
+          # 勾选则 patch_direct_access 写入 lan-ip 供本框读取；未勾选则本框显示 N/A。
+          mkdir -p flutter/lib/desktop/pages/
+          cp -f patches/desktop_home_page_both.dart flutter/lib/desktop/pages/desktop_home_page.dart
+          echo "[OK] direction=both: 已替换为 desktop_home_page_both.dart（隐藏左面板 + 右面板右上角显示本机 ID）"
 
           python3 patches/hand_stun.py
 
@@ -319,9 +335,17 @@ jobs:
           # 增强 rendezvous_mediator::direct_server 状态写入、flutter_ffi::main_check_connect_status
           # 强制启用 direct-server + LAN IP 发现、desktop_home_page 内网看板 + 双语 key）。
           # 任一锚点缺失/歧义即报错退出，构建显式失败。
+          # 是否运行完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)，与 direction 无关。
+          # 当 direction=both 且同时勾选本项时：desktop_home_page 此时已是 desktop_home_page_both.dart，
+          # 脚本检测到 // UI_MODE_BOTH 标记后仅跑 Rust 侧（写入 lan-ip / lan-ipv6 / direct-access-port
+          # 选项供右上角信息框读取），并自动跳过 Dart 侧注入（避免重复 buildDirectAccessBoard）。
           python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
-          grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
-          echo "[OK] 内网 IP 直连看板注入完成"
+          if [ "$CLIENT_TYPE" != "both" ]; then
+            grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
+          else
+            echo "[OK] direction=both: 跳过 buildDirectAccessBoard 校验（网络信息已在右上角信息框自渲染）"
+          fi
+          echo "[OK] 内网 IP 直连注入完成"
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
         if: inputs.ip_direct_board == 'true'
@@ -711,9 +735,9 @@ jobs:
         if: fromJson(inputs.extras).xOffline == 'true'
         run: |
           git apply patches/xoffline.diff
-      
-      - name: Spoofing outgoing
-        if: fromJson(inputs.extras).hide_sensitive_ui == 'true'
+
+      - name: Spoofing outgoing (hide sensitive = forbid ID)
+        if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE != 'both'
         shell: bash
         run: |
 
