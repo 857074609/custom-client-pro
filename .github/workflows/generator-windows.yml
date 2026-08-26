@@ -292,10 +292,17 @@ jobs:
           # 注意：direction in ("outgoing","both") 时 services.py 强制 ui_mode=False，
           # 故本步骤独立于「Replace custom patch files」（其被 ui_mode 门控跳过）运行。
           # 网络信息是否显示完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)：
-          # 勾选则 patch_direct_access 写入 lan-ip 供本框读取；未勾选则本框显示 N/A。
+          # 勾选则 patch_direct_access 写入 lan-ip 供本框读取；未勾选则本框显示为空。
+          # 注意：ui_mode 被 services.py 强制 False 时，「Replace custom patch files」步骤被跳过，
+          # 不会 cp 中英文语言文件；故本步骤须自行 cp，否则 desktop_home_page_both.dart
+          # 用到的 translate("IP Direct"/"Show Network Info"/"Double-click to copy" 等)
+          # 在中文环境会回显英文 key。patches/en.rs / cn.rs 已含这些 key。
           mkdir -p flutter/lib/desktop/pages/
           cp -f patches/desktop_home_page_both.dart flutter/lib/desktop/pages/desktop_home_page.dart
-          echo "[OK] direction=both: 已替换为 desktop_home_page_both.dart（隐藏左面板 + 右面板右上角显示本机 ID）"
+          mkdir -p src/lang/
+          cp -f patches/cn.rs  src/lang/cn.rs
+          cp -f patches/en.rs src/lang/en.rs
+          echo "[OK] direction=both: 已替换为 desktop_home_page_both.dart 并覆盖中英文语言文件"
 
           python3 patches/hand_stun.py
 
