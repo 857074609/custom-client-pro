@@ -314,29 +314,34 @@ jobs:
           "CLIENT_TYPE=$t" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host " Final conn-type output: $t"
 
-      - name: Replace desktop_home_page for direction=both (隐藏左面板 + 右面板右上角显示本机 ID/验证码)
+      - name: Replace desktop_home_page for direction=both (隐藏左面板 + 上部本机信息/控制远程桌面卡片 + 下部设备列表)
         if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE == 'both'
         shell: bash
         run: |
           # direction=both 专属 UI：仅在「连接类型=both」且「勾选隐藏左侧面板(hide_sensitive_ui)」
           # 同时满足时触发。与上方「Replace custom patch files」同类机制（直接 cp 覆盖
           # desktop_home_page.dart），仅触发条件不同（需 both + 隐藏左侧面板，而非 ui_mode=='true'）。
-          # desktop_home_page_both.dart 已在 patches/ 中烘焙好（隐藏左面板 + 右面板右上角
-          # 显示本机 ID/验证码/网络信息，信息默认折叠隐藏、点「显示」展开），无需运行时锚点注入。
+          # desktop_home_page_both.dart 已在 patches/ 中烘焙好（隐藏左面板 + 上部左右两卡片：
+          # 左=本机信息(ID/验证码/网络信息)，右=控制远程桌面；下部=设备列表+就绪状态）。
+          # 本机信息卡片内 ID 常显，验证码/网络信息默认折叠，点「显示」展开。
           # 注意：direction in ("outgoing","both") 时 services.py 强制 ui_mode=False，
           # 故本步骤独立于「Replace custom patch files」（其被 ui_mode 门控跳过）运行。
           # 网络信息是否显示完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)：
           # 勾选则 patch_direct_access 写入 lan-ip 供本框读取；未勾选则本框显示为空。
           # 注意：ui_mode 被 services.py 强制 False 时，「Replace custom patch files」步骤被跳过，
           # 不会 cp 中英文语言文件；故本步骤须自行 cp，否则 desktop_home_page_both.dart
-          # 用到的 translate("IP Direct"/"Show Network Info"/"Double-click to copy" 等)
+          # 用到的 translate("Local Info"/"IP Direct"/"Show Network Info"/"Double-click to copy" 等)
           # 在中文环境会回显英文 key。patches/en.rs / cn.rs 已含这些 key。
+          # UI_MODE_BOTH 布局依赖 connection_page_both.dart 拆分 ConnectionPage 的顶部卡片
+          # 与底部设备列表，因此需同步 cp 覆盖 connection_page.dart。
           mkdir -p flutter/lib/desktop/pages/
           cp -f patches/desktop_home_page_both.dart flutter/lib/desktop/pages/desktop_home_page.dart
+          # UI_MODE_BOTH 上下布局：同时替换 connection_page.dart，拆出顶部卡片与底部列表
+          cp -f patches/connection_page_both.dart flutter/lib/desktop/pages/connection_page.dart
           mkdir -p src/lang/
           cp -f patches/cn.rs  src/lang/cn.rs
           cp -f patches/en.rs src/lang/en.rs
-          echo "[OK] direction=both: 已替换为 desktop_home_page_both.dart 并覆盖中英文语言文件"
+          echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart 并覆盖中英文语言文件"
 
           python3 patches/hand_stun.py
 
@@ -379,13 +384,13 @@ jobs:
           # 是否运行完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)，与 direction 无关。
           # 当 direction=both 且同时勾选本项时：desktop_home_page 此时已是 desktop_home_page_both.dart，
           # 脚本检测到 // UI_MODE_BOTH 标记后仅跑 Rust 侧（写入 lan-ip / lan-ipv6 / direct-access-port
-          # 选项供右上角信息框读取），并自动跳过 Dart 侧注入（避免重复 buildDirectAccessBoard）。
+          # 选项供上部本机信息卡片读取），并自动跳过 Dart 侧注入（避免重复 buildDirectAccessBoard）。
           python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
           # 不依赖 env.CLIENT_TYPE（其尚未设置），直接检测当前 desktop_home_page.dart 是否为
-          # desktop_home_page_both.dart 变体（顶部含 // UI_MODE_BOTH 标记）。both 变体已在
-          # 右上角自渲染网络信息框，无需再注入 buildDirectAccessBoard。
+          # desktop_home_page_both.dart 变体（顶部含 // UI_MODE_BOTH 标记）。both 变体已在本机
+          # 信息卡片自渲染网络信息，无需再注入 buildDirectAccessBoard。
           if grep -q "// UI_MODE_BOTH" flutter/lib/desktop/pages/desktop_home_page.dart; then
-            echo "[OK] desktop_home_page_both.dart: 跳过 buildDirectAccessBoard 校验（网络信息已在右上角信息框自渲染）"
+            echo "[OK] desktop_home_page_both.dart: 跳过 buildDirectAccessBoard 校验（网络信息已在上部本机信息卡片自渲染）"
           else
             grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           fi
