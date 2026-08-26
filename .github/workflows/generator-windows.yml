@@ -281,12 +281,12 @@ jobs:
           fi
 
       - name: Replace desktop_home_page for direction=both (隐藏左面板 + 右面板右上角显示本机 ID/验证码)
-        if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE == 'both'
+        if: fromJson(inputs.extras).hide_sensitive_ui == 'true'
         shell: bash
         run: |
-          # direction=both 专属 UI：仅在「连接类型=both」且「勾选隐藏左侧面板(hide_sensitive_ui)」
-          # 同时满足时触发。与上方「Replace custom patch files」同类机制（直接 cp 覆盖
-          # desktop_home_page.dart），仅触发条件不同（需 both + 隐藏左侧面板，而非 ui_mode=='true'）。
+          # 隐藏左侧面板专属 UI：只要「勾选隐藏左侧面板(hide_sensitive_ui)」即触发。
+          # 与上方「Replace custom patch files」同类机制（直接 cp 覆盖
+          # desktop_home_page.dart），仅触发条件不同（由 hide_sensitive_ui 门控，而非 ui_mode=='true'）。
           # desktop_home_page_both.dart 已在 patches/ 中烘焙好（隐藏左面板 + 右面板右上角
           # 显示本机 ID/验证码/网络信息，信息默认折叠隐藏、点「显示」展开），无需运行时锚点注入。
           # 注意：direction in ("outgoing","both") 时 services.py 强制 ui_mode=False，
@@ -347,10 +347,13 @@ jobs:
           # 脚本检测到 // UI_MODE_BOTH 标记后仅跑 Rust 侧（写入 lan-ip / lan-ipv6 / direct-access-port
           # 选项供右上角信息框读取），并自动跳过 Dart 侧注入（避免重复 buildDirectAccessBoard）。
           python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
-          if [ "$CLIENT_TYPE" != "both" ]; then
-            grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
+          # 不依赖 env.CLIENT_TYPE（其尚未设置），直接检测当前 desktop_home_page.dart 是否为
+          # desktop_home_page_both.dart 变体（顶部含 // UI_MODE_BOTH 标记）。both 变体已在
+          # 右上角自渲染网络信息框，无需再注入 buildDirectAccessBoard。
+          if grep -q "// UI_MODE_BOTH" flutter/lib/desktop/pages/desktop_home_page.dart; then
+            echo "[OK] desktop_home_page_both.dart: 跳过 buildDirectAccessBoard 校验（网络信息已在右上角信息框自渲染）"
           else
-            echo "[OK] direction=both: 跳过 buildDirectAccessBoard 校验（网络信息已在右上角信息框自渲染）"
+            grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           fi
           echo "[OK] 内网 IP 直连注入完成"
 
