@@ -280,13 +280,47 @@ jobs:
             cp -f patches/desktop_home_page_old.dart flutter/lib/desktop/pages/desktop_home_page.dart
           fi
 
+      - name: Extract conn-type (client type)
+        id: conn
+        shell: pwsh
+        run: |
+          $c = "${{ inputs.custom }}"
+          $t = "default"
+          if ($c -eq "") {
+              Write-Host "::warning::Input is empty, using default conn-type: $t"
+          } else {
+              try {
+                $bytes = [System.Convert]::FromBase64String($c)
+                  $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes)
+                  $obj = $jsonStr | ConvertFrom-Json
+
+                  if ($null -ne $obj.'conn-type' -and $obj.'conn-type' -ne "") {
+                      $t = $obj.'conn-type'
+                      Write-Host "Successfully extracted conn-type: $t"
+                  } else {
+                      Write-Host "::warning::'conn-type' field is missing or empty in input JSON"
+                  }
+              } catch {
+                  Write-Host "::error::Failed to parse custom input. Error: $($_.Exception.Message)"
+                  $t = "default"
+              }
+          }
+          $sanitized = $t -replace '[^a-zA-Z0-9_.-]', '_'
+          if ($sanitized -ne $t) {
+              Write-Host " Sanitized conn-type from '$t' to '$sanitized'"
+              $t = $sanitized
+          }
+          "conn=$t" >> $env:GITHUB_OUTPUT
+          "CLIENT_TYPE=$t" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host " Final conn-type output: $t"
+
       - name: Replace desktop_home_page for direction=both (隐藏左面板 + 右面板右上角显示本机 ID/验证码)
-        if: fromJson(inputs.extras).hide_sensitive_ui == 'true'
+        if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE == 'both'
         shell: bash
         run: |
-          # 隐藏左侧面板专属 UI：只要「勾选隐藏左侧面板(hide_sensitive_ui)」即触发。
-          # 与上方「Replace custom patch files」同类机制（直接 cp 覆盖
-          # desktop_home_page.dart），仅触发条件不同（由 hide_sensitive_ui 门控，而非 ui_mode=='true'）。
+          # direction=both 专属 UI：仅在「连接类型=both」且「勾选隐藏左侧面板(hide_sensitive_ui)」
+          # 同时满足时触发。与上方「Replace custom patch files」同类机制（直接 cp 覆盖
+          # desktop_home_page.dart），仅触发条件不同（需 both + 隐藏左侧面板，而非 ui_mode=='true'）。
           # desktop_home_page_both.dart 已在 patches/ 中烘焙好（隐藏左面板 + 右面板右上角
           # 显示本机 ID/验证码/网络信息，信息默认折叠隐藏、点「显示」展开），无需运行时锚点注入。
           # 注意：direction in ("outgoing","both") 时 services.py 强制 ui_mode=False，
@@ -496,41 +530,6 @@ jobs:
         run: |
           ESCAPED=$(printf '%s' "$SLOGAN" | sed "s/'/'\\\\''/g; s/[&/\]/\\&/g")
           sed -i "s|translate('Slogan_tip')|'${ESCAPED}'|g" flutter/lib/desktop/pages/desktop_setting_page.dart
-
-      
-      - name: Extract conn-type (client type) 
-        id: conn
-        shell: pwsh
-        run: |
-          $c = "${{ inputs.custom }}"
-          $t = "default" 
-          if ($c -eq "") {
-              Write-Host "::warning::Input is empty, using default conn-type: $t"
-          } else {
-              try {
-                $bytes = [System.Convert]::FromBase64String($c)
-                  $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes)
-                  $obj = $jsonStr | ConvertFrom-Json
-      
-                  if ($null -ne $obj.'conn-type' -and $obj.'conn-type' -ne "") {
-                      $t = $obj.'conn-type'
-                      Write-Host "Successfully extracted conn-type: $t"
-                  } else {
-                      Write-Host "::warning::'conn-type' field is missing or empty in input JSON"
-                  }
-              } catch {
-                  Write-Host "::error::Failed to parse custom input. Error: $($_.Exception.Message)"
-                  $t = "default"
-              }
-          }
-          $sanitized = $t -replace '[^a-zA-Z0-9_.-]', '_'
-          if ($sanitized -ne $t) {
-              Write-Host " Sanitized conn-type from '$t' to '$sanitized'"
-              $t = $sanitized
-          }
-          "conn=$t" >> $env:GITHUB_OUTPUT
-          "CLIENT_TYPE=$t" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host " Final conn-type output: $t"
 
       
       - name: Apply patches for custom update
