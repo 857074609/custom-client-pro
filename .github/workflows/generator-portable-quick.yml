@@ -252,8 +252,6 @@ jobs:
             grep -q "// portable-quick 精简版" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quick 首页标记缺失"; exit 1; }
           fi
 
-          python3 patches/hand_stun.py
-
       - name: Enable copy ID & password button
         if: inputs.ui_mode == 'true'
         shell: bash
@@ -378,6 +376,11 @@ jobs:
           sed -i -e 's|{subkey}|\\\"{subkey}\\\"|' ./src/platform/windows.rs
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\.{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
+
+      - name: Apply domestic STUN fallback (multi-level)
+        shell: bash
+        run: |
+          python3 patches/hand_stun.py
 
       - name: Set server
         shell: bash

@@ -364,6 +364,11 @@ jobs:
         run: |
           python3 patches/patch_auto_silent_update.py
 
+      - name: Apply domestic STUN fallback (multi-level)
+        shell: bash
+        run: |
+          python3 patches/hand_stun.py
+
       - name: Set server
         shell: bash
         run: |

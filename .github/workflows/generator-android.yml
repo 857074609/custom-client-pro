@@ -381,6 +381,11 @@ jobs:
           else
             echo "::notice::No valid icon link resolved (iconlink='${{ inputs.iconlink }}'), using RustDesk default icon"
           fi
+      - name: Apply domestic STUN fallback (multi-level)
+        shell: bash
+        run: |
+          python3 patches/hand_stun.py
+
       - name: set server, key, and apiserver (via patches/set_server.py)
         shell: bash
         run: |

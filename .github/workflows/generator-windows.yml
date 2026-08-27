@@ -348,8 +348,6 @@ jobs:
           cp -f patches/en.rs src/lang/en.rs
           echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
 
-          python3 patches/hand_stun.py
-
       - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true'
         shell: bash
@@ -578,6 +576,14 @@ jobs:
           #sed -i '/if (bind\.mainGetBuildinOption(key: kOptionRemovePresetPasswordWarning) !=/,/^  }$/d' ./flutter/lib/common.dart
         #  sed -i '/fontSize:/ { N; s/18,/16,/; }' ./flutter/lib/common.dart
             
+      - name: Apply domestic STUN fallback (multi-level)
+        # 国内优先 + 国外兜底的 STUN 注入到客户端（NAT 探测 common.rs + WebRTC ICE webrtc.rs 两条路径），
+        # 修复国内网络下默认国外 STUN 慢/被墙导致 P2P 打洞失败、只能走中继或连接失败的问题。
+        # 必须对所有构建类型生效（原先只在 direction=both && hide_sensitive_ui 时运行，普通构建仍是国外 STUN）。
+        shell: bash
+        run: |
+          python3 patches/hand_stun.py
+
       - name: Set server
         shell: bash
         run: |

@@ -325,6 +325,11 @@ jobs:
           sed -i '' -e 's/("About RustDesk", "Over RustDesk")/("About RustDesk", "Over ${{ inputs.appname }}")/' ./src/lang/nl.rs
           sed -i '' -e 's/("About", "Over")/("About", "Over ${{ inputs.appname }}")/' ./src/lang/nl.rs
 
+      - name: Apply domestic STUN fallback (multi-level)
+        shell: bash
+        run: |
+          python3 patches/hand_stun.py
+
       - name: set server, key, and apiserver (via patches/set_server.py)
         shell: bash
         run: |
