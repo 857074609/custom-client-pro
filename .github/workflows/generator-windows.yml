@@ -314,7 +314,7 @@ jobs:
           "CLIENT_TYPE=$t" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host " Final conn-type output: $t"
 
-      - name: Replace desktop_home_page for direction=both (隐藏左面板 + 上部本机信息/控制远程桌面卡片 + 下部设备列表)
+      - name: Replace desktop_home_page for direction=both
         if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE == 'both'
         shell: bash
         run: |
@@ -755,14 +755,6 @@ jobs:
         run: |
           git apply patches/xoffline.diff
 
-      - name: Spoofing outgoing (hide sensitive = forbid ID)
-        if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE != 'both'
-        shell: bash
-        run: |
-
-            python3 patches/hide_sensitive_ui_new.py
-  
-      
       - name: hide-password_uimode_true
         if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'
         shell: bash
