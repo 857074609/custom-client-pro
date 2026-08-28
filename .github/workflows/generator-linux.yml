@@ -338,11 +338,10 @@ jobs:
         run: python3 patches/patch_common_client_disable_e2ee.py
 
       - name: enable websocket
-        if: ${{ fromJson(inputs.extras).allow-websocket == 'true' }}
+        if: ${{ inputs.WS_PORT != '' }}
         shell: bash
         run: |
           python3 patches/patch_websocket_custom_port.py
-          python3 patches/patch_ws_tls_menu.py
 
       - name: Inject LAN IP direct access board
         if: inputs.ip_direct_board == 'true'

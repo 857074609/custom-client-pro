@@ -521,11 +521,10 @@ jobs:
           sed -i 's/bind.mainGetLocalOption(key:\s*"show-scam-warning")/"N"/g' ./flutter/lib/mobile/pages/server_page.dart
       
       - name: enable websocket
-        if: ${{ fromJson(inputs.extras || '{}').allow-websocket == 'true' }}
+        if: ${{ inputs.WS_PORT != '' }}
         shell: bash
         run: |
           python3 patches/patch_websocket_custom_port.py
-          python3 patches/patch_ws_tls_menu.py
           
       - name: skip custom client
         shell: bash
