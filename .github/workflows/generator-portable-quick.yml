@@ -318,7 +318,7 @@ jobs:
           sed -i '/if (bind\.isCustomClient())/d' flutter/lib/desktop/pages/desktop_home_page.dart
 
       - name: enable websocket
-        if: ${{ inputs.WS_PORT != '' }}
+        if: ${{ fromJson(inputs.extras || '{}').ws_port != '' }}
         shell: bash
         run: |
            python3 patches/patch_websocket_custom_port.py
