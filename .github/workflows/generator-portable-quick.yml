@@ -435,17 +435,6 @@ jobs:
           git apply patches/removeSetupServerTip.diff
           python3 patches/patch_inject_build_number.py
 
-      - name: Set monitor switch button defaults
-        shell: bash
-        env:
-          EXTRAS: '${{ inputs.extras }}'
-        run: |
-          # 显示器切换按钮构建期默认值注入：官方 1.4.9 已原生实现
-          # 主工具栏/最小化工具栏显示器切换按钮（consts.dart 常量 + desktop_setting_page
-          # 嵌套 UI + remote_toolbar 按钮），本脚本只改 option2bool 对两个 key 的空值默认，
-          # 用户运行时 Settings 勾选仍可覆盖。配置从 inputs.extras JSON 解析。
-          python3 patches/patch_monitor_switch.py .
-
       - name: Superhidecm
         if: fromJson(inputs.extras).supercm == 'true'
         shell: bash
