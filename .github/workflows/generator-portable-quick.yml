@@ -40,6 +40,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ip_direct_udp:
+        description: "IP direct connection over UDP(KCP) transport (fallback to TCP)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -314,6 +319,16 @@ jobs:
           grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
           grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
           grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
+
+      - name: Patch direct access UDP transport
+        if: inputs.ip_direct_udp == 'true'
+        shell: bash
+        run: |
+          # IP 直连 UDP(KCP) 传输：主控端 UDP 优先（2s 超时自动回退 TCP）；
+          # 被控端 direct_server 同端口 UDP 监听（KcpStream::accept -> create_tcp_connection 同一入口）。
+          python3 patches/patch_direct_udp.py .
+          grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
+          grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
 
       - name: skip custom client
