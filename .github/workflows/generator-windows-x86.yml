@@ -462,6 +462,11 @@ jobs:
           python3 patches/patch_silent_install.py .
           python3 patches/patch_install_cert.py .
 
+      - name: Patch install launch retry (fix 0xc0000043 on install)
+        shell: bash
+        run: |
+          python3 patches/patch_install_launch_retry.py .
+
       - name: Enlarge Sciter window minimum size
         shell: bash
         run: |
