@@ -45,6 +45,11 @@ on:
         required: false
         default: 'false'
         type: string
+      api_device_sync:
+        description: "Sync online devices from API server into Accessible Devices tab, and add IP Direct / Delete Device menus"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -434,6 +439,16 @@ jobs:
           python3 patches/patch_direct_udp.py .
           grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
+
+      - name: Patch online devices sync and IP direct menu
+        if: inputs.api_device_sync == 'true'
+        shell: bash
+        run: |
+          # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
+          # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
+          python3 patches/patch_online_devices.py .
+          grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
+          grep -q "_ipDirectAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _ipDirectAction"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
 
       - name: skip custom client
