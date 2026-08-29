@@ -95,7 +95,6 @@ env:
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
   WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
-  WS_TLS: "${{ fromJson(inputs.extras || '{}').ws_tls || '' }}"
   
 
 

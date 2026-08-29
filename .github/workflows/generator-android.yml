@@ -73,7 +73,7 @@ on:
         default: 'Purslane Tech Pte. Ltd.'
         type: string
       extras:
-        description: "extra inputs in json (version, gdpro, token, gdpro, allow-websocket, ws_port, ws_tls, delayFix, xOffline, hidecm, removeNewVersionNotif, cycleMonitor)"
+        description: "extra inputs in json (version, gdpro, token, gdpro, allow-websocket, ws_port, delayFix, xOffline, hidecm, removeNewVersionNotif, cycleMonitor)"
         required: true
         default: '{}'
         type: string
@@ -102,7 +102,6 @@ env:
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
   WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
-  WS_TLS: "${{ fromJson(inputs.extras || '{}').ws_tls || '' }}"
 jobs:
   generate-bridge-linux:
     uses: ./.github/workflows/bridge.yml
