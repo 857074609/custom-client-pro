@@ -741,16 +741,6 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
           
-      - name: Install vcpkg dependencies
-        env:
-          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
-        shell: bash
-        run: |
-          $VCPKG_ROOT/vcpkg install \
-            --triplet ${{ matrix.job.vcpkg-triplet }} \
-            --x-install-root="$VCPKG_ROOT/installed"
-           
-
       - name: magick stuff
         if: ${{ inputs.iconlink == 'true' }}
         shell: pwsh
@@ -919,6 +909,15 @@ jobs:
           cd ..
 
      
+      - name: Install vcpkg dependencies
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
+        shell: bash
+        run: |
+          $VCPKG_ROOT/vcpkg install \
+            --triplet ${{ matrix.job.vcpkg-triplet }} \
+            --x-install-root="$VCPKG_ROOT/installed"
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）

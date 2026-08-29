@@ -536,15 +536,6 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
-      - name: Install vcpkg dependencies
-        env:
-          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
-        shell: bash
-        run: |
-          $VCPKG_ROOT/vcpkg install \
-            --triplet ${{ matrix.job.vcpkg-triplet }} \
-            --x-install-root="$VCPKG_ROOT/installed"
-
       - name: magick stuff
         if: ${{ inputs.iconlink == 'true' }}
         shell: pwsh
@@ -584,6 +575,15 @@ jobs:
           flutter pub get
           flutter pub run flutter_launcher_icons
           cd ..
+
+      - name: Install vcpkg dependencies
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
+        shell: bash
+        run: |
+          $VCPKG_ROOT/vcpkg install \
+            --triplet ${{ matrix.job.vcpkg-triplet }} \
+            --x-install-root="$VCPKG_ROOT/installed"
 
       - name: Build rustdesk
         run: |
