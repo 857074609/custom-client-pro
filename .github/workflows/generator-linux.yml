@@ -39,6 +39,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ip_direct_e2ee:
+        description: "IP direct connection end-to-end encryption (decoupled from ip_direct_board)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "Icon source"
         required: false
@@ -356,7 +361,7 @@ jobs:
           echo "[OK] 内网 IP 直连看板注入完成"
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
-        if: inputs.ip_direct_board == 'true'
+        if: inputs.ip_direct_board == 'true' || inputs.ip_direct_e2ee == 'true'
         shell: bash
         run: |
           # IP 直连端到端加密（含 IPv6）：服务端 secure=true + 客户端 secure_direct_connection。

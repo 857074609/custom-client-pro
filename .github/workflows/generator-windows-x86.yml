@@ -36,6 +36,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ip_direct_e2ee:
+        description: "IP direct connection end-to-end encryption (decoupled from ip_direct_board)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false
