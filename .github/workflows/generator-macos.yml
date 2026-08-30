@@ -460,7 +460,7 @@ jobs:
           # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
           python3 patches/patch_online_devices.py .
           grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
-          grep -q "_ipDirectAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _ipDirectAction"; exit 1; }
+          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
 
       - name: Move Terminal to standalone connection-page button (v70)
