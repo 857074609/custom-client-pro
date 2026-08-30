@@ -421,6 +421,17 @@ jobs:
           grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           echo "[OK] 内网 IP 直连看板注入完成"
 
+      - name: Report local IPv6 to API server (v70)
+        if: inputs.ip_direct_board == 'true' || inputs.ip_direct_udp == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v70: 把本机 lan-ipv6 上报到 API 服务器心跳，供设备菜单"IPv6 直连"使用。
+          # 必须在 patch_direct_access.py 之后运行（它写入 lan-ipv6 选项）。
+          python3 patches/patch_ipv6_heartbeat.py .
+          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
+
       - name: Inject direct connection E2EE (IPv4/IPv6)
         if: inputs.ip_direct_board == 'true' || inputs.ip_direct_e2ee == 'true'
         shell: bash
@@ -451,6 +462,16 @@ jobs:
           grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
           grep -q "_ipDirectAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _ipDirectAction"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
+
+      - name: Move Terminal to standalone connection-page button (v70)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v70: 把连接页"更多"菜单里的 Terminal 提为 ID 输入框下方的独立图标按钮，
+          # 与 Connect/"更多" 并列，名字叫"终端"。
+          python3 patches/patch_connection_terminal.py .
+          grep -q "Icons.terminal" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart 缺少独立 Terminal 按钮"; exit 1; }
 
       - name: Report Status
         continue-on-error: true
