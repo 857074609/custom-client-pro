@@ -177,7 +177,7 @@ jobs:
           if ex_raw:
               try:
                   ex = json.loads(ex_raw)
-                  for k in ('server','RS_PUB_KEY','apiServer','updateLink','downloadLink'):
+                  for k in ('server','RS_PUB_KEY','apiServer'):
                       if ex.get(k) and not data.get(k):
                           data[k] = ex[k]
               except Exception:
