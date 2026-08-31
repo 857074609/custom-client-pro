@@ -362,10 +362,10 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v70: 把连接页"更多"菜单里的 Terminal 提为 ID 输入框下方的独立图标按钮，
-          # 与 Connect/"更多" 并列，名字叫"终端"。
+          # v79: 终端按键移回"更多"菜单（移除控制栏独立按钮）。校验 Terminal 入口仍在
+          # （位于 more 菜单，含 onConnect(isTerminal: true)）。
           python3 patches/patch_connection_terminal.py .
-          grep -q "Icons.terminal" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart 缺少独立 Terminal 按钮"; exit 1; }
+          grep -qF 'onConnect(isTerminal: true)' flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart 缺少 Terminal 入口"; exit 1; }
 
       - name: skip custom client
         shell: bash
