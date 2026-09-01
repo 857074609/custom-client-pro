@@ -440,6 +440,26 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+      - name: iroh transport (LnDesk v88)
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_transport.py .
+          grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
+          grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
+
+      - name: iroh heartbeat (LnDesk v88)
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_heartbeat.py .
+          grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
+
+      - name: iroh menu (LnDesk v88)
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_menu.py .
+          if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
+            grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
+          fi
 
       - name: Disable rust bridge staticlib
         run: sed -i "s/\[\"cdylib\", \"staticlib\", \"rlib\"\]/\[\"cdylib\"\]/g" Cargo.toml
@@ -458,6 +478,11 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
+
+      - name: cargo fetch for iroh lock closure (LnDesk v88)
+        if: env.UPLOAD_ARTIFACT == 'true'
+        run: cargo fetch
+
 
       - name: Save Rust toolchain version
         if: env.UPLOAD_ARTIFACT == 'true'
