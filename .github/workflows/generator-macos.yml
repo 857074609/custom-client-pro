@@ -542,6 +542,8 @@ jobs:
             toolchain: ${{ env.MAC_RUST_VERSION }}
             targets: ${{ matrix.job.target }}
             components: "rustfmt"
+      - name: cargo fetch for iroh lock closure (LnDesk v88)
+        run: cargo fetch
   
       - uses: Swatinem/rust-cache@v2
         with:

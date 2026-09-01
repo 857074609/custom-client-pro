@@ -932,6 +932,8 @@ jobs:
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
+      - name: cargo fetch for iroh lock closure (LnDesk v88)
+        run: cargo fetch
 
 
       
