@@ -516,7 +516,16 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
       - name: cargo fetch for iroh lock closure (LnDesk v88)
-        run: cargo fetch
+        run: |
+          cargo fetch
+          cargo update -p idna_adapter@1.2.2 --precise 1.2.1 || true
+          cargo update -p icu_normalizer@2.3.0 --precise 2.1.1 || true
+          cargo update -p icu_collections@2.3.0 --precise 2.1.1 || true
+          cargo update -p icu_locale_core@2.3.0 --precise 2.1.0 || true
+          cargo update -p icu_provider@2.3.1 --precise 2.1.0 || true
+          cargo update -p icu_properties@2.3.0 --precise 2.1.0 || true
+          cargo update -p icu_properties_data@2.3.0 --precise 2.1.0 || true
+          cargo update -p icu_normalizer_data@2.3.0 --precise 2.1.0 || true
 
       - uses: Swatinem/rust-cache@v2
         with:
