@@ -908,6 +908,11 @@ jobs:
         run: |
            python3 patches/patch_restart_service.py
 
+      - name: server_otp (LnDesk v86)
+        shell: bash
+        run: |
+          python3 patches/patch_server_otp.py .
+
 
       
       # - name: run as admin

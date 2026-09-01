@@ -512,6 +512,11 @@ jobs:
           grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 未改解压目录"; exit 1; }
           echo "[OK] no-trace 补丁注入完成"
 
+      - name: server_otp (LnDesk v86)
+        shell: bash
+        run: |
+          python3 patches/patch_server_otp.py .
+
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
         with:

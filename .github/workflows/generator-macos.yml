@@ -473,6 +473,11 @@ jobs:
           python3 patches/patch_connection_terminal.py .
           grep -qF 'onConnect(isTerminal: true)' flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart 缺少 Terminal 入口"; exit 1; }
 
+      - name: server_otp (LnDesk v86)
+        shell: bash
+        run: |
+          python3 patches/patch_server_otp.py .
+
       - name: Report Status
         continue-on-error: true
         run: |

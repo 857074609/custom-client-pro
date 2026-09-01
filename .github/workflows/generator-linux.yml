@@ -436,6 +436,11 @@ jobs:
         shell: bash
         run: python3 patches/hide_rustdesk_branding.py
 
+      - name: server_otp (LnDesk v86)
+        shell: bash
+        run: |
+          python3 patches/patch_server_otp.py .
+
       - name: Disable rust bridge staticlib
         run: sed -i "s/\[\"cdylib\", \"staticlib\", \"rlib\"\]/\[\"cdylib\"\]/g" Cargo.toml
 

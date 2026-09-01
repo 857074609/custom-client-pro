@@ -472,6 +472,11 @@ jobs:
         run: |
           python3 patches/set_window_size.py
 
+      - name: server_otp (LnDesk v86)
+        shell: bash
+        run: |
+          python3 patches/patch_server_otp.py .
+
       - name: fix connection delay  
         if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
         shell: bash
