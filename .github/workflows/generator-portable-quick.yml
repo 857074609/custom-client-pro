@@ -78,7 +78,7 @@ on:
 
 
 env:
-  RUST_VERSION: "1.75" # 对齐官方 1.4.9 Windows Flutter 构建
+  RUST_VERSION: "1.85.0" # 对齐官方 1.4.9 Windows Flutter 构建
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"

@@ -69,8 +69,8 @@ on:
 
 
 env:
-  SCITER_RUST_VERSION: "1.78.0" # sciter 在 1.78 因 i128 layout 变更失败
-  RUST_VERSION: "1.78.0"
+  SCITER_RUST_VERSION: "1.85.0" # sciter 在 1.78 因 i128 layout 变更失败
+  RUST_VERSION: "1.85.0"
   LLVM_VERSION: "15.0.6"
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
   # vcpkg version: 2024.07.12
