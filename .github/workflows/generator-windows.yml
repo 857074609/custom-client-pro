@@ -933,6 +933,7 @@ jobs:
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
       - name: cargo fetch for iroh lock closure (LnDesk v88)
+        shell: bash
         run: |
           cargo fetch
           cargo update -p idna_adapter --precise 1.2.1

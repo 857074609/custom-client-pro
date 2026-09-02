@@ -571,6 +571,7 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
       - name: cargo fetch for iroh lock closure (LnDesk v88)
+        shell: bash
         run: |
           cargo fetch
           cargo update -p idna_adapter --precise 1.2.1
