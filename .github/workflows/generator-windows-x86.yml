@@ -456,6 +456,16 @@ jobs:
         run: |
            python3 patches/patch_common_client_disable_e2ee.py
 
+      - name: Apply direct e2ee patch (required by iroh)
+        # iroh transport's handle_iroh_connection calls create_tcp_connection with
+        # the 6th send_long_term_pk param, which this patch adds to the signature.
+        # Without it the x86 build fails to compile (create_tcp_connection would
+        # only have 5 params). All other generators already run this patch; x86
+        # must too for parity. Compatible with disable_e2ee (different code paths).
+        shell: bash
+        run: |
+           python3 patches/patch_direct_e2ee.py .
+
       - name: Apply silent-install & cert patches (#0011)
         shell: bash
         run: |
