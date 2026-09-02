@@ -518,26 +518,16 @@ jobs:
       - name: pin iroh lock closure to MSRV-safe versions (LnDesk v88)
         shell: bash
         run: |
-          # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter
-          # -> icu 2.x. The 1.85.0 toolchain cannot build icu 2.2/2.3 (rust-version
-          # 1.86/1.88). Pinning idna_adapter alone FAILS: it conflicts with the locked
-          # icu_provider 2.3.1 (which needs icu_normalizer ^2). The whole icu tree only
-          # flips to 1.x when BOTH switch packages move together, so pin the full coherent
-          # 1.x set atomically. In the 1.x stack icu_locale_core / icu_data /
-          # icu_codepointtrie* (2.x-only) simply leave the graph. Guarded so builds
-          # without iroh (e.g. quick) skip the pin cleanly.
+          # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter.
+          # idna_adapter is pinned to =1.2.0 in Cargo.toml (via patch_iroh_transport.py),
+          # which drags the whole icu subtree to the 1.x line (MSRV 1.67) so the pinned
+          # 1.85.0 toolchain can build the iroh closure. 1.2.0 is the only 1.2.x build
+          # that depends on icu 1.x; 1.2.1/1.2.2 pull icu 2.x (rust-version 1.82/1.86)
+          # which the toolchain cannot compile. The pin lives in Cargo.toml (not a
+          # post-hoc `cargo update`), so the first lock resolution already selects it.
+          # Guarded so builds without iroh (e.g. quick) skip the pin cleanly.
           if grep -q '^iroh' ./Cargo.toml; then
-            cargo update \
-              "idna_adapter@1.2.0" \
-              "icu_normalizer@1.5.0" \
-              "icu_provider@1.5.0" \
-              "icu_properties@1.5.0" \
-              "icu_collections@1.5.0" \
-              "icu_normalizer_data@1.5.0" \
-              "icu_properties_data@1.5.0" \
-              "icu_locid@1.5.0" \
-              "icu_provider_macros@1.5.0"
-            # Assertions: nothing requiring rustc > 1.85 may remain in the lock.
+            cargo fetch
             if ! grep -A1 'name = "idna_adapter"' ./Cargo.lock | grep -q '1\.2\.0'; then
               echo "[FAIL] idna_adapter is not 1.2.0"; exit 1
             fi
@@ -547,8 +537,8 @@ jobs:
             echo "[OK] MSRV-1.85 lock: idna_adapter $(grep -A1 'name = "idna_adapter"' ./Cargo.lock | tail -1)"
           else
             echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
+            cargo fetch
           fi
-          cargo fetch
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
