@@ -518,14 +518,14 @@ jobs:
       - name: cargo fetch for iroh lock closure (LnDesk v88)
         run: |
           cargo fetch
-          cargo update -p idna_adapter@1.2.2 --precise 1.2.1
-          cargo update -p icu_normalizer@2.3.0 --precise 2.1.1
-          cargo update -p icu_collections@2.3.0 --precise 2.1.1
-          cargo update -p icu_locale_core@2.3.0 --precise 2.1.1
-          cargo update -p icu_provider@2.3.1 --precise 2.1.1
-          cargo update -p icu_properties@2.3.0 --precise 2.1.2
-          cargo update -p icu_properties_data@2.3.0 --precise 2.1.2
-          cargo update -p icu_normalizer_data@2.3.0 --precise 2.1.1
+          cargo update -p idna_adapter --precise 1.2.1 || echo "[i] idna_adapter already at/below target"
+          cargo update -p icu_normalizer --precise 2.1.1 || echo "[i] icu_normalizer already at/below target"
+          cargo update -p icu_collections --precise 2.1.1 || echo "[i] icu_collections already at/below target"
+          cargo update -p icu_locale_core --precise 2.1.1 || echo "[i] icu_locale_core already at/below target"
+          cargo update -p icu_provider --precise 2.1.1 || echo "[i] icu_provider already at/below target"
+          cargo update -p icu_properties --precise 2.1.2 || echo "[i] icu_properties already at/below target"
+          cargo update -p icu_properties_data --precise 2.1.2 || echo "[i] icu_properties_data already at/below target"
+          cargo update -p icu_normalizer_data --precise 2.1.1 || echo "[i] icu_normalizer_data already at/below target"
 
       - uses: Swatinem/rust-cache@v2
         with:
