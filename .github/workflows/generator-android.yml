@@ -32,36 +32,6 @@ on:
         required: false
         default: 'false'
         type: string
-      ip_direct_board:
-        description: "LAN IP Direct Access board (reserved; desktop-only feature, no-op on Android)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_e2ee:
-        description: "IP direct connection end-to-end encryption (decoupled from ip_direct_board)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_udp:
-        description: "IP direct connection over UDP(KCP) transport (fallback to TCP)"
-        required: false
-        default: 'false'
-        type: string
-      api_device_sync:
-        description: "Sync online devices from API server into Accessible Devices tab, and add IP Direct / Delete Device menus"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_menu:
-        description: "Add IP Direct (IP直连) entry to the device context menu"
-        required: false
-        default: 'false'
-        type: string
-      enable_iroh_direct:
-        description: "Enable Iroh P2P direct connection support"
-        required: false
-        default: 'false'
-        type: string
       iconlink:
         description: "Icon source: 'true' uses GENURL+uuid mechanism; or pass http(s) PNG link directly; 'false' (default) keeps RustDesk default icon."
         required: false

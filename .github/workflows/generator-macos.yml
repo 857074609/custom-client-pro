@@ -32,36 +32,6 @@ on:
         required: false
         default: 'false'
         type: string
-      ip_direct_board:
-        description: "LAN IP Direct Access board (show local LAN IP + direct port on left panel)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_e2ee:
-        description: "IP direct connection end-to-end encryption (decoupled from ip_direct_board)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_udp:
-        description: "IP direct connection over UDP(KCP) transport (fallback to TCP)"
-        required: false
-        default: 'false'
-        type: string
-      api_device_sync:
-        description: "Sync online devices from API server into Accessible Devices tab, and add IP Direct / Delete Device menus"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_menu:
-        description: "Add IP Direct (IP直连) entry to the device context menu"
-        required: false
-        default: 'false'
-        type: string
-      enable_iroh_direct:
-        description: "Enable Iroh P2P direct connection support"
-        required: false
-        default: 'false'
-        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -439,7 +409,7 @@ jobs:
           python3 patches/patch_auto_silent_update.py
 
       - name: Inject LAN IP direct access board
-        if: inputs.ip_direct_board == 'true'
+        if: fromJson(inputs.extras).ip_direct_board == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -451,7 +421,7 @@ jobs:
           echo "[OK] 内网 IP 直连看板注入完成"
 
       - name: Report local IPv6 to API server (v70)
-        if: inputs.ip_direct_board == 'true' || inputs.ip_direct_udp == 'true'
+        if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_udp == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -462,7 +432,7 @@ jobs:
           grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
-        if: inputs.ip_direct_board == 'true' || inputs.ip_direct_e2ee == 'true'
+        if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_e2ee == 'true'
         shell: bash
         run: |
           # IP 直连端到端加密（含 IPv6）：服务端 secure=true + 客户端 secure_direct_connection。
@@ -472,7 +442,7 @@ jobs:
           grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
 
       - name: Patch direct access UDP transport
-        if: inputs.ip_direct_udp == 'true'
+        if: fromJson(inputs.extras).ip_direct_udp == 'true'
         shell: bash
         run: |
           # IP 直连 UDP(KCP) 传输：主控端 UDP 优先（2s 超时自动回退 TCP）；
@@ -482,7 +452,7 @@ jobs:
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
-        if: inputs.api_device_sync == 'true' || inputs.ip_direct_menu == 'true'
+        if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
         shell: bash
         run: |
           # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
@@ -507,7 +477,7 @@ jobs:
         run: |
           python3 patches/patch_server_otp.py .
       - name: iroh transport (v88)
-        if: inputs.enable_iroh_direct == 'true'
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           python3 patches/patch_iroh_transport.py .
@@ -515,14 +485,14 @@ jobs:
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
 
       - name: iroh heartbeat (v88)
-        if: inputs.enable_iroh_direct == 'true'
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           python3 patches/patch_iroh_heartbeat.py .
           grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
 
       - name: iroh menu (v88)
-        if: inputs.enable_iroh_direct == 'true'
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           python3 patches/patch_iroh_menu.py .

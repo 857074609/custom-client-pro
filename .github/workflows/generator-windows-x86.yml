@@ -31,36 +31,6 @@ on:
         required: false
         default: 'false'
         type: string
-      ip_direct_board:
-        description: "LAN IP Direct Access board (reserved; not applicable to x86 Sciter builds)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_e2ee:
-        description: "IP direct connection end-to-end encryption (decoupled from ip_direct_board)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_udp:
-        description: "IP direct connection over UDP(KCP) transport (fallback to TCP)"
-        required: false
-        default: 'false'
-        type: string
-      api_device_sync:
-        description: "Sync online devices from API server into Accessible Devices tab, and add IP Direct / Delete Device menus"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_menu:
-        description: "Add IP Direct (IP直连) entry to the device context menu"
-        required: false
-        default: 'false'
-        type: string
-      enable_iroh_direct:
-        description: "Enable Iroh P2P direct connection support"
-        required: false
-        default: 'false'
-        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -514,7 +484,7 @@ jobs:
         run: |
           python3 patches/patch_server_otp.py .
       - name: iroh transport (v88)
-        if: inputs.enable_iroh_direct == 'true'
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           python3 patches/patch_iroh_transport.py .
@@ -522,14 +492,14 @@ jobs:
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
 
       - name: iroh heartbeat (v88)
-        if: inputs.enable_iroh_direct == 'true'
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           python3 patches/patch_iroh_heartbeat.py .
           grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
 
       - name: iroh menu (v88)
-        if: inputs.enable_iroh_direct == 'true'
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           python3 patches/patch_iroh_menu.py .
