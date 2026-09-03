@@ -135,6 +135,19 @@ jobs:
           # - { target: aarch64-pc-windows-msvc, os: windows-2022, arch: aarch64 }
     steps:
      
+      - name: Guard - iroh OFF must use win7 workflow
+        if: ${{ fromJson(inputs.extras).enable_iroh_direct != 'true' }}
+        run: |
+          # Routing contract (2026-09-04): with iroh disabled, the dispatcher
+          # (custom-client-docker builder/core/actions.py) must send this build
+          # to generator-windows-x86_64-win7.yml (RUST 1.75 + win7 target).
+          # This workflow always builds on Rust 1.85 + default target, whose
+          # artifacts are NOT Win7-compatible. Reaching here with iroh OFF
+          # means the dispatcher is outdated - fail loudly instead of
+          # silently producing a wrong-variant binary.
+          echo "::error::enable_iroh_direct=false but this run is on generator-windows.yml (1.85 + default target, NOT Win7-compatible)."
+          echo "::error::The dispatcher (custom-client-docker actions.py) is outdated: redeploy it so 'windows'+iroh=off routes to generator-windows-x86_64-win7.yml, or dispatch that workflow manually."
+          exit 1
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
