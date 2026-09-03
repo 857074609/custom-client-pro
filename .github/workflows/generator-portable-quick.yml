@@ -65,8 +65,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
   RUST_VERSION: "1.85.0" # 对齐官方 1.4.9 Windows Flutter 构建
-  # win7 target removed 2026-09-04: Rust 1.79+ no longer ships rust-std for *-win7-* (conflicts with mandatory 1.85 toolchain).
-  CARGO_BUILD_TARGET: "x86_64-pc-windows-msvc"
+  # Do NOT set CARGO_BUILD_TARGET: it makes cargo emit to target/<triple>/release/ instead
+  # of target/release/, which breaks build.py (librustdesk.dll existence check at line 443)
+  # and flutter/windows/CMakeLists.txt (RUSTDESK_LIB). Host triple is already correct here.
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"

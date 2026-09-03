@@ -66,8 +66,9 @@ concurrency:
 env:
   SCITER_RUST_VERSION: "1.85.0" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   RUST_VERSION: "1.85.0" # 对齐官方 1.4.9 Windows Flutter 构建（官方 Windows 用 1.75；1.78 的 std/codegen 在 Win7 上更易触发 0xc0000005）
-  # win7 target removed 2026-09-04: Rust 1.79+ no longer ships rust-std for *-win7-* (conflicts with mandatory 1.85 toolchain).
-  CARGO_BUILD_TARGET: "x86_64-pc-windows-msvc"
+  # Do NOT set CARGO_BUILD_TARGET: it makes cargo emit to target/<triple>/release/ instead
+  # of target/release/, which breaks build.py (librustdesk.dll existence check at line 443)
+  # and flutter/windows/CMakeLists.txt (RUSTDESK_LIB). Host triple is already correct here.
   MAC_RUST_VERSION: "1.85.0" # 1.81 is requred for macos, because of https://github.com/yury/cidre requires 1.81
   CARGO_NDK_VERSION: "3.1.2"
   SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
