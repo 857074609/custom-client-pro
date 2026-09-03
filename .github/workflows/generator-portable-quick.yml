@@ -50,6 +50,16 @@ on:
         required: false
         default: 'false'
         type: string
+      ip_direct_menu:
+        description: "Add IP Direct (IP直连) entry to the device context menu"
+        required: false
+        default: 'false'
+        type: string
+      enable_iroh_direct:
+        description: "Enable Iroh P2P direct connection support"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -354,7 +364,7 @@ jobs:
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
-        if: inputs.api_device_sync == 'true'
+        if: inputs.api_device_sync == 'true' || inputs.ip_direct_menu == 'true'
         shell: bash
         run: |
           # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
