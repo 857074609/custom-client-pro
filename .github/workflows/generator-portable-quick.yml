@@ -153,6 +153,12 @@ jobs:
         run: |
           echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> "$GITHUB_ENV"
 
+      - name: Compute sanitized app tag
+        shell: bash
+        run: |
+          APP_TAG=$(echo "${{ inputs.appname }}" | tr ' ' '_' | tr -cd 'A-Za-z0-9._-')
+          echo "APP_TAG=$APP_TAG" >> "$GITHUB_ENV"
+
       - name: Checkout source code
         uses: actions/checkout@v5
         with:
@@ -774,7 +780,7 @@ jobs:
           python3 ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${{ inputs.appname }}.exe"
           popd
           mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/${{ inputs.appname }}-quick.exe"
+          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/${APP_TAG}-quick.exe"
           ls -l ./SignOutput
 
       - name: Sign Windows binary (EXE only)
@@ -840,6 +846,7 @@ jobs:
 
       - name: Create GitHub Release and Upload Assets
         if: success()
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -866,7 +873,6 @@ jobs:
             "$URL"
 
       - name: Report Status
-        if: success()
         continue-on-error: true
         shell: bash
         timeout-minutes: 60
