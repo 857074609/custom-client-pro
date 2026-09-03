@@ -519,11 +519,11 @@ jobs:
           grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 未改解压目录"; exit 1; }
           echo "[OK] no-trace 补丁注入完成"
 
-      - name: server_otp (LnDesk v86)
+      - name: server_otp (v86)
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
-      # iroh P2P direct connection (LnDesk v88) is intentionally NOT built in the
+      # iroh P2P direct connection (v88) is intentionally NOT built in the
       # portable-quick variant: the iroh closure adds the url 2.5.4 -> idna 1.1 ->
       # idna_adapter -> icu 2.x chain which needs the full MSRV-1.85 lock pinning,
       # and quick is meant to stay lean. The pin step below is guarded on `^iroh`
@@ -580,7 +580,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
-      - name: pin iroh lock closure to MSRV-safe versions (LnDesk v88)
+      - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
         run: |
           # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter.

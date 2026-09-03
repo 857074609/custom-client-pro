@@ -559,7 +559,7 @@ jobs:
         run: |
           python3 patches/patch_websocket_custom_port.py
 
-      - name: server_otp (LnDesk v86)
+      - name: server_otp (v86)
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .

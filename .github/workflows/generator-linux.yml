@@ -443,24 +443,24 @@ jobs:
         shell: bash
         run: python3 patches/hide_rustdesk_branding.py
 
-      - name: server_otp (LnDesk v86)
+      - name: server_otp (v86)
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
-      - name: iroh transport (LnDesk v88)
+      - name: iroh transport (v88)
         shell: bash
         run: |
           python3 patches/patch_iroh_transport.py .
           grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
 
-      - name: iroh heartbeat (LnDesk v88)
+      - name: iroh heartbeat (v88)
         shell: bash
         run: |
           python3 patches/patch_iroh_heartbeat.py .
           grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
 
-      - name: iroh menu (LnDesk v88)
+      - name: iroh menu (v88)
         shell: bash
         run: |
           python3 patches/patch_iroh_menu.py .
@@ -493,7 +493,7 @@ jobs:
         with:
           prefix-key: linux-host-${{ matrix.job.target }}
 
-      - name: pin iroh lock closure to MSRV-safe versions (LnDesk v88)
+      - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
         run: |
           # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter.
