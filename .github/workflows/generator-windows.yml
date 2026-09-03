@@ -977,14 +977,58 @@ jobs:
           cd ..
 
      
+      - name: Cache vcpkg installed tree + source downloads
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/downloads
+          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
+
+      # Exact cache hit -> installed tree already matches this manifest + overlay
+      # ports + triplet, so vcpkg install is a no-op; skip it entirely (~0s).
+      # Partial hit (restore-keys) -> run install, vcpkg resumes the delta from
+      # the restored downloads/installed instead of rebuilding everything.
       - name: Install vcpkg dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         shell: bash
         run: |
-          $VCPKG_ROOT/vcpkg install \
-            --triplet ${{ matrix.job.vcpkg-triplet }} \
-            --x-install-root="$VCPKG_ROOT/installed"
+          ok=0
+          for i in 1 2 3 4 5; do
+            echo "::group::vcpkg install attempt $i"
+            if $VCPKG_ROOT/vcpkg install \
+              --triplet ${{ matrix.job.vcpkg-triplet }} \
+              --x-install-root="$VCPKG_ROOT/installed"; then
+              ok=1
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            echo "attempt $i failed, retrying in 30s (vcpkg resumes completed ports)"
+            sleep 30
+          done
+          if [ "$ok" -ne 1 ]; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+
+      - name: Verify vcpkg deps (cache-hit path)
+        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
+          echo "vcpkg deps restored from cache OK"
 
       - name: Build rustdesk
         run: |
