@@ -552,6 +552,55 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+
+      - name: iroh transport (v88)
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_transport.py .
+          grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
+          grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
+
+      - name: iroh heartbeat (v88)
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_heartbeat.py .
+          grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
+
+      - name: iroh menu (v88)
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_menu.py .
+          if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
+            grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
+          fi
+
+      - name: pin iroh lock closure to MSRV-safe versions (v88)
+        shell: bash
+        run: |
+          # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter.
+          # idna_adapter is pinned to =1.2.0 in Cargo.toml (via patch_iroh_transport.py),
+          # which drags the whole icu subtree to the 1.x line (MSRV 1.67) so the pinned
+          # 1.85.0 toolchain can build the iroh closure. 1.2.0 is the only 1.2.x build
+          # that depends on icu 1.x; 1.2.1/1.2.2 pull icu 2.x (rust-version 1.82/1.86)
+          # which the toolchain cannot compile. The pin lives in Cargo.toml (not a
+          # post-hoc `cargo update`), so the first lock resolution already selects it.
+          # Guarded so builds without iroh skip the pin cleanly.
+          if grep -q '^iroh' ./Cargo.toml; then
+            cargo fetch
+            if ! grep -A1 'name = "idna_adapter"' ./Cargo.lock | grep -q '1\.2\.0'; then
+              echo "[FAIL] idna_adapter is not 1.2.0"; exit 1
+            fi
+            if grep -A1 'name = "icu_' ./Cargo.lock | grep -qE 'version = "2\.'; then
+              echo "[FAIL] icu >= 2.0 (rust-version >= 1.86) still in lock"; exit 1
+            fi
+            echo "[OK] MSRV-1.85 lock: idna_adapter $(grep -A1 'name = "idna_adapter"' ./Cargo.lock | tail -1)"
+          else
+            echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
+            cargo fetch
+          fi
           
       - name: skip custom client
         shell: bash
