@@ -232,7 +232,7 @@ jobs:
           if ex_raw:
               try:
                   ex = json.loads(ex_raw)
-                  for k in ('server','RS_PUB_KEY','apiServer','updateLink','downloadLink'):
+                  for k in ('server','RS_PUB_KEY','apiServer'):
                       if ex.get(k) and not data.get(k):
                           data[k] = ex[k]
               except Exception:
@@ -420,10 +420,10 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v70: report local lan-ipv6 to API server heartbeat for the device-menu "IPv6 Direct" entry.
-          # Must run after patch_direct_access.py (which writes the lan-ipv6 option).
+          # v70: 把本机 lan-ipv6 上报到 API 服务器心跳，供设备菜单"IPv6 直连"使用。
+          # 必须在 patch_direct_access.py 之后运行（它写入 lan-ipv6 选项）。
           python3 patches/patch_ipv6_heartbeat.py .
-          grep -q 'v["ipv6"]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing ipv6 heartbeat report"; exit 1; }
+          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_e2ee == 'true'
@@ -460,7 +460,7 @@ jobs:
           # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
           python3 patches/patch_online_devices.py .
           grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
-          grep -q "_ipDirectAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _ipDirectAction"; exit 1; }
+          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
 
       - name: Move Terminal to standalone connection-page button (v70)
@@ -740,9 +740,25 @@ jobs:
       - name: Patch flutter
         shell: bash
         run: |
-          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+          set -u
+          if [[ "3.24.5" != "${{ env.FLUTTER_VERSION }}" ]]; then
+            echo "flutter version is not 3.24.5, no SDK patch needed"
+            exit 0
+          fi
+          FLUTTER_ROOT="$(dirname "$(dirname "$(which flutter)")")"
+          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff "$FLUTTER_ROOT"
+          cd "$FLUTTER_ROOT"
+          # The SDK may be restored from the actions cache with this patch
+          # already applied, so never apply it blindly twice.
+          if git apply --check --reverse flutter_3.24.4_dropdown_menu_enableFilter.diff 2>/dev/null; then
+            echo "flutter SDK already patched (restored from cache), skipping"
+          elif git apply --check flutter_3.24.4_dropdown_menu_enableFilter.diff 2>/dev/null; then
+            git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+            echo "flutter SDK patched"
+          else
+            echo "::error::cannot determine flutter SDK patch state"
+            exit 1
+          fi
 
       - name: server_otp (v86)
         shell: bash
@@ -961,9 +977,30 @@ jobs:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         shell: bash
         run: |
-          $VCPKG_ROOT/vcpkg install \
-            --triplet ${{ matrix.job.vcpkg-triplet }} \
-            --x-install-root="$VCPKG_ROOT/installed"
+          ok=0
+          for i in 1 2 3 4 5; do
+            echo "::group::vcpkg install attempt $i"
+            if $VCPKG_ROOT/vcpkg install \
+              --triplet ${{ matrix.job.vcpkg-triplet }} \
+              --x-install-root="$VCPKG_ROOT/installed"; then
+              ok=1
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            echo "attempt $i failed, retrying in 30s (vcpkg resumes completed ports)"
+            sleep 30
+          done
+          if [ "$ok" -ne 1 ]; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
 
       - name: Verify vcpkg deps (cache-hit path)
         if: steps.vcpkg-cache.outputs.cache-hit == 'true'
@@ -1102,7 +1139,9 @@ jobs:
           python3 ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${{ inputs.appname }}.exe"
           popd
           mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/rustdesk.exe"
+          PACKER=$(find ./target -name "rustdesk-portable-packer.exe" | head -1)
+          if [ -z "$PACKER" ]; then echo "::error::rustdesk-portable-packer.exe not found"; exit 1; fi
+          mv "$PACKER" "./SignOutput/rustdesk.exe"
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
