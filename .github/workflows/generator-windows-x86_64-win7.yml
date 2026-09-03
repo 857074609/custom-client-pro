@@ -79,8 +79,7 @@ on:
 
 env:
   SCITER_RUST_VERSION: "1.78.0" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
-  RUST_VERSION: "1.75" # 对齐官方 1.4.9 Windows Flutter 构建（官方 Windows 用 1.75；1.78 的 std/codegen 在 Win7 上更易触发 0xc0000005）
-  CARGO_BUILD_TARGET: "x86_64-win7-windows-msvc"
+  RUST_VERSION: "1.75" # non-iroh route; 1.75 old toolchain (no iroh MSRV pressure). NOTE: *-win7-* rust-std was NEVER on stable channels (Tier 3), so the default pc-windows-msvc target is used.
   MAC_RUST_VERSION: "1.81.0" # 1.81 is requred for macos, because of https://github.com/yury/cidre requires 1.81
   CARGO_NDK_VERSION: "3.1.2"
   SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
@@ -139,7 +138,7 @@ jobs:
           # - { target: i686-pc-windows-msvc        , os: windows-2022                  }
           # - { target: x86_64-pc-windows-gnu       , os: windows-2022                  }
           - {
-              target: x86_64-win7-windows-msvc,
+              target: x86_64-pc-windows-msvc,
               os: windows-2022,
               arch: x86_64,
               vcpkg-triplet: x64-windows-static,
@@ -1008,23 +1007,6 @@ jobs:
         run: |
           test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
           echo "vcpkg deps restored from cache OK"
-
-      - name: Redirect cargo output dir for win7 target
-        shell: bash
-        run: |
-          # CARGO_BUILD_TARGET is REQUIRED here to build the *-win7-* triple, but it makes cargo
-          # emit artifacts to target/<triple>/release/ instead of target/release/, while both
-          # build.py (librustdesk.dll check + dylib_virtual_display copy) and
-          # flutter/windows/CMakeLists.txt (RUSTDESK_LIB) hardcode target/release/.
-          # Rewrite those paths so the win7 artifacts are actually found.
-          T="${CARGO_BUILD_TARGET:-x86_64-win7-windows-msvc}"
-          test -n "$T" || { echo "[FAIL] CARGO_BUILD_TARGET not set"; exit 1; }
-          sed -i -e "s|target/release/librustdesk.dll|target/$T/release/librustdesk.dll|g" ./build.py
-          sed -i -e "s|target/release/deps/dylib_virtual_display.dll|target/$T/release/deps/dylib_virtual_display.dll|g" ./build.py
-          sed -i -e "s|../../target/\${RUSTDESK_LIB_BUILD_TYPE}/librustdesk.dll|../../target/$T/\${RUSTDESK_LIB_BUILD_TYPE}/librustdesk.dll|g" ./flutter/windows/CMakeLists.txt
-          grep -q "target/$T/release/librustdesk.dll" ./build.py || { echo "[FAIL] build.py win7 lib path not patched"; exit 1; }
-          grep -q "target/$T/\${RUSTDESK_LIB_BUILD_TYPE}/librustdesk.dll" ./flutter/windows/CMakeLists.txt || { echo "[FAIL] CMakeLists win7 lib path not patched"; exit 1; }
-          echo "win7 cargo output paths patched OK"
 
       - name: Build rustdesk
         run: |
