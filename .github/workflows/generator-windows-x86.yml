@@ -81,9 +81,8 @@ env:
   WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
   # cargo 走 git CLI 拉 git 依赖, 避免 Windows schannel 代理下 SEC_E_UNTRUSTED_ROOT
   CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-  # 强制 cargo 默认目标为 i686-win7, 使自解压 packer 也编成 32 位
-  # win7 target: std/getrandom 走 RtlGenRandom（XP 起可用）, 规避 1.78+ ProcessPrng（仅 Win10+）在 Win7 加载期 0xc0000005; 产物 Win7→Win11 通用
-  CARGO_BUILD_TARGET: "i686-win7-windows-msvc"
+  # force cargo default target to i686 so the self-extracting packer is also built 32-bit (win7 target removed 2026-09-04).
+  CARGO_BUILD_TARGET: "i686-pc-windows-msvc"
   # 不设 SODIUM_LIB_DIR: libsodium-sys 走自带预编译包; Build 步骤 4.5 按目标架构选 x64/Win32
   # rust-cache 独立 key (sciter32-<arch>) 防跨架构缓存污染 (LNK4272)
 
@@ -97,7 +96,7 @@ jobs:
       matrix:
         job:
           - {
-              target: i686-win7-windows-msvc,
+              target: i686-pc-windows-msvc,
               os: windows-2022,
               arch: x86,
               vcpkg-triplet: x86-windows-static,
@@ -758,12 +757,12 @@ jobs:
           cargo clean -p libsodium-sys -p sodiumoxide 2>/dev/null || true
 
           # 5) 编译 32 位 Sciter (不传 --flutter); 不能用 --locked (本流程改 Cargo.toml 致锁文件不一致)
-          cargo build --release --features inline,vram,hwcodec --target i686-win7-windows-msvc --bins
+          cargo build --release --features inline,vram,hwcodec --target i686-pc-windows-msvc --bins
 
           # 收集产物并下载 32 位 sciter.dll (必须 x32, 否则无法启动)
           mkdir -p ./rustdesk
-          cp ./target/i686-win7-windows-msvc/release/rustdesk.exe ./rustdesk/ || exit 1
-          cp ./target/i686-win7-windows-msvc/release/*.dll ./rustdesk/ 2>/dev/null || true
+          cp ./target/i686-pc-windows-msvc/release/rustdesk.exe ./rustdesk/ || exit 1
+          cp ./target/i686-pc-windows-msvc/release/*.dll ./rustdesk/ 2>/dev/null || true
           curl -LJ -o ./rustdesk/sciter.dll https://github.com/c-smile/sciter-sdk/raw/master/bin.win/x32/sciter.dll
           echo "sciter.dll size: $(stat -c%s ./rustdesk/sciter.dll 2>/dev/null || echo unknown)"
 
