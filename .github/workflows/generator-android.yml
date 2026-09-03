@@ -102,8 +102,7 @@ on:
 # that is already in flight instead of queueing behind it. Different generators
 # use different groups, so parallel Windows/Linux/Android builds are unaffected.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
   SCITER_RUST_VERSION: "1.75"
   RUST_VERSION: "1.75"
