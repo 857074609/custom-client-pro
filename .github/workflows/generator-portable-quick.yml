@@ -532,11 +532,29 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
-      # iroh P2P direct connection (v88) is intentionally NOT built in the
-      # portable-quick variant: the iroh closure adds the url 2.5.4 -> idna 1.1 ->
-      # idna_adapter -> icu 2.x chain which needs the full MSRV-1.85 lock pinning,
-      # and quick is meant to stay lean. The pin step below is guarded on `^iroh`
-      # in Cargo.toml, so it skips cleanly here.
+      - name: iroh transport (v88)
+        if: inputs.enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_transport.py .
+          grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
+          grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
+
+      - name: iroh heartbeat (v88)
+        if: inputs.enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_heartbeat.py .
+          grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
+
+      - name: iroh menu (v88)
+        if: inputs.enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_iroh_menu.py .
+          if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
+            grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
+          fi
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
