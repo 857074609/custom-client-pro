@@ -95,6 +95,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
   RUST_VERSION: "1.85.0" # 对齐官方 1.4.9 Windows Flutter 构建
+  # win7 target: std/getrandom 走 RtlGenRandom, 规避 1.78+ ProcessPrng(Win10+) 在 Win7 的 0xc0000005; 产物 Win7→Win11 通用
+  CARGO_BUILD_TARGET: "x86_64-win7-windows-msvc"
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
@@ -134,7 +136,7 @@ jobs:
       matrix:
         job:
           - {
-              target: x86_64-pc-windows-msvc,
+              target: x86_64-win7-windows-msvc,
               os: windows-2022,
               arch: x86_64,
               vcpkg-triplet: x64-windows-static,
@@ -780,7 +782,9 @@ jobs:
           python3 ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${{ inputs.appname }}.exe"
           popd
           mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/${APP_TAG}-quick.exe"
+          PACKER=$(find ./target -name "rustdesk-portable-packer.exe" | head -1)
+          if [ -z "$PACKER" ]; then echo "::error::rustdesk-portable-packer.exe not found"; exit 1; fi
+          mv "$PACKER" "./SignOutput/${APP_TAG}-quick.exe"
           ls -l ./SignOutput
 
       - name: Sign Windows binary (EXE only)
