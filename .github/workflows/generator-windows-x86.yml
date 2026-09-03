@@ -68,6 +68,13 @@ on:
         type: string
 
 
+
+# Drop a superseded run: dispatching the same generator again cancels the run
+# that is already in flight instead of queueing behind it. Different generators
+# use different groups, so parallel Windows/Linux/Android builds are unaffected.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   SCITER_RUST_VERSION: "1.85.0" # sciter 在 1.78 因 i128 layout 变更失败
   RUST_VERSION: "1.85.0"
@@ -626,7 +633,25 @@ jobs:
           ls -l "$VCPKG_ROOT/vcpkg.exe"
           "$VCPKG_ROOT/vcpkg.exe" version
 
+      - name: Cache vcpkg installed tree + source downloads
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/downloads
+          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
+
+      # The x86 triplet has no warm binary cache upstream, so every port
+      # (aom/ffmpeg/libvpx/opus/...) was compiled from source on each run.
+      # Exact cache hit -> installed tree already matches this manifest +
+      # overlay ports + triplet, so vcpkg install is a no-op; skip it (~0s).
+      # Partial hit (restore-keys) -> run install; vcpkg resumes the delta
+      # from the restored downloads/installed instead of rebuilding all.
       - name: Install vcpkg dependencies (32-bit)
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         shell: bash
@@ -661,6 +686,12 @@ jobs:
           fi
           # 2) 不装 libsodium: libsodium-sys 自带预编译包按目标自动选取
        
+      - name: Verify vcpkg deps (cache-hit path)
+        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
+          echo "vcpkg deps restored from cache OK"
 
       - name: magick stuff
         if: ${{ inputs.iconlink == 'true' }}

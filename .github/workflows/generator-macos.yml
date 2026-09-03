@@ -78,6 +78,13 @@ on:
         default: '{}'
         type: string
 
+
+# Drop a superseded run: dispatching the same generator again cancels the run
+# that is already in flight instead of queueing behind it. Different generators
+# use different groups, so parallel Windows/Linux/Android builds are unaffected.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   SCITER_RUST_VERSION: "1.85.0" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   RUST_VERSION: "1.85.0" # sciter failed on m1 with 1.78 because of https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
@@ -243,6 +250,8 @@ jobs:
             repository: rustdesk/rustdesk
             ref: refs/tags/${{ env.VERSION }}
             submodules: recursive
+            # No step in this workflow needs history (no git describe/rev-parse).
+            fetch-depth: 1
   
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
@@ -250,6 +259,7 @@ jobs:
         with:
             repository: rustdesk/rustdesk
             submodules: recursive
+            fetch-depth: 1
 
       - name: Checkout patches scripts
         uses: actions/checkout@v4
@@ -259,6 +269,16 @@ jobs:
             token: ${{ secrets.REPO }}
             ref: main
             clean: false
+
+      # Homebrew bottle download cache. A miss is harmless (brew just re-downloads);
+      # a hit removes most of the brew install wall time for llvm/create-dmg/nasm/...
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.job.os }}-${{ matrix.job.target }}-v1
+          restore-keys: |
+            brew-${{ matrix.job.os }}-${{ matrix.job.target }}-
 
       - name: Install imagemagick and potrace and nasm and and
         shell: bash
@@ -521,6 +541,10 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
+          # Cache the Flutter SDK itself (~1GB download+unzip) keyed by version.
+          # The "Patch flutter" step below is continue-on-error, so a cached SDK
+          # that already carries the patch is handled gracefully.
+          cache: true
 
       - name: Patch flutter
         continue-on-error: true
@@ -695,6 +719,14 @@ jobs:
             echo "::notice::No custom icon downloaded (iconlink='${{ inputs.iconlink }}'), keeping RustDesk default icon"
           fi
 
+      - name: Cache Dart/Flutter pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ matrix.job.os }}-${{ matrix.job.target }}-${{ hashFiles('flutter/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ matrix.job.os }}-${{ matrix.job.target }}-
+
       - name: replace flutter icons
         if: ${{ inputs.iconlink != 'false' }}
         continue-on-error: false
@@ -779,7 +811,7 @@ jobs:
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
       - name: Restore bridge files
-        uses: actions/download-artifact@master
+        uses: actions/download-artifact@v4
         with:
           name: bridge-artifact
           path: ./

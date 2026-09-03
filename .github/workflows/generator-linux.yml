@@ -85,6 +85,13 @@ on:
         default: '{}'
         type: string
 
+
+# Drop a superseded run: dispatching the same generator again cancels the run
+# that is already in flight instead of queueing behind it. Different generators
+# use different groups, so parallel Windows/Linux/Android builds are unaffected.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   RUST_VERSION: "1.85.0"
   FLUTTER_VERSION: "3.24.5"
@@ -479,6 +486,13 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
+      # Host-side cargo registry/git cache: makes the `cargo fetch` below (which
+      # resolves the whole dependency graph, iroh included) mostly a no-op on a
+      # hit. The host never builds, so the target dir it also covers is tiny.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: linux-host-${{ matrix.job.target }}
+
       - name: pin iroh lock closure to MSRV-safe versions (LnDesk v88)
         shell: bash
         run: |
@@ -545,6 +559,29 @@ jobs:
         shell: bash
 
       # ---------- ubuntu18.04 容器内构建 (deb + rpm + suse-rpm) ----------
+      # ---------- /opt/artifacts 持久化缓存 (挂进 arch 容器, 跨 run 复用) ----------
+      # The build runs inside the run-on-arch container, whose filesystem is thrown
+      # away after every run. Everything it downloads therefore has to be re-fetched
+      # each time (hundreds of crates under QEMU for aarch64/armv7). /opt/artifacts is
+      # bind-mounted into the container, so caching it on the host makes those
+      # downloads persist. The cargo registry is arch-independent: one key serves the
+      # whole matrix, and restore-keys keeps it warm across Cargo.lock changes.
+      - name: Cache cargo registry (shared by the arch container)
+        uses: actions/cache@v4
+        with:
+          path: /opt/artifacts/cargo
+          key: cargo-reg-linux-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-reg-linux-
+
+      # rust-<version>-<target>.tar.gz is ~250MB and was re-downloaded + untarred
+      # for every arch on every run.
+      - name: Cache Rust toolchain dist (per target)
+        uses: actions/cache@v4
+        with:
+          path: /opt/artifacts/rust-dist
+          key: rust-dist-${{ env.RUST_TOOLCHAIN_VERSION }}-${{ matrix.job.target }}
+
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # commit 2026-05-26
         name: Build rustdesk (cargo lib + flutter + deb + rpm + suse-rpm)
         id: vcpkg
@@ -570,19 +607,31 @@ jobs:
             apt-get remove -y libopus-dev || true
           run: |
             git config --global --add safe.directory "*"
+            RTV="${{ env.RUST_TOOLCHAIN_VERSION }}"
+            TGT="${{ matrix.job.target }}"
+            # Rust toolchain: the dist tarball is cached in /opt/artifacts, so it is
+            # only fetched from static.rust-lang.org when the cache misses.
+            mkdir -p /opt/artifacts/rust-dist
+            if [ ! -f "/opt/artifacts/rust-dist/rust-$RTV-$TGT.tar.gz" ]; then
+              wget -O "/opt/artifacts/rust-dist/rust-$RTV-$TGT.tar.gz" \
+                "https://static.rust-lang.org/dist/rust-$RTV-$TGT.tar.gz"
+            fi
             pushd /opt
-            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}.tar.gz
-            tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
-            cd rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }} && ./install.sh
-            rm -rf rust-${{env.RUST_TOOLCHAIN_VERSION}}-${{ matrix.job.target }}
-            mkdir -p ~/.cargo/
-            printf '[source.crates-io]\nregistry = '"'"'https://github.com/rust-lang/crates.io-index'"'"'\n' > ~/.cargo/config
-            cat ~/.cargo/config
+            tar -zxvf "/opt/artifacts/rust-dist/rust-$RTV-$TGT.tar.gz" > /dev/null
+            cd "rust-$RTV-$TGT" && ./install.sh
+            rm -rf "rust-$RTV-$TGT"
+            # CARGO_HOME is moved onto the bind-mounted /opt/artifacts so the crate
+            # registry survives across runs; otherwise every run re-downloads the
+            # whole dependency graph (iroh included) inside the emulated container.
+            export CARGO_HOME=/opt/artifacts/cargo
+            mkdir -p "$CARGO_HOME"
+            printf '[source.crates-io]\nregistry = '"'"'https://github.com/rust-lang/crates.io-index'"'"'\n' > "$CARGO_HOME/config"
+            cat "$CARGO_HOME/config"
             pushd /workspace
             export VCPKG_ROOT=/opt/artifacts/vcpkg
             JOBS=""; if [[ "${{ matrix.job.arch }}" == "aarch64" ]]; then JOBS="--jobs 3"; fi
             cargo build --locked --lib $JOBS --features hwcodec,flutter,unix-file-copy-paste --release
-            rm -rf target/release/deps target/release/build ~/.cargo
+            rm -rf target/release/deps target/release/build
 
             # Flutter toolchain (aarch64 用 flutter-elinux)
             pushd /workspace
@@ -649,6 +698,15 @@ jobs:
             pushd ~/rpmbuild/RPMS/${{ matrix.job.arch }}
             for name in *.rpm; do [ -e "$name" ] || continue; mv "$name" /workspace/"${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-suse.rpm"; done
             popd
+
+      # The container wrote into /opt/artifacts/cargo as root; hand the tree back to
+      # the runner user so the cache post-step can archive (and later delete) it.
+      - name: Fix ownership of cached cargo home
+        shell: bash
+        run: |
+          if [ -d /opt/artifacts/cargo ]; then
+            sudo chown -R "$(id -u):$(id -g)" /opt/artifacts/cargo || true
+          fi
 
       # ---------- archlinux (.pkg.tar.zst): 仅 x86_64 (rustdesk-org/arch-makepkg-action 在 Arch 容器内只能产 x86_64 包; aarch64 无法构建故跳过) ----------
       - name: Patch archlinux PKGBUILD

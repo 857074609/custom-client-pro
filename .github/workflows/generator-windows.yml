@@ -77,6 +77,13 @@ on:
         type: string
 
 
+
+# Drop a superseded run: dispatching the same generator again cancels the run
+# that is already in flight instead of queueing behind it. Different generators
+# use different groups, so parallel Windows/Linux/Android builds are unaffected.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   SCITER_RUST_VERSION: "1.85.0" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   RUST_VERSION: "1.85.0" # 对齐官方 1.4.9 Windows Flutter 构建（官方 Windows 用 1.75；1.78 的 std/codegen 在 Win7 上更易触发 0xc0000005）
@@ -727,6 +734,8 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
+          # Cache the Flutter SDK itself (~1GB download+unzip) keyed by version.
+          cache: true
 
       # https://github.com/flutter/flutter/issues/155685
       - name: Replace engine with rustdesk custom flutter engine
@@ -740,9 +749,25 @@ jobs:
       - name: Patch flutter
         shell: bash
         run: |
-          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+          set -u
+          if [[ "3.24.5" != "${{ env.FLUTTER_VERSION }}" ]]; then
+            echo "flutter version is not 3.24.5, no SDK patch needed"
+            exit 0
+          fi
+          FLUTTER_ROOT="$(dirname "$(dirname "$(which flutter)")")"
+          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff "$FLUTTER_ROOT"
+          cd "$FLUTTER_ROOT"
+          # The SDK may be restored from the actions cache with this patch
+          # already applied, so never apply it blindly twice.
+          if git apply --check --reverse flutter_3.24.4_dropdown_menu_enableFilter.diff 2>/dev/null; then
+            echo "flutter SDK already patched (restored from cache), skipping"
+          elif git apply --check flutter_3.24.4_dropdown_menu_enableFilter.diff 2>/dev/null; then
+            git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+            echo "flutter SDK patched"
+          else
+            echo "::error::cannot determine flutter SDK patch state"
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
@@ -965,6 +990,14 @@ jobs:
       #           <security> \
       #             <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/> \
       #           </security>' ./flutter/windows/runner/runner.exe.manifest
+
+      - name: Cache Dart/Flutter pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/Pub/Cache
+          key: pub-${{ matrix.job.os }}-${{ hashFiles('flutter/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ matrix.job.os }}-
 
       - name: replace flutter icons
         if: ${{ inputs.iconlink != 'false' }}
