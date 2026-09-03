@@ -876,6 +876,12 @@ jobs:
         run: |
             python3 patches/hide_quit_button_uimode_false.py
       
+      - name:  Add Copy key
+        if: fromJson(inputs.extras).addcopy == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        run: |
+          sed -i '/COPY_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          
       - name: Superhidecm
         if: fromJson(inputs.extras).supercm == 'true'
         shell: bash
