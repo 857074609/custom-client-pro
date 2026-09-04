@@ -1061,6 +1061,16 @@ jobs:
           test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
           echo "vcpkg deps restored from cache OK"
 
+      - name: session-tab connection mode always visible (v94)
+        shell: bash
+        run: |
+          # v94 (REQ-v94-001, design D): keep the secure/direct shield hover but
+          # show only the fingerprint; insert an always-visible connection-mode
+          # Text (msgConn) between the shield and the peerId label in
+          # flutter/lib/desktop/pages/remote_tab_page.dart so the mode is no
+          # longer hover-only (touch / quick-glance observability). Idempotent
+          # via the 'prod-line v94 tab-conn-badge' marker.
+          python3 patches/patch_remote_tab_iroh_badge.py .
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
