@@ -64,7 +64,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
-  RUST_VERSION: "1.85.0" # 对齐官方 1.4.9 Windows Flutter 构建
+  RUST_VERSION: "1.85.0" # iroh=on toolchain (idna_adapter/icu 1.x MSRV closure).
+  # dtolnay step selects 1.85 when enable_iroh_direct=true, else 1.75
+  # (1.75 matches the 2026-08-26 1.4.9.0 good build toolchain).
   # Do NOT set CARGO_BUILD_TARGET: it makes cargo emit to target/<triple>/release/ instead
   # of target/release/, which breaks build.py (librustdesk.dll existence check at line 443)
   # and flutter/windows/CMakeLists.txt (RUSTDESK_LIB). Host triple is already correct here.
@@ -583,7 +585,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: ${{ env.RUST_VERSION }}
+          toolchain: ${{ fromJson(inputs.extras).enable_iroh_direct == 'true' && '1.85.0' || '1.75' }}
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
       - name: pin iroh lock closure to MSRV-safe versions (v88)
