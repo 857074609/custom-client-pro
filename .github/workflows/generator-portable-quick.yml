@@ -585,7 +585,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: ${{ fromJson(inputs.extras).enable_iroh_direct == 'true' && '1.85.0' || '1.75' }}
+          #toolchain: ${{ fromJson(inputs.extras).enable_iroh_direct == 'true' && '1.85.0' || '1.75' }}
+          toolchain: 1.85.0
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
       - name: pin iroh lock closure to MSRV-safe versions (v88)
