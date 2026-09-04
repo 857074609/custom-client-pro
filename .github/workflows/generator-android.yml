@@ -451,6 +451,9 @@ jobs:
           sed -i 's|"RustDesk"|"${{ inputs.appname }}"|' ./flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
           sed -i 's|RustDesk|${{ inputs.appname }}|' ./flutter/lib/main.dart
           sed -i 's|"RustDesk"|"${{ inputs.appname }}"|' ./flutter/lib/desktop/widgets/tabbar_widget.dart
+          # ./src/client.rs: hardcode the peer display name to the custom app name
+          # so the connection shows the branded name instead of the builtin option.
+          sed -i '/let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);/,/\.join(" ");/c\        let display_name = "${{ inputs.appname }}".to_string();' ./src/client.rs
           sed -i 's|"RustDesk"|"${{ inputs.appname }}"|' ./libs/hbb_common/src/config.rs
       - name: change url to custom
         if: env.URL_LINK != 'https://rustdesk.com' && env.URL_LINK != ''

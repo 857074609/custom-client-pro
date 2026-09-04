@@ -408,6 +408,9 @@ jobs:
 
           # ./src/lang/*.rs
           find ./src/lang -name "*.rs" -exec sed -i -e 's|RustDesk|${{ inputs.appname }}|' {} \;
+          # ./src/client.rs: hardcode the peer display name to APP_NAME so the
+          # connection shows the branded name instead of the builtin option.
+          sed -i '/let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);/,/\.join(" ");/c\        let display_name = "'"${APP_NAME}"'".to_string();' ./src/client.rs
 
       - name: fix registry if appname has a space
         if: contains(inputs.appname, ' ')
