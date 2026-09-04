@@ -326,6 +326,18 @@ jobs:
           vcpkgDirectory: /opt/artifacts/vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
+
+      - name: Cache vcpkg installed tree + source downloads
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/artifacts/vcpkg/installed
+            /opt/artifacts/vcpkg/downloads
+          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_COMMIT_ID }}-
+
       - name: Install vcpkg dependencies
         run: |
           case ${{ matrix.job.target }} in

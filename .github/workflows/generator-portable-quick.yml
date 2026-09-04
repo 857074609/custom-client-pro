@@ -627,6 +627,17 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
+      - name: Cache vcpkg installed tree + source downloads
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/downloads
+          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
+
       - name: magick stuff
         if: ${{ inputs.iconlink == 'true' }}
         shell: pwsh
@@ -676,6 +687,7 @@ jobs:
           cd ..
 
       - name: Install vcpkg dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         shell: bash
@@ -683,6 +695,13 @@ jobs:
           $VCPKG_ROOT/vcpkg install \
             --triplet ${{ matrix.job.vcpkg-triplet }} \
             --x-install-root="$VCPKG_ROOT/installed"
+
+      - name: Verify vcpkg deps (cache-hit path)
+        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
+          echo "vcpkg deps restored from cache OK"
 
       - name: session-tab connection mode always visible (v94)
         shell: bash
