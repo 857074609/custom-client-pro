@@ -366,6 +366,26 @@ jobs:
           cp -f patches/en.rs src/lang/en.rs
           echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
 
+      - name: Inject TCP keepalive + DNS cache (v98)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v98 网络加固（移植自 HopToDesk 官方 1.46.40）：
+          # 1) patch_tcp_keepalive.py：所有出站纯 TCP 连接（rendezvous/hbbs_http/直连/中继）
+          #    与 direct_server 入站连接启用内核级 keepalive（30s 空闲/10s 间隔），
+          #    解决 NAT 网关静默丢空闲会话导致的"假在线"。
+          # 2) patch_dns_cache.py：hbbs 域名解析结果缓存 300s + 多地址轮询回退，
+          #    全部失败时自动清缓存强制重解析。
+          # 二者均锚定上游 1.4.9 原始状态，必须先于其他补丁运行；锚点缺失即构建失败。
+          python3 patches/patch_tcp_keepalive.py .
+          grep -q "pub fn set_tcp_keepalive" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 set_tcp_keepalive"; exit 1; }
+          grep -q "prod-line keepalive" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs 缺少 keepalive 标记"; exit 1; }
+          python3 patches/patch_dns_cache.py .
+          grep -q "pub async fn resolve_cached" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 resolve_cached"; exit 1; }
+          grep -q "prod-line dns-cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 dns-cache 标记"; exit 1; }
+          echo "[OK] v98 TCP keepalive + DNS cache 注入完成"
+
       - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true'
         shell: bash
@@ -454,6 +474,21 @@ jobs:
           python3 patches/patch_direct_udp.py .
           grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
+
+      - name: Patch direct access security code (v98)
+        if: fromJson(inputs.extras).ip_direct_e2ee == 'true'
+        shell: bash
+        run: |
+          # v98 直连 E2EE SAS 验证码（移植自 HopToDesk compute_security_code）：
+          # 双端从会话密钥派生 5 位×16 组数字码，TOFU 首次绑定时客户端弹窗展示、
+          # 服务端写日志，用户人工核对以排除首次连接时的中间人。
+          # 必须在 patch_direct_e2ee（及可选的 patch_direct_udp）之后运行；
+          # 未勾选 UDP 时 UDP 调用点锚点自动跳过（脚本内可选处理）。
+          python3 patches/patch_security_code.py .
+          grep -q "compute_security_code_from_key" libs/hbb_common/src/password_security.rs || { echo "[FAIL] password_security.rs 缺少 compute_security_code_from_key"; exit 1; }
+          grep -q "prod-line security-code" src/client.rs || { echo "[FAIL] client.rs 缺少 security-code 标记"; exit 1; }
+          grep -q "security-code" src/server.rs || { echo "[FAIL] server.rs 缺少 security-code 标记"; exit 1; }
+          echo "[OK] v98 直连 E2EE SAS 验证码注入完成"
 
       - name: Patch online devices sync and IP direct menu
         if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
