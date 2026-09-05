@@ -176,6 +176,9 @@ jobs:
               e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
               e.write(f\"IROH_RELAY_URL={data.get('irohRelayUrl','')}\n\")
+              iroh_url_val = data.get('irohRelayUrl','')
+              _tail = iroh_url_val[-9:] if len(iroh_url_val) >= 9 else iroh_url_val
+              print(f"[IROH] IROH_RELAY_URL=...{0} (len={1})".format(_tail, len(iroh_url_val)), flush=True)
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
               e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
