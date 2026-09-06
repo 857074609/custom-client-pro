@@ -475,21 +475,6 @@ jobs:
           grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
-      - name: Patch direct access security code (v98)
-        if: fromJson(inputs.extras).ip_direct_e2ee == 'true'
-        shell: bash
-        run: |
-          # v98 直连 E2EE SAS 验证码（移植自 HopToDesk compute_security_code）：
-          # 双端从会话密钥派生 5 位×16 组数字码，TOFU 首次绑定时客户端弹窗展示、
-          # 服务端写日志，用户人工核对以排除首次连接时的中间人。
-          # 必须在 patch_direct_e2ee（及可选的 patch_direct_udp）之后运行；
-          # 未勾选 UDP 时 UDP 调用点锚点自动跳过（脚本内可选处理）。
-          python3 patches/patch_security_code.py .
-          grep -q "compute_security_code_from_key" libs/hbb_common/src/password_security.rs || { echo "[FAIL] password_security.rs 缺少 compute_security_code_from_key"; exit 1; }
-          grep -q "prod-line security-code" src/client.rs || { echo "[FAIL] client.rs 缺少 security-code 标记"; exit 1; }
-          grep -q "security-code" src/server.rs || { echo "[FAIL] server.rs 缺少 security-code 标记"; exit 1; }
-          echo "[OK] v98 直连 E2EE SAS 验证码注入完成"
-
       - name: Patch online devices sync and IP direct menu
         if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
         shell: bash
