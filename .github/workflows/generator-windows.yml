@@ -1050,6 +1050,18 @@ jobs:
             echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
             cargo fetch
           fi
+      - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
+        # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
+        # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
+        # hbb_common crate. A typo there only surfaces at `cargo build` time,
+        # which is reached only after vcpkg install + flutter engine + full build
+        # (~20 min wasted on a guaranteed-fail). Compile-check hbb_common right
+        # after the lock is fetched so a bad patch fails the run within minutes,
+        # with a readable error, instead of deep in the build step.
+        shell: bash
+        run: |
+          echo ">> cargo check -p hbb_common (gate: catch patch compile errors early)"
+          cargo check -p hbb_common --message-format short
       # - name: run as admin
       #   
       #   if: ${{ fromJson(inputs.extras).runasadmin == 'true' }}
