@@ -915,6 +915,23 @@ jobs:
           python3  patches/patch_hide_cm_1.py
           python3  patches/patch_hide_cm_2.py
 
+      - name: Disable CM window (v99)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v99 完全禁用 cm（Connection Manager）窗口：所有 cm 拉起路径
+          # （core_main 的 --cm 分支、try_start_cm 的启动参数、sciter --cm 分支）
+          # 全部改走官方无头模式（--cm-no-ui 语义）——连接处理逻辑
+          # （密码/永久密码/OTP 授权）不受影响，但窗口/任务栏图标/控制面板
+          # 永不出现。无凭据连接无人确认 → 超时拒绝（安全默认）。
+          # 必须在 patch_hide_cm_1/2 之后运行；锚点为上游 1.4.9 原始状态。
+          python3 patches/patch_cm_disable.py .
+          grep -q "prod-line cm-disable" src/core_main.rs || { echo "[FAIL] core_main.rs 缺少 cm-disable 标记"; exit 1; }
+          grep -q 'vec!\["--cm-no-ui"\]; // \[prod-line cm-disable\]' src/server/connection.rs || { echo "[FAIL] connection.rs 未改为 --cm-no-ui"; exit 1; }
+          grep -q "prod-line cm-disable" src/ui.rs || { echo "[FAIL] ui.rs 缺少 cm-disable 标记"; exit 1; }
+          echo "[OK] v99 cm 窗口禁用注入完成"
+
       - name: Passpolicy
         if: fromJson(inputs.extras).passpolicy  == 'true'
         shell: bash
