@@ -386,6 +386,23 @@ jobs:
           grep -q "prod-line dns-cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 dns-cache 标记"; exit 1; }
           echo "[OK] v98 TCP keepalive + DNS cache 注入完成"
 
+      - name: Inject happy-eyeballs concurrent connect (V101)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V101: FramedStream::new RFC 6555 并发连接竞速。
+          # 修复双栈域名(A+AAAA)下顺序迭代、每个地址死等 CONNECT_TIMEOUT(18s) 的卡顿：
+          # 解析出的所有地址并发 connect（250ms 探测），先通者胜、其余取消；
+          # 全失败时回退传统顺序连接（保留单地址慢路径语义）。
+          # 锚定上游 1.4.9 原始状态，标记缺失即构建失败。
+          # 注意：当前 connect_tcp_local 仍逐个传单 IP 给 FramedStream::new，
+          # 故 race 退化为单次 connect（V102 会把 race 上提到 connect_tcp_local 层）。
+          python3 patches/patch_FramedStream_happy_eyeballs.py .
+          grep -q "race_connect_all" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing race_connect_all"; exit 1; }
+          grep -q "prod-line v101 happy-eyeballs" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing v101 marker"; exit 1; }
+          echo "[OK] V101 happy-eyeballs concurrent connect injected"
+
       - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true'
         shell: bash
