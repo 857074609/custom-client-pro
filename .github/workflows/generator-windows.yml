@@ -442,6 +442,28 @@ jobs:
           done
           echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
+      - name: Screen wall v103 multi-instance/dark/frameless
+        if: inputs.screen_wall == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v103 屏幕墙增强（见 Docs/rustdesk-1.4.9/V103/screen-wall-v103-design.md）：
+          # - 多实例：最多 4 个屏幕墙窗口（4 墙 × 4 设备 = 16 路并发会话），
+          #   级联错位摆放、标题 Screen Wall - N，第 5 次点击提示"最多打开 4 个屏幕墙"；
+          # - 设备列表按窗口 id 隔离存储（screen_wall_devices_w<kWindowId>），
+          #   v102 全局键一次性迁移，4 个窗口互不覆盖；
+          # - 墙内设备去重：重复添加从静默忽略改为提示"该设备已添加"；
+          # - 视觉：窗口强制深色主题 + 黑底（不随系统浅色主题变浅）、
+          #   画布左右贴边（无边框）、顶部工具栏 24px→20px 最小化。
+          # 必须在 "Apply screen wall patch + i18n" 之后运行（锚点匹配其注入产物）。
+          python3 patches/patch_screen_wall_v103.py .
+          grep -q "Screen Wall Max 4 Windows" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart 缺少 v103 多实例入口"; exit 1; }
+          grep -q "screen_wall_devices_w" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少按窗口隔离存储键"; exit 1; }
+          grep -q "ThemeData.dark" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少强制深色主题"; exit 1; }
+          grep -q "_screenWallWindows.length >= 4" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 4 实例上限"; exit 1; }
+          echo "[OK] v103 屏幕墙增强（多实例/深色/无边框）注入完成"
+
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
         shell: bash
