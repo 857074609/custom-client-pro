@@ -403,6 +403,22 @@ jobs:
           grep -q "prod-line v101 happy-eyeballs" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing v101 marker"; exit 1; }
           echo "[OK] V101 happy-eyeballs concurrent connect injected"
 
+      - name: Inject happy-eyeballs lift + DNS timeout + split metrics (V102)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V102: lift happy-eyeballs race to connect_tcp_local (V101's inner race
+          # degenerates when fed a single IP) + cap DNS lookups with a 5s timeout
+          # (a dead resolver could otherwise stall connect past CONNECT_TIMEOUT) +
+          # log DNS-resolve time and connect-race time separately for diagnosis.
+          # Requires V101 already injected (FramedStream::new present). Anchors are
+          # unique single-occurrence strings; marker missing -> build fails.
+          python3 patches/patch_V102_happy_eyeballs_lift.py .
+          grep -q "prod-line v102 happy-eyeballs-lift" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v102 marker"; exit 1; }
+          grep -q "DNS_LOOKUP_TIMEOUT_SEC" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DNS_LOOKUP_TIMEOUT_SEC"; exit 1; }
+          echo "[OK] V102 happy-eyeballs lift + DNS timeout injected"
+
       - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true'
         shell: bash
