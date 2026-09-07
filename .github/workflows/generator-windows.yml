@@ -1193,6 +1193,20 @@ jobs:
           # longer hover-only (touch / quick-glance observability). Idempotent
           # via the 'prod-line v94 tab-conn-badge' marker.
           python3 patches/patch_remote_tab_iroh_badge.py .
+
+      - name: Gate - flutter analyze (fail fast on Dart compile errors)
+        shell: bash
+        run: |
+          # Catch Dart semantic/compile errors (e.g. non-constant expression,
+          # int passed where double is required) HERE with file:line, instead of
+          # burying them inside MSB8066 during 'flutter build'.
+          # Only ERRORS are fatal: upstream carries many lint infos/warnings
+          # that must not block the build. 'lib' only (test/ often noisy).
+          cd ./flutter
+          flutter pub get
+          flutter analyze lib --no-fatal-infos --no-fatal-warnings
+          cd ..
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
