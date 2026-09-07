@@ -508,16 +508,17 @@ jobs:
           # v109（见 patches/patch_screen_wall_v109.py）：屏幕墙是「监控型」会话，
           # 只拉画面、从不发输入，被控端的「长时间不活动自动关闭会话」idle timer
           # 必然超时，导致屏幕墙设备每隔几分钟被踢掉、画面消失。
-          # 方案：屏幕墙 viewer 在密码前加 SW__ 哨兵前缀，被控端识别后剥离前缀、
-          # 置 is_screen_wall=true、把该连接 auto_disconnect_timer 置 None，
-          # 同时 get_auto_disconenct_timer 在 is_screen_wall 时直接返回 None。
-          # 剥离后的密码用于正常鉴权比对，安全性不受影响。
+          # 注意：早期的「密码哨兵」方案（Dart 侧给密码加 SW__ 前缀、被控端剥离后
+          # 比对）已停用 —— 被控端若不含该补丁，会直接拿「SW__+真实密码」去比对，
+          # 导致密码完全正确也报「密码不正确」。现在屏幕墙使用与正常连接一致的密码；
+          # 服务端的剥离逻辑仅保留作向后兼容（旧客户端仍发前缀时仍能豁免）。
           # 不依赖其他 V 脚本产出，可在任意屏幕墙步骤之后运行。
           python3 patches/patch_screen_wall_v109.py .
           grep -q "is_screen_wall" src/server/connection.rs || { echo "[FAIL] connection.rs 缺少 v109 is_screen_wall 字段"; exit 1; }
           grep -q 'strip_prefix(b"SW__")' src/server/connection.rs || { echo "[FAIL] connection.rs 缺少 v109 哨兵识别"; exit 1; }
           grep -q "self.is_screen_wall" src/server/connection.rs || { echo "[FAIL] connection.rs 缺少 v109 屏幕墙判定分支"; exit 1; }
-          grep -q "SW__" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v109 密码哨兵前缀"; exit 1; }
+          # 反向断言：Dart 侧不得再给密码加 SW__ 前缀（否则正确密码会被判为错误）
+          if grep -q "SW__" flutter/lib/desktop/widgets/mini_remote_view.dart; then echo "[FAIL] mini_remote_view.dart 仍包含 v109 密码哨兵前缀"; exit 1; fi
           echo "[OK] v109 屏幕墙会话豁免自动断开 注入完成"
 
       - name: Inject LAN IP direct access board
