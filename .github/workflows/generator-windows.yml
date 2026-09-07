@@ -464,6 +464,23 @@ jobs:
           grep -q "_screenWallWindows.length >= 4" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 4 实例上限"; exit 1; }
           echo "[OK] v103 屏幕墙增强（多实例/深色/无边框）注入完成"
 
+      - name: Screen wall v104 persist layout across close/reopen
+        if: inputs.screen_wall == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v104（见 patches/patch_screen_wall_v104.py）：修复 v103 按窗口 id 隔离存储键
+          # 导致的"关闭屏幕墙再打开，已添加设备消失"。
+          # 根因：多窗口框架关闭后重开会分配新 kWindowId，按窗口键
+          # screen_wall_devices_w<新id> 为空，旧布局读不回。
+          # 做法：_save 额外写入稳定全局键 kScreenWallDevices（最近布局），
+          # _load 在按窗口键为空时回退到该全局键（不再清空）。
+          # 必须在 v103 之后运行（锚点匹配其注入产物）。
+          python3 patches/patch_screen_wall_v104.py .
+          grep -q "value: encoded" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] v104 布局持久化未注入"; exit 1; }
+          echo "[OK] v104 屏幕墙布局持久化（关闭后重开可恢复）注入完成"
+
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
         shell: bash
