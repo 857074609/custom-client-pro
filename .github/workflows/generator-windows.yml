@@ -451,35 +451,53 @@ jobs:
           # v103 屏幕墙增强（见 Docs/rustdesk-1.4.9/V103/screen-wall-v103-design.md）：
           # - 多实例：最多 4 个屏幕墙窗口（4 墙 × 4 设备 = 16 路并发会话），
           #   级联错位摆放、标题 Screen Wall - N，第 5 次点击提示"最多打开 4 个屏幕墙"；
-          # - 设备列表按窗口 id 隔离存储（screen_wall_devices_w<kWindowId>），
-          #   v102 全局键一次性迁移，4 个窗口互不覆盖；
           # - 墙内设备去重：重复添加从静默忽略改为提示"该设备已添加"；
           # - 视觉：窗口强制深色主题 + 黑底（不随系统浅色主题变浅）、
           #   画布左右贴边（无边框）、顶部工具栏 24px→20px 最小化。
+          # 注意：存储隔离在 v107 已重构为按 wallId 的 kScreenWallWalls（多墙），
+          # 不再使用 screen_wall_devices_w<kWindowId> 单墙键。
           # 必须在 "Apply screen wall patch + i18n" 之后运行（锚点匹配其注入产物）。
           python3 patches/patch_screen_wall_v103.py .
           grep -q "Screen Wall Max 4 Windows" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart 缺少 v103 多实例入口"; exit 1; }
-          grep -q "screen_wall_devices_w" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少按窗口隔离存储键"; exit 1; }
+          grep -q "Device Already Added" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v103 去重提示"; exit 1; }
           grep -q "ThemeData.dark" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少强制深色主题"; exit 1; }
           grep -q "_screenWallWindows.length >= 4" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 4 实例上限"; exit 1; }
           echo "[OK] v103 屏幕墙增强（多实例/深色/无边框）注入完成"
 
-      - name: Screen wall v104 persist layout across close/reopen
+      - name: Screen wall v104 persist layout (multi-wall, absorbed into base by v107)
         if: inputs.screen_wall == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v104（见 patches/patch_screen_wall_v104.py）：修复 v103 按窗口 id 隔离存储键
-          # 导致的"关闭屏幕墙再打开，已添加设备消失"。
-          # 根因：多窗口框架关闭后重开会分配新 kWindowId，按窗口键
-          # screen_wall_devices_w<新id> 为空，旧布局读不回。
-          # 做法：_save 额外写入稳定全局键 kScreenWallDevices（最近布局），
-          # _load 在按窗口键为空时回退到该全局键（不再清空）。
-          # 必须在 v103 之后运行（锚点匹配其注入产物）。
+          # v104 原修复"关闭屏幕墙再打开，已添加设备消失"的逻辑，
+          # 在 v107 多墙重构时已吸收进 base（kScreenWallWalls + _saveWalls/_syncFromDisk +
+          # 稳定全局键回退）。本步骤保留为门禁校验：确认多墙持久化结构在 base 中就绪。
+          # patch 脚本本身为空操作（EDIT_PAIRS 已清空），仅做断言。
           python3 patches/patch_screen_wall_v104.py .
-          grep -q "value: encoded" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] v104 布局持久化未注入"; exit 1; }
-          echo "[OK] v104 屏幕墙布局持久化（关闭后重开可恢复）注入完成"
+          grep -q "kScreenWallWalls" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v107 多墙持久化键"; exit 1; }
+          echo "[OK] v104/v107 屏幕墙布局持久化（多墙，关闭后重开可恢复）结构就绪"
+
+      - name: Screen wall v108 menu entry + wallId + preview dialog
+        if: inputs.screen_wall == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v108（见 patches/patch_screen_wall_v108.py）：
+          # - 设备卡片菜单加入「Add to Screen Wall」：自动从第一块屏幕墙依次填充，
+          #   第一块满（4 设备）后自动切到下一块；全部满/无墙则新建一块并打开。
+          # - 点击屏幕墙入口（无指定 wallId）弹 Dialog 列出已保存屏幕墙，用户自选打开哪一块；
+          #   可选「New Screen Wall」。
+          # - newScreenWallWindow 传递 wallId，各墙窗口按 wallId 读写独立列表。
+          # 必须在 v103 之后运行（multi_window_manager / peer_tab_page 锚点匹配 v103 产物）。
+          # 注意：RustDesk .dart 行尾混用（CRLF/LF），脚本内部已归一化，此处 grep 不受影响。
+          python3 patches/patch_screen_wall_v108.py .
+          grep -q "addPeerToScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 添加到屏幕墙入口"; exit 1; }
+          grep -q "_pickScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 预览选择 Dialog"; exit 1; }
+          grep -q "Add to Screen Wall" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 v108 菜单项"; exit 1; }
+          grep -q "String? wallId" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 wallId 参数"; exit 1; }
+          echo "[OK] v108 屏幕墙入口预览选择 + 设备卡片添加菜单 注入完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
