@@ -962,19 +962,6 @@ jobs:
 
 
       
-      - name: use X for offline display instead of orange circle
-        if: fromJson(inputs.extras).xOffline == 'true'
-        run: |
-          # xoffline.diff 的改动可能已被固化进 rustdesk-1.4.9 基线（另一个会话直接改了 anchor 源码），
-          # 此时重复 git apply 会因「待删除的旧行已不存在」而失败。
-          # 先 --check：能应用才应用，否则跳过（幂等，与下方 flutter SDK patch 写法一致）。
-          if git apply --check patches/xoffline.diff 2>/dev/null; then
-            git apply patches/xoffline.diff
-            echo "xoffline applied"
-          else
-            echo "xoffline already in base (or context mismatch) — skipping"
-          fi
-
       - name: hide-password_uimode_true
         if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'
         shell: bash
