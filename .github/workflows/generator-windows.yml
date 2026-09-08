@@ -1258,6 +1258,16 @@ jobs:
           grep -q "DesktopDropPluginRegisterWithRegistrar" flutter/windows/runner/flutter_window.cpp || { echo "[FAIL] flutter_window.cpp missing desktop_drop sub-window registration"; exit 1; }
           echo "[OK] V104 remote-session drop-file transfer (headless)"
 
+      - name: Settings page survives theme-change rebuilds (V104)
+        shell: bash
+        run: |
+          # Changing the theme calls Get.changeThemeMode which rebuilds the whole
+          # app. The desktop settings page must keep its selected tab and not leak
+          # its GetX singleton (wrong-type dispose was resetting it). See patch.
+          python3 patches/patch_settings_theme.py .
+          grep -q "settings page resilient to theme-change" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing theme-rebuild resilience"; exit 1; }
+          echo "[OK] settings page immune to theme-change rebuilds"
+
       - name: Gate - flutter analyze (fail fast on Dart compile errors)
         shell: bash
         run: |
