@@ -1242,6 +1242,9 @@ jobs:
           python3 patches/patch_remote_drop_file.py .
           grep -q "_onDropFilesToRemote" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing drop handler"; exit 1; }
           grep -q "sendLocalPathsToRemote" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing auto-send"; exit 1; }
+          # Sub-window plugin registration is what actually makes DropTarget work
+          # inside the remote session window (a separate FlutterEngine).
+          grep -q "DesktopDropPluginRegisterWithRegistrar" flutter/windows/runner/flutter_window.cpp || { echo "[FAIL] flutter_window.cpp missing desktop_drop sub-window registration"; exit 1; }
           echo "[OK] V104 remote-session drop-file transfer injected"
 
       - name: Gate - flutter analyze (fail fast on Dart compile errors)
