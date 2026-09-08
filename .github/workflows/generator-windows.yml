@@ -662,7 +662,7 @@ jobs:
           sed -i -e 's|RustDesk|${{ inputs.appname }}|' ./res/msi/Package/License.rtf
           # ./src/client.rs: hardcode the peer display name to APP_NAME so the
           # connection shows the branded name instead of the builtin option.
-          sed -i '/let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);/,/\.join(" ");/c\        let display_name = "'"${APP_NAME}"'".to_string();' ./src/client.rs
+          #sed -i '/let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);/,/\.join(" ");/c\        let display_name = "'"${APP_NAME}"'".to_string();' ./src/client.rs
           
 
       - name: fix registry if appname has a space
@@ -1228,6 +1228,21 @@ jobs:
           # longer hover-only (touch / quick-glance observability). Idempotent
           # via the 'prod-line v94 tab-conn-badge' marker.
           python3 patches/patch_remote_tab_iroh_badge.py .
+
+      - name: Drag local files into remote session (V104)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V104: 主控机文件直接拖入已连接的远程会话即传输到远端当前目录。
+          # 远程会话 body 挂 DropTarget（desktop_drop 已是正式依赖），拖入后经现有
+          # kWindowConnect IPC 把路径交给主窗口，主窗口打开该文件传输会话后由文件
+          # 传输页复用「发送」按钮链路自动上传。
+          # 必须放在所有 *_both / _new / _old 布局文件 cp 覆盖之后，否则注入被覆盖。
+          python3 patches/patch_remote_drop_file.py .
+          grep -q "_onDropFilesToRemote" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing drop handler"; exit 1; }
+          grep -q "sendLocalPathsToRemote" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing auto-send"; exit 1; }
+          echo "[OK] V104 remote-session drop-file transfer injected"
 
       - name: Gate - flutter analyze (fail fast on Dart compile errors)
         shell: bash
