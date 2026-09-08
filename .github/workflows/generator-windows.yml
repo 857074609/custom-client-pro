@@ -1241,6 +1241,9 @@ jobs:
           # 必须放在所有 *_both / _new / _old 布局文件 cp 覆盖之后，否则注入被覆盖。
           python3 patches/patch_remote_drop_file.py .
           grep -q "_onDropFilesToRemote" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing drop handler"; exit 1; }
+          # Fallback entry: UIPI blocks drag-drop into elevated (admin) windows, so the
+          # "Send File" button is the path that always works. Do not drop this.
+          grep -q "_buildSendFileButton" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing send-file fallback button"; exit 1; }
           grep -q "sendLocalPathsToRemote" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing auto-send"; exit 1; }
           # Sub-window plugin registration is what actually makes DropTarget work
           # inside the remote session window (a separate FlutterEngine).
