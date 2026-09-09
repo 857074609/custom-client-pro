@@ -1318,6 +1318,13 @@ jobs:
           grep -qF "V105 drop-progress: text value" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress text notifier"; exit 1; }
           grep -qF "V105 drop-progress: rich overlay" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress rich overlay"; exit 1; }
           grep -qF "V105 drop-progress: floating dialog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing transfer-progress dialog marker"; exit 1; }
+          # V105-fix: unbreak progress IPC when the remote session lives in a
+          # MAIN-window tab (kWindowId == null there) - FT window now falls back
+          # to reporting to the main window (id 0), and the main-window handler
+          # forwards to the remote overlay with a codec-safe map rebuild.
+          grep -qF "V105-fix: fall back to the main window" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing main-window progress fallback"; exit 1; }
+          grep -qF "call.method == kWindowDragProgress" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart missing main-window drag-progress forward"; exit 1; }
+          grep -qF "V105-fix: rebuild the map" flutter/lib/desktop/pages/remote_tab_page.dart || { echo "[FAIL] remote_tab_page.dart missing codec-safe map rebuild"; exit 1; }
           echo "[OK] V105 drag-drop transfer-progress window"
 
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
