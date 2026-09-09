@@ -1325,6 +1325,9 @@ jobs:
           grep -qF "V105-fix: fall back to the main window" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing main-window progress fallback"; exit 1; }
           grep -qF "call.method == kWindowDragProgress" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart missing main-window drag-progress forward"; exit 1; }
           grep -qF "V105-fix: rebuild the map" flutter/lib/desktop/pages/remote_tab_page.dart || { echo "[FAIL] remote_tab_page.dart missing codec-safe map rebuild"; exit 1; }
+          grep -qF "kWindowFtCancelJob" flutter/lib/desktop/pages/file_manager_tab_page.dart || { echo "[FAIL] file_manager_tab_page.dart missing drag-job cancel IPC branch"; exit 1; }
+          grep -qF "barrierDismissible: false" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart transfer dialog must not be barrier-dismissable"; exit 1; }
+          grep -qF "'id': j.id," flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart progress payload missing job id"; exit 1; }
           echo "[OK] V105 drag-drop transfer-progress window"
 
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
