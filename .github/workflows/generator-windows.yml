@@ -1294,23 +1294,28 @@ jobs:
           grep -qF "V105 headless drop-file: force-enable" src/client.rs || { echo "[FAIL] client.rs missing forced file-transfer option"; exit 1; }
           echo "[OK] V105 headless file transfer (no peer confirmation)"
 
-      - name: Drag-drop transfer progress phase labels (V105 headless-drop)
+      - name: Drag-drop transfer progress window (V105 headless-drop)
         shell: bash
         run: |
           # V104 wired the progress channel but reported only an average of
           # per-file percentages and stayed stuck at 0% before the peer accepted.
-          # This patch upgrades it to a real, visible bar: the FT driver reports
-          # TRUE overall progress sum(finishedSize)/sum(totalSize) across ALL jobs,
-          # shows a "Waiting..." state until the peer accepts, labels the active
-          # file + transferred/total size, and the remote overlay pops immediately
-          # on drop with a clearer card (title + live % + file/size + thick bar).
+          # This patch upgrades it to a real, visible experience:
+          #  - the FT driver reports TRUE overall progress
+          #    sum(finishedSize)/sum(totalSize) across ALL jobs, shows a
+          #    "Waiting..." state until the peer accepts, labels the active file +
+          #    transferred/total size, and ships a per-file progress list.
+          #  - the remote side pops a dedicated transfer-progress DIALOG on drop
+          #    (overall bar + %, current file, full per-file list) and auto-closes
+          #    on completion; the old bottom-right overlay is superseded by it.
           # Must run AFTER patch_remote_drop_file.py and
           # patch_file_transfer_auto.py: it rewrites code they injected.
           python3 patches/patch_drop_progress_v2.py .
           grep -qF "V105 drop-progress: overall progress" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing progress overall marker"; exit 1; }
+          grep -qF "V105 drop-progress: file list" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing file-list marker"; exit 1; }
           grep -qF "V105 drop-progress: text value" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress text notifier"; exit 1; }
           grep -qF "V105 drop-progress: rich overlay" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress rich overlay"; exit 1; }
-          echo "[OK] V105 drag-drop progress real overall bar"
+          grep -qF "V105 drop-progress: floating dialog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing transfer-progress dialog marker"; exit 1; }
+          echo "[OK] V105 drag-drop transfer-progress window"
 
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
