@@ -1271,6 +1271,45 @@ jobs:
           grep -q "V104-fix-auto: headless" flutter/lib/models/file_model.dart || { echo "[FAIL] file_model.dart missing auto-overwrite logic"; exit 1; }
           echo "[OK] V104-fix headless auto-overwrite + consistent destination"
 
+      - name: Headless file transfer without peer confirmation (V105 headless-drop)
+        shell: bash
+        run: |
+          # Unattended drag-drop: the control side opens a brand-new FILE TRANSFER
+          # connection per drop and does NOT carry a password, so the peer fell
+          # into the empty-password branch of handle_login_request() and raised
+          # the Connection Manager dialog - which nobody can click on an
+          # unattended host, so the transfer never started.
+          # This patch (a) remembers peers that authenticated recently and
+          # auto-approves their file-transfer sessions inside the grace window
+          # (default 30 min, headless-ft-grace-minutes=0 disables), and (b) forces
+          # msg.enable_file_transfer=Yes on the control side, which previously
+          # depended on the "enable-file-copy-paste" toggle (off by default) and
+          # otherwise left the peer's file channel gated off.
+          # Scope: file-transfer sessions only. Desktop remote sessions still
+          # require the normal password / click approval.
+          # Must run AFTER patch_file_transfer_auto.py (independent anchors, but
+          # keep the drop-file patch group together).
+          python3 patches/patch_headless_ft_auth.py .
+          grep -qF "V105 headless drop-file: auto-approving" src/server/connection.rs || { echo "[FAIL] connection.rs missing headless FT auto-approve"; exit 1; }
+          grep -qF "V105 headless drop-file: force-enable" src/client.rs || { echo "[FAIL] client.rs missing forced file-transfer option"; exit 1; }
+          echo "[OK] V105 headless file transfer (no peer confirmation)"
+
+      - name: Drag-drop transfer progress phase labels (V105 headless-drop)
+        shell: bash
+        run: |
+          # V104 wired the progress channel but had no state: while the peer had
+          # not accepted yet there is no job at all, so the overlay stayed silent
+          # or stuck at 0%, which reads as "nothing is happening". This patch
+          # labels each phase - "Waiting..." / "<file> 1.2 MB / 40.0 MB (n)" /
+          # "Done" - and renders it above the percentage bar.
+          # Must run AFTER patch_remote_drop_file.py and
+          # patch_file_transfer_auto.py: it rewrites code they injected.
+          python3 patches/patch_drop_progress_v2.py .
+          grep -qF "V105 drop-progress: phase labels" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing progress phase labels"; exit 1; }
+          grep -qF "V105 drop-progress: text value" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress text notifier"; exit 1; }
+          grep -qF "V105 drop-progress: phase line" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress phase line"; exit 1; }
+          echo "[OK] V105 drag-drop progress phase labels"
+
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
         run: |
