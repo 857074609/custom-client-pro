@@ -1271,6 +1271,21 @@ jobs:
           grep -q "V104-fix-auto: headless" flutter/lib/models/file_model.dart || { echo "[FAIL] file_model.dart missing auto-overwrite logic"; exit 1; }
           echo "[OK] V104-fix headless auto-overwrite + consistent destination"
 
+      - name: Login timeout watchdog + stale saved-password self-heal (V105)
+        shell: bash
+        run: |
+          # 1) A stale saved password on an iroh direct connect used to hang at
+          #    "Connecting..." forever (peer never answers, no prompt, no picture).
+          #    This patch (a) clears the persisted copy when the failed attempt
+          #    carried exactly that saved password, so the next attempt prompts,
+          #    and (b) arms a 20s watchdog that swaps the endless spinner for a
+          #    visible login-error dialog when no first image ever arrives.
+          # 2) Runs AFTER the drop/transfer patches (independent anchors).
+          python3 patches/patch_login_timeout.py .
+          grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
+          grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
+          echo "[OK] V105 login watchdog + stale-password self-heal"
+
       - name: Settings page survives theme-change rebuilds (V104)
         shell: bash
         run: |
