@@ -1099,6 +1099,9 @@ jobs:
           python3 patches/patch_iroh_menu.py .
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
+            # Proactive fix for the iroh-direct freeze: clear any saved numeric-ID
+            # password before connecting so the controlled side accepts the OTP.
+            grep -qF "mainForgetPassword(id: peer.id)" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh-direct clear-saved-password fix"; exit 1; }
           fi
       - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
