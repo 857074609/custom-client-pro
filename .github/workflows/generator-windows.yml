@@ -1258,6 +1258,19 @@ jobs:
           grep -q "DesktopDropPluginRegisterWithRegistrar" flutter/windows/runner/flutter_window.cpp || { echo "[FAIL] flutter_window.cpp missing desktop_drop sub-window registration"; exit 1; }
           echo "[OK] V104 remote-session drop-file transfer (headless)"
 
+      - name: Auto-overwrite for headless file transfer (V104-fix)
+        shell: bash
+        run: |
+          # Headless drag-drop transfers must NOT show the overwrite confirmation
+          # dialog (the FT window is hidden, user cannot click it). This patch
+          # auto-overwrites when _isHeadlessTransfer=true, while keeping the dialog
+          # for manual (non-drop) transfers from the FT window UI.
+          # Must run AFTER patch_remote_drop_file.py (anchors on its output).
+          python3 patches/patch_file_transfer_auto.py .
+          grep -q "_isHeadlessTransfer" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing headless flag"; exit 1; }
+          grep -q "V104-fix-auto: headless" flutter/lib/models/file_model.dart || { echo "[FAIL] file_model.dart missing auto-overwrite logic"; exit 1; }
+          echo "[OK] V104-fix headless auto-overwrite + consistent destination"
+
       - name: Settings page survives theme-change rebuilds (V104)
         shell: bash
         run: |
