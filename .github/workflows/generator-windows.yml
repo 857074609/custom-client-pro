@@ -1286,6 +1286,27 @@ jobs:
           grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
           echo "[OK] V105 login watchdog + stale-password self-heal"
 
+      - name: Rendezvous family-match DNS probe (v100, opt-in IPv6)
+        shell: bash
+        run: |
+          # Opt-in client-side DNS probe: when dual-stack-lookup=Y is set AND
+          # the local host has a usable IPv6 stack, resolve AAAA first (500ms
+          # ceiling) before falling back to the legacy IPv4 happy-eyeballs path.
+          # Default (option absent / "N") is bit-for-bit identical to upstream.
+          python3 patches/patch_rendezvous_family_match.py .
+          grep -qF "prod-line v100 family-match" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v100 family-match probe"; exit 1; }
+          echo "[OK] V100 rendezvous family-match (opt-in IPv6 DNS probe)"
+
+      - name: Rendezvous family-match settings toggle (v100 UI)
+        shell: bash
+        run: |
+          # Adds a Settings > Network switch ("DNS resolve by address family
+          # (IPv6 preferred)") that writes the local config key dual-stack-lookup,
+          # which the Rust probe above reads. Default off = legacy IPv4 behaviour.
+          python3 patches/patch_family_match_setting.py .
+          grep -qF "prod-line v100 family-match-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing v100 family-match toggle"; exit 1; }
+          echo "[OK] V100 rendezvous family-match UI toggle"
+
       - name: Settings page survives theme-change rebuilds (V104)
         shell: bash
         run: |
