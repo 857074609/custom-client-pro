@@ -1297,18 +1297,20 @@ jobs:
       - name: Drag-drop transfer progress phase labels (V105 headless-drop)
         shell: bash
         run: |
-          # V104 wired the progress channel but had no state: while the peer had
-          # not accepted yet there is no job at all, so the overlay stayed silent
-          # or stuck at 0%, which reads as "nothing is happening". This patch
-          # labels each phase - "Waiting..." / "<file> 1.2 MB / 40.0 MB (n)" /
-          # "Done" - and renders it above the percentage bar.
+          # V104 wired the progress channel but reported only an average of
+          # per-file percentages and stayed stuck at 0% before the peer accepted.
+          # This patch upgrades it to a real, visible bar: the FT driver reports
+          # TRUE overall progress sum(finishedSize)/sum(totalSize) across ALL jobs,
+          # shows a "Waiting..." state until the peer accepts, labels the active
+          # file + transferred/total size, and the remote overlay pops immediately
+          # on drop with a clearer card (title + live % + file/size + thick bar).
           # Must run AFTER patch_remote_drop_file.py and
           # patch_file_transfer_auto.py: it rewrites code they injected.
           python3 patches/patch_drop_progress_v2.py .
-          grep -qF "V105 drop-progress: phase labels" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing progress phase labels"; exit 1; }
+          grep -qF "V105 drop-progress: overall progress" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing progress overall marker"; exit 1; }
           grep -qF "V105 drop-progress: text value" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress text notifier"; exit 1; }
-          grep -qF "V105 drop-progress: phase line" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress phase line"; exit 1; }
-          echo "[OK] V105 drag-drop progress phase labels"
+          grep -qF "V105 drop-progress: rich overlay" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress rich overlay"; exit 1; }
+          echo "[OK] V105 drag-drop progress real overall bar"
 
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
