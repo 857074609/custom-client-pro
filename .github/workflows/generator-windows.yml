@@ -1261,6 +1261,22 @@ jobs:
           grep -q "DesktopDropPluginRegisterWithRegistrar" flutter/windows/runner/flutter_window.cpp || { echo "[FAIL] flutter_window.cpp missing desktop_drop sub-window registration"; exit 1; }
           echo "[OK] V104 remote-session drop-file transfer (headless)"
 
+      - name: Controlled-side desktop redirection-aware drop target (V107 desktop-redirect)
+        shell: bash
+        run: |
+          # When the controlled side's desktop folder has been MOVED (another
+          # drive / OneDrive / a custom location), the home+desktopName logic in
+          # patch_remote_drop_file.py landed files in the default
+          # C:\Users\<user>\Desktop instead of the real one. This patch teaches
+          # the controlled-side server to resolve the special marker
+          # "__RUSTDESK_DESKTOP__" to the REAL desktop path (redirect-aware via
+          # directories_next), so drag-dropped files land on the user's actual
+          # desktop. The Dart side (patch_remote_drop_file.py) sends the marker.
+          python3 patches/patch_desktop_redirect.py .
+          grep -qF "[branding] V107-desktop-redirect" src/server/connection.rs || { echo "[FAIL] connection.rs missing desktop-redirect marker resolution"; exit 1; }
+          grep -qF "__RUSTDESK_DESKTOP__" src/server/connection.rs || { echo "[FAIL] connection.rs missing desktop marker constant"; exit 1; }
+          echo "[OK] V107 controlled-side desktop redirection-aware drop target"
+
       - name: Auto-overwrite for headless file transfer (V104-fix)
         shell: bash
         run: |
