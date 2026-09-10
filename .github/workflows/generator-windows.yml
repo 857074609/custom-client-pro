@@ -1277,29 +1277,6 @@ jobs:
           grep -qF "__RUSTDESK_DESKTOP__" src/server/connection.rs || { echo "[FAIL] connection.rs missing desktop marker constant"; exit 1; }
           echo "[OK] V107 controlled-side desktop redirection-aware drop target"
 
-      - name: Hard FPS floor for the adaptive QoS controller (V108 fps-floor)
-        shell: bash
-        run: |
-          # Upstream lets video_qos drop a session to 1-2 FPS as soon as the
-          # network delay grows; the UI "custom-fps" slider is only a CEILING
-          # (highest_fps()), never a floor, so there is no supported way to keep
-          # a session smooth on a lossy link.
-          # This patch raises MIN_FPS 1 -> 30 and fixes the three places that
-          # would otherwise break or invert:
-          #  - clamp() panics when min > max, so the floor is clamped against
-          #    the current ceiling first;
-          #  - INIT_FPS (the first-second cap) is raised along with it;
-          #  - the response-timeout throttle used to be derived from the floor
-          #    plus one; it is now pinned to its own EMERGENCY_FPS constant so
-          #    raising the floor stays a floor and not a boost.
-          python3 patches/patch_fps_floor.py .
-          grep -qF "[branding] V108-fps-floor" src/server/video_qos.rs || { echo "[FAIL] video_qos.rs missing fps-floor marker"; exit 1; }
-          grep -qE "^pub const MIN_FPS: u32 = 30;" src/server/video_qos.rs || { echo "[FAIL] video_qos.rs MIN_FPS is not 30"; exit 1; }
-          # The floor must go through a ceiling-safe clamp: clamp(min > max)
-          # panics and would kill the controlled-side service.
-          if ! grep -n "MIN_FPS.min(highest_fps)" src/server/video_qos.rs | grep -qvE "^\s*[0-9]+:\s*//"; then echo "[FAIL] video_qos.rs floor not clamped against the ceiling"; exit 1; fi
-          echo "[OK] V108 hard FPS floor (30)"
-
       - name: Auto-overwrite for headless file transfer (V104-fix)
         shell: bash
         run: |
