@@ -1349,7 +1349,7 @@ jobs:
           # progress overlay (with native cancel) is the transfer UI. The old
           # behavior hid the window and papered over it with a custom remote
           # dialog (auto-vanish, dead cancel, black screen on close).
-          if grep -n "hide()" flutter/lib/desktop/pages/file_manager_page.dart | grep -qv "^\s*//"; then echo "[FAIL] file_manager_page.dart still hides the drag-drop FT window (V106-native-ft violated)"; exit 1; fi
+          if grep -n "hide()" flutter/lib/desktop/pages/file_manager_page.dart | grep -qvE "^\s*[0-9]+:\s*//"; then echo "[FAIL] file_manager_page.dart still hides the drag-drop FT window (V106-native-ft violated)"; exit 1; fi
           if grep -qF "hide FT window failed" flutter/lib/common.dart; then echo "[FAIL] common.dart still hides the drag-drop FT window (V106-native-ft violated)"; exit 1; fi
           grep -qF "V106-native-ft: no custom dialog anymore" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart must not auto-open the custom dialog on drop"; exit 1; }
           echo "[OK] V106 native FT window (visible transfer UI)"
