@@ -1337,6 +1337,12 @@ jobs:
           if grep -qF "hide FT window failed" flutter/lib/common.dart; then echo "[FAIL] common.dart still hides the drag-drop FT window (V106-native-ft violated)"; exit 1; fi
           grep -qF "V106-native-ft: no custom dialog anymore" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart must not auto-open the custom dialog on drop"; exit 1; }
           echo "[OK] V106 native FT window (visible transfer UI)"
+          # V107-mini: drop-initiated FT windows shrink to a progress-only
+          # card (440x260), auto-close when all jobs finish, one click back
+          # to the full manager. Upload-button path shares the same window.
+          grep -qF "_enterMiniTransferMode" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer mode entry"; exit 1; }
+          grep -qF "_buildMiniTransferView" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer view"; exit 1; }
+          echo "[OK] V107 mini transfer window"
 
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
