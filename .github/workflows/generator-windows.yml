@@ -245,7 +245,13 @@ jobs:
               e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
               e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
-              e.write(f\"IROH_RELAY_URL={data.get('irohRelayUrl','')}\n\")
+              _relay = data.get('irohRelayUrl','') or ''
+              _dnsu = ''
+              if _relay:
+                  _host = _relay.split('//')[-1].split(':')[0]
+                  _dnsu = 'https://' + _host + ':3341/pkarr'
+              e.write(f\"IROH_RELAY_URL={_relay}\n\")
+              e.write(f\"IROH_DNS_URL={_dnsu}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
               e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
@@ -1038,6 +1044,11 @@ jobs:
           python3 patches/patch_iroh_transport.py .
           grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
+          grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
+          ! grep -q "default_relay_map" ./src/iroh_transport.rs || { echo "[FAIL] n0 relay merge still present"; exit 1; }
+          grep -q "self-hosted pkarr+dns" ./src/iroh_transport.rs || { echo "[FAIL] iroh self-hosted discovery missing"; exit 1; }
+          test $(grep -c "discovery_n0" ./src/iroh_transport.rs) -eq 2 || { echo "[FAIL] discovery_n0 count != 2 (compat+default)"; exit 1; }
+          ! grep -q "__IROH_DNS_URL__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL placeholder not substituted"; exit 1; }
           grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
           ! grep -q "default_relay_map" ./src/iroh_transport.rs || { echo "[FAIL] n0 relay merge still present"; exit 1; }
 
