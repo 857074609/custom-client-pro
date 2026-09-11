@@ -210,7 +210,7 @@ jobs:
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin']:
+          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','permanentPassword','unlockPin']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
@@ -225,7 +225,7 @@ jobs:
       - name: Display last
         shell: bash
         run: |
-          echo "IROH_RELAY_URL suffix:  ${IROH_RELAY_URL: -9}"
+          echo "IROH_RELAY_URL present:  ${IROH_RELAY_URL:+yes}"
 
       - name: Install ImageMagick on Windows
         run: |

@@ -1,5 +1,5 @@
-name: Custom Windows Client Generator
-run-name: Custom Windows Client Generator
+name: Custom Windows_7 Client Generator
+run-name: Custom Windows_7 Client Generator
 on: 
   workflow_dispatch:
     inputs:
@@ -217,7 +217,7 @@ jobs:
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
@@ -240,7 +240,7 @@ jobs:
           echo "CUSTOM_APISERVER suffix:  ${CUSTOM_APISERVER: -5}"
           echo "UNLOCK_PIN suffix:  ${UNLOCK_PIN: -1}"
           echo "PERMANENT_PASSWORD suffix:  ${PERMANENT_PASSWORD: -2}"
-          echo "IROH_RELAY_URL suffix:  ${IROH_RELAY_URL: -9}"
+          echo "IROH_RELAY_URL present:  ${IROH_RELAY_URL:+yes}"
       
       - name: Install ImageMagick on Windows
         run: |
