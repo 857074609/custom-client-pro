@@ -1038,6 +1038,8 @@ jobs:
           python3 patches/patch_iroh_transport.py .
           grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
+          grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
+          ! grep -q "default_relay_map" ./src/iroh_transport.rs || { echo "[FAIL] n0 relay merge still present"; exit 1; }
 
       - name: iroh heartbeat (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
