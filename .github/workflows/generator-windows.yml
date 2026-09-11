@@ -1311,20 +1311,23 @@ jobs:
           grep -qF "V105 headless drop-file: force-enable" src/client.rs || { echo "[FAIL] client.rs missing forced file-transfer option"; exit 1; }
           echo "[OK] V105 headless file transfer (no peer confirmation)"
 
-      - name: Drag-drop transfer progress window (V105 headless-drop) — ABANDONED (no-op)
+      - name: Drop-initiated FT window shrinks to mini transfer card (V107-mini)
         shell: bash
         run: |
-          # [V105/V106/V107] Drag-drop transfer-progress window: ABANDONED.
-          # The ninth-round refactor (patch_remote_drop_file.py a0228ac) removed
-          # the custom progress overlay / cross-window IPC this patch depended
-          # on (_reportDragProgress, _buildDragProgressOverlay, kWindowDragProgress,
-          # kWindowFtCancelJob, _enterMiniTransferMode, _buildMiniTransferView,
-          # launcherWindowId, ...). The FT window now stays VISIBLE and uses its
-          # NATIVE per-file progress card, so patch_drop_progress_v2.py is a
-          # no-op and none of the old markers below exist anymore. Keep the call
-          # (harmless) but DO NOT assert the removed markers, or the gate fails.
+          # V107-mini: the drag-drop FT window is resized to a 240x480
+          # progress-only card (native per-file progress, native cancel) and
+          # auto-closes when all jobs finish. The full manager is one click away.
+          # The custom V105 transfer-progress OVERLAY (kWindowDragProgress IPC,
+          # _showDragProgressDialog) was removed in the native-FT refactor and is
+          # intentionally NOT restored here -- only the native mini window is.
+          # Must run AFTER patch_remote_drop_file.py + patch_file_transfer_auto.py
+          # (re-anchors the _enterMiniTransferMode() call on the [V104-drop] block
+          # those patches inject). Patch asserts its own anchors; we gate the
+          # two structural markers that prove the mini window landed.
           python3 patches/patch_drop_progress_v2.py .
-          echo "[OK] V105/V106/V107 drag-drop transfer-progress (intentionally no-op — custom overlay abandoned)"
+          grep -qF "_enterMiniTransferMode" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer mode entry"; exit 1; }
+          grep -qF "_buildMiniTransferView" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer view"; exit 1; }
+          echo "[OK] V107 mini transfer window (240x480 native progress card)"
 
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
