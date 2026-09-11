@@ -1239,9 +1239,9 @@ jobs:
         run: |
           # V104: 主控机文件直接拖入已连接的远程会话即传输到远端当前目录。
           # 远程会话 body 挂 DropTarget（desktop_drop 已是正式依赖），拖入后经现有
-          # kWindowConnect IPC 把路径交给主窗口，主窗口打开该文件传输会话后由文件
-          # 传输页复用「发送」按钮链路自动上传。FT 窗口创建后默认隐藏（无头），
-          # 文件传输在后台静默进行。
+          # kWindowConnect IPC 把路径交给主窗口，主窗口打开该文件传输会话（FT 窗口
+          # 保持可见，用其原生缩小版进度卡），由文件传输页复用「发送」按钮链路
+          # 自动上传（静默，无授权弹窗）。
           # 必须放在所有 *_both / _new / _old 布局文件 cp 覆盖之后，否则注入被覆盖。
           python3 patches/patch_remote_drop_file.py .
           grep -q "_onDropFilesToRemote" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing drop handler"; exit 1; }
@@ -1254,12 +1254,13 @@ jobs:
           grep -q "params\['files'\] = files" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart missing files forwarding"; exit 1; }
           grep -q "pendingFiles" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing pendingFiles field"; exit 1; }
           grep -q "pendingFiles" flutter/lib/desktop/pages/file_manager_tab_page.dart || { echo "[FAIL] file_manager_tab_page.dart missing pendingFiles forwarding"; exit 1; }
-          # Headless: FT window is created but immediately hidden.
-          grep -q "V104-headless" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart missing FT window hide()"; exit 1; }
+          # FT window is opened visible (native progress card) by the drop handler; the
+          # injected [V104-drop] marker confirms the drop -> FT-window wiring landed.
+          grep -q "\[V104-drop\]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart missing drop -> FT window wiring"; exit 1; }
           # Sub-window plugin registration is what actually makes DropTarget work
           # inside the remote session window (a separate FlutterEngine).
           grep -q "DesktopDropPluginRegisterWithRegistrar" flutter/windows/runner/flutter_window.cpp || { echo "[FAIL] flutter_window.cpp missing desktop_drop sub-window registration"; exit 1; }
-          echo "[OK] V104 remote-session drop-file transfer (headless)"
+          echo "[OK] V104 remote-session drop-file transfer (visible FT window + silent upload)"
 
       - name: Controlled-side desktop redirection-aware drop target (V107 desktop-redirect)
         shell: bash
