@@ -1265,18 +1265,15 @@ jobs:
       - name: Controlled-side desktop redirection-aware drop target (V107 desktop-redirect)
         shell: bash
         run: |
-          # When the controlled side's desktop folder has been MOVED (another
-          # drive / OneDrive / a custom location), the home+desktopName logic in
-          # patch_remote_drop_file.py landed files in the default
-          # C:\Users\<user>\Desktop instead of the real one. This patch teaches
-          # the controlled-side server to resolve the special marker
-          # "__RUSTDESK_DESKTOP__" to the REAL desktop path (redirect-aware via
-          # directories_next), so drag-dropped files land on the user's actual
-          # desktop. The Dart side (patch_remote_drop_file.py) sends the marker.
+          # [V107-desktop-redirect] Feature ABANDONED (eighth round): the user
+          # dropped desktop-redirection to cut code bloat. patch_desktop_redirect.py
+          # is now an intentional no-op (it only prints SKIP and exits 0); it does
+          # NOT inject any marker into connection.rs / flutter_ffi.rs. The old
+          # ReadDir marker resolution + SYSTEM-impersonation logic was all removed.
+          # Keep the call so the file is still exercised, but DO NOT assert the
+          # removed markers here or the gate fails every build.
           python3 patches/patch_desktop_redirect.py .
-          grep -qF "[branding] V107-desktop-redirect" src/server/connection.rs || { echo "[FAIL] connection.rs missing desktop-redirect marker resolution"; exit 1; }
-          grep -qF "__RUSTDESK_DESKTOP__" src/server/connection.rs || { echo "[FAIL] connection.rs missing desktop marker constant"; exit 1; }
-          echo "[OK] V107 controlled-side desktop redirection-aware drop target"
+          echo "[OK] V107 desktop-redirect patch (intentionally no-op — feature abandoned)"
 
       - name: Auto-overwrite for headless file transfer (V104-fix)
         shell: bash
