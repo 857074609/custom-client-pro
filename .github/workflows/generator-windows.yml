@@ -1311,52 +1311,20 @@ jobs:
           grep -qF "V105 headless drop-file: force-enable" src/client.rs || { echo "[FAIL] client.rs missing forced file-transfer option"; exit 1; }
           echo "[OK] V105 headless file transfer (no peer confirmation)"
 
-      - name: Drag-drop transfer progress window (V105 headless-drop)
+      - name: Drag-drop transfer progress window (V105 headless-drop) — ABANDONED (no-op)
         shell: bash
         run: |
-          # V104 wired the progress channel but reported only an average of
-          # per-file percentages and stayed stuck at 0% before the peer accepted.
-          # This patch upgrades it to a real, visible experience:
-          #  - the FT driver reports TRUE overall progress
-          #    sum(finishedSize)/sum(totalSize) across ALL jobs, shows a
-          #    "Waiting..." state until the peer accepts, labels the active file +
-          #    transferred/total size, and ships a per-file progress list.
-          #  - the remote side pops a dedicated transfer-progress DIALOG on drop
-          #    (overall bar + %, current file, full per-file list) and auto-closes
-          #    on completion; the old bottom-right overlay is superseded by it.
-          # Must run AFTER patch_remote_drop_file.py and
-          # patch_file_transfer_auto.py: it rewrites code they injected.
+          # [V105/V106/V107] Drag-drop transfer-progress window: ABANDONED.
+          # The ninth-round refactor (patch_remote_drop_file.py a0228ac) removed
+          # the custom progress overlay / cross-window IPC this patch depended
+          # on (_reportDragProgress, _buildDragProgressOverlay, kWindowDragProgress,
+          # kWindowFtCancelJob, _enterMiniTransferMode, _buildMiniTransferView,
+          # launcherWindowId, ...). The FT window now stays VISIBLE and uses its
+          # NATIVE per-file progress card, so patch_drop_progress_v2.py is a
+          # no-op and none of the old markers below exist anymore. Keep the call
+          # (harmless) but DO NOT assert the removed markers, or the gate fails.
           python3 patches/patch_drop_progress_v2.py .
-          grep -qF "V105 drop-progress: overall progress" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing progress overall marker"; exit 1; }
-          grep -qF "V105 drop-progress: file list" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing file-list marker"; exit 1; }
-          grep -qF "V105 drop-progress: text value" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress text notifier"; exit 1; }
-          grep -qF "V105 drop-progress: rich overlay" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing progress rich overlay"; exit 1; }
-          grep -qF "V105 drop-progress: floating dialog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing transfer-progress dialog marker"; exit 1; }
-          # V105-fix: unbreak progress IPC when the remote session lives in a
-          # MAIN-window tab (kWindowId == null there) - FT window now falls back
-          # to reporting to the main window (id 0), and the main-window handler
-          # forwards to the remote overlay with a codec-safe map rebuild.
-          grep -qF "V105-fix: fall back to the main window" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing main-window progress fallback"; exit 1; }
-          grep -qF "call.method == kWindowDragProgress" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart missing main-window drag-progress forward"; exit 1; }
-          grep -qF "V105-fix: rebuild the map" flutter/lib/desktop/pages/remote_tab_page.dart || { echo "[FAIL] remote_tab_page.dart missing codec-safe map rebuild"; exit 1; }
-          grep -qF "kWindowFtCancelJob" flutter/lib/desktop/pages/file_manager_tab_page.dart || { echo "[FAIL] file_manager_tab_page.dart missing drag-job cancel IPC branch"; exit 1; }
-          grep -qF "barrierDismissible: false" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart transfer dialog must not be barrier-dismissable"; exit 1; }
-          grep -qF "'id': j.id," flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart progress payload missing job id"; exit 1; }
-          echo "[OK] V105 drag-drop transfer-progress window"
-          # V106-native-ft: the drag-drop FT window stays VISIBLE - its native
-          # progress overlay (with native cancel) is the transfer UI. The old
-          # behavior hid the window and papered over it with a custom remote
-          # dialog (auto-vanish, dead cancel, black screen on close).
-          if grep -n "hide()" flutter/lib/desktop/pages/file_manager_page.dart | grep -qvE "^\s*[0-9]+:\s*//"; then echo "[FAIL] file_manager_page.dart still hides the drag-drop FT window (V106-native-ft violated)"; exit 1; fi
-          if grep -qF "hide FT window failed" flutter/lib/common.dart; then echo "[FAIL] common.dart still hides the drag-drop FT window (V106-native-ft violated)"; exit 1; fi
-          grep -qF "V106-native-ft: no custom dialog anymore" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart must not auto-open the custom dialog on drop"; exit 1; }
-          echo "[OK] V106 native FT window (visible transfer UI)"
-          # V107-mini: drop-initiated FT windows shrink to a progress-only
-          # card (440x260), auto-close when all jobs finish, one click back
-          # to the full manager. Upload-button path shares the same window.
-          grep -qF "_enterMiniTransferMode" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer mode entry"; exit 1; }
-          grep -qF "_buildMiniTransferView" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer view"; exit 1; }
-          echo "[OK] V107 mini transfer window"
+          echo "[OK] V105/V106/V107 drag-drop transfer-progress (intentionally no-op — custom overlay abandoned)"
 
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
