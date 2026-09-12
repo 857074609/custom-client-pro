@@ -1049,6 +1049,7 @@ jobs:
           grep -q "self-hosted pkarr publish+resolve" ./src/iroh_transport.rs || { echo "[FAIL] iroh self-hosted pkarr discovery missing"; exit 1; }
           grep -q "PkarrResolver::new" ./src/iroh_transport.rs || { echo "[FAIL] iroh pkarr resolver missing"; exit 1; }
           ! grep -q "DnsDiscovery::new" ./src/iroh_transport.rs || { echo "[FAIL] stale DnsDiscovery still present"; exit 1; }
+          grep -qF 'iroh-quinn = { git = "https://github.com/857074609/iroh-quinn"' ./Cargo.toml || { echo "[FAIL] iroh-quinn [patch] source missing"; exit 1; }
           test $(grep -c "discovery_n0" ./src/iroh_transport.rs) -eq 2 || { echo "[FAIL] discovery_n0 count != 2 (compat+default)"; exit 1; }
           ! grep -q "__IROH_DNS_URL__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL placeholder not substituted"; exit 1; }
           grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
@@ -1085,6 +1086,11 @@ jobs:
           # Guarded so builds without iroh (e.g. quick) skip the pin cleanly.
           if grep -q '^iroh' ./Cargo.toml; then
             cargo fetch
+            # [prod-line v111] materialize the iroh-quinn [patch.crates-io] git
+            # source into Cargo.lock: the fork tolerates Windows async UDP socket
+            # errors (10052 family) that kill the endpoint on v6-less sites.
+            cargo update -p iroh-quinn
+            grep -qF '857074609/iroh-quinn' ./Cargo.lock || { echo "[FAIL] iroh-quinn patch not materialized in lock"; exit 1; }
             if ! grep -A1 'name = "idna_adapter"' ./Cargo.lock | grep -q '1\.2\.0'; then
               echo "[FAIL] idna_adapter is not 1.2.0"; exit 1
             fi
