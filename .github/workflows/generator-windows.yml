@@ -1046,7 +1046,9 @@ jobs:
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
           grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
           ! grep -q "default_relay_map" ./src/iroh_transport.rs || { echo "[FAIL] n0 relay merge still present"; exit 1; }
-          grep -q "self-hosted pkarr+dns" ./src/iroh_transport.rs || { echo "[FAIL] iroh self-hosted discovery missing"; exit 1; }
+          grep -q "self-hosted pkarr publish+resolve" ./src/iroh_transport.rs || { echo "[FAIL] iroh self-hosted pkarr discovery missing"; exit 1; }
+          grep -q "PkarrResolver::new" ./src/iroh_transport.rs || { echo "[FAIL] iroh pkarr resolver missing"; exit 1; }
+          ! grep -q "DnsDiscovery::new" ./src/iroh_transport.rs || { echo "[FAIL] stale DnsDiscovery still present"; exit 1; }
           test $(grep -c "discovery_n0" ./src/iroh_transport.rs) -eq 2 || { echo "[FAIL] discovery_n0 count != 2 (compat+default)"; exit 1; }
           ! grep -q "__IROH_DNS_URL__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL placeholder not substituted"; exit 1; }
           grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
