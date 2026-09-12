@@ -252,7 +252,7 @@ jobs:
                   _dnsu = 'https://' + _host + ':3341/pkarr'
               e.write(f\"IROH_RELAY_URL={_relay}\n\")
               e.write(f\"IROH_DNS_URL={_dnsu}\n\")
-              _n0fb = str(data.get('irohN0Fallback','') or '').strip().lower() in ('1','true','yes')
+              _n0fb = str(data.get('irohN0Fallback','') or 'true').strip().lower() not in ('0','false','no','off')
               e.write(f\"IROH_N0_FALLBACK={'true' if _n0fb else 'false'}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
