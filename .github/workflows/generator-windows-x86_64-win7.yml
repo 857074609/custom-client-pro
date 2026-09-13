@@ -343,6 +343,19 @@ jobs:
           mkdir -p src/lang/
           cp -f patches/cn.rs  src/lang/cn.rs
           cp -f patches/en.rs src/lang/en.rs
+          # [v117 bug2] "控制" must force view_only=N. The persisted read-only state is
+          # PeerConfig.view_only (a TOP-LEVEL typed field), NOT PeerConfig.options
+          # ["view_only"] -- mainSetPeerOption only writes the generic options table, so
+          # writing it there is a silent no-op. The real reset has to happen inside the
+          # session (sessionToggleOption('view-only') persists back to PeerConfig), so
+          # onControl() only arms a one-shot flag that the remote window consumes.
+          # Assert both halves landed, otherwise the button silently stays read-only.
+          grep -q "kForceControlLaunch" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v117 control button does not arm force-control-launch"; exit 1; }
+          grep -q "force-control-launch" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] v117 remote window does not consume force-control-launch"; exit 1; }
+          if grep -qF "mainSetPeerOption(id: targetId, key: 'view_only'" flutter/lib/desktop/pages/connection_page.dart; then
+            echo "[FAIL] v117 control button still relies on the no-op options-table write"
+            exit 1
+          fi
           echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
 
       - name: Apply screen wall patch + i18n
@@ -760,10 +773,6 @@ jobs:
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] controller-side OTP delivery settle delay missing (v117)"; exit 1; }
           grep -q "Future<void>.delayed" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] OTP settle is not awaited"; exit 1; }
           grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 saved-password-before-OTP lookup missing in peer_card.dart"; exit 1; }
-          # [v117 bug2] The device-card double-click is the "Control" entry: it must
-          # clear the view-only-launch-id and reset view_only=N. Win7 has no iroh
-          # step, but patch_server_otp still injects the card connect path.
-          grep -q "card connect forces view-only=N" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 card connect must force view_only=N"; exit 1; }
 
       - name: lan quality (v116)
         shell: bash
