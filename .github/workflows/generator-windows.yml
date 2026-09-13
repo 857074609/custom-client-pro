@@ -1060,6 +1060,30 @@ jobs:
           grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
           ! grep -q "default_relay_map" ./src/iroh_transport.rs || { echo "[FAIL] n0 relay merge still present"; exit 1; }
 
+      - name: winp dxgi fix (v116)
+        shell: bash
+        run: |
+          python3 patches/patch_winp_dxgi.py .
+          test $(grep -c "prod-line v116" ./libs/scrap/src/common/dxgi.rs) -ge 4 || { echo "[FAIL] v116 winp dxgi markers missing"; exit 1; }
+
+      - name: lan quality (v116)
+        shell: bash
+        run: |
+          python3 patches/patch_lan_quality.py .
+          grep -q "LAN_ULTRA_IMAGE_QUALITY" ./src/client.rs || { echo "[FAIL] v116 lan quality missing in client.rs"; exit 1; }
+          grep -q "imageSharpeningDialog" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening dialog missing"; exit 1; }
+
+      - name: cqp quality (v116)
+        shell: bash
+        run: |
+          python3 patches/patch_cqp_quality.py .
+          grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116 qp_for_ratio missing"; exit 1; }
+          grep -q "RC_CQP" ./libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v116 CQP rate control missing in hwcodec.rs"; exit 1; }
+          grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116 hwcodec fork pin missing"; exit 1; }
+          for p in 0030-nvenc-support-dynamic-constQP-reconfigure 0031-amfenc-support-dynamic-QP-and-qmin-qmax-reconfigure 0032-amfenc-support-dynamic-VBV-buffer-size-initial-fulln; do
+            test -f "./res/vcpkg/ffmpeg/patch/$p.patch" || { echo "[FAIL] v116 ffmpeg patch $p missing"; exit 1; }
+          done
+
       - name: iroh heartbeat (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
@@ -1107,6 +1131,10 @@ jobs:
             echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
             cargo fetch
           fi
+      - name: gate hwcodec cqp fork in lock (v116)
+        shell: bash
+        run: |
+          grep -qF '857074609/hwcodec' ./Cargo.lock || { echo "[FAIL] v116 hwcodec cqp fork not materialized in lock"; exit 1; }
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
