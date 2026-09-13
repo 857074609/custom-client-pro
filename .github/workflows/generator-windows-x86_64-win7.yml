@@ -760,6 +760,10 @@ jobs:
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] controller-side OTP delivery settle delay missing (v117)"; exit 1; }
           grep -q "Future<void>.delayed" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] OTP settle is not awaited"; exit 1; }
           grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 saved-password-before-OTP lookup missing in peer_card.dart"; exit 1; }
+          # [v117 bug2] The device-card double-click is the "Control" entry: it must
+          # clear the view-only-launch-id and reset view_only=N. Win7 has no iroh
+          # step, but patch_server_otp still injects the card connect path.
+          grep -q "card connect forces view-only=N" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 card connect must force view_only=N"; exit 1; }
 
       - name: lan quality (v116)
         shell: bash
