@@ -759,6 +759,7 @@ jobs:
           grep -q "from_secs(6)" ./src/server/connection.rs || { echo "[FAIL] OTP wait deadline is not 6s"; exit 1; }
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] controller-side OTP delivery settle delay missing (v117)"; exit 1; }
           grep -q "Future<void>.delayed" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] OTP settle is not awaited"; exit 1; }
+          grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 saved-password-before-OTP lookup missing in peer_card.dart"; exit 1; }
 
       - name: lan quality (v116)
         shell: bash
