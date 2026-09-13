@@ -770,9 +770,19 @@ jobs:
           # must survive.
           grep -q "looks_like_otp" ./src/server/connection.rs || { echo "[FAIL] controlled-side OTP wait window missing (v113)"; exit 1; }
           grep -q "from_secs(6)" ./src/server/connection.rs || { echo "[FAIL] OTP wait deadline is not 6s"; exit 1; }
-          grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] controller-side OTP delivery settle delay missing (v117)"; exit 1; }
-          grep -q "Future<void>.delayed" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] OTP settle is not awaited"; exit 1; }
-          grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 saved-password-before-OTP lookup missing in peer_card.dart"; exit 1; }
+          # [v117-revert] Device cards connect OTP-first again and connect
+          # IMMEDIATELY (no 3.5s settle, no saved-password-first). Assert the
+          # OTP helper is present and the removed logic is GONE, otherwise a
+          # stale saved password silently wins and the connect feels frozen.
+          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117-revert: OTP helper (_requestOtp) missing in peer_card.dart"; exit 1; }
+          if grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v117-revert: OTP settle delay (kOtpDeliverySettleMs) must be removed"
+            exit 1
+          fi
+          if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
+            exit 1
+          fi
 
       - name: lan quality (v116)
         shell: bash

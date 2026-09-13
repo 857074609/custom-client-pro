@@ -1058,9 +1058,19 @@ jobs:
           # must survive.
           grep -q "looks_like_otp" ./src/server/connection.rs || { echo "[FAIL] controlled-side OTP wait window missing (v113)"; exit 1; }
           grep -q "from_secs(6)" ./src/server/connection.rs || { echo "[FAIL] OTP wait deadline is not 6s"; exit 1; }
-          grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] controller-side OTP delivery settle delay missing (v117)"; exit 1; }
-          grep -q "Future<void>.delayed" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] OTP settle is not awaited"; exit 1; }
-          grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 saved-password-before-OTP lookup missing in peer_card.dart"; exit 1; }
+          # [v117-revert] Device cards connect OTP-first again and connect
+          # IMMEDIATELY (no 3.5s settle, no saved-password-first). Assert the
+          # OTP helper is present and the removed logic is GONE, otherwise a
+          # stale saved password silently wins and the connect feels frozen.
+          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117-revert: OTP helper (_requestOtp) missing in peer_card.dart"; exit 1; }
+          if grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v117-revert: OTP settle delay (kOtpDeliverySettleMs) must be removed"
+            exit 1
+          fi
+          if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
+            exit 1
+          fi
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
@@ -1135,20 +1145,15 @@ jobs:
           python3 patches/patch_iroh_menu.py .
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
-            # Saved password must SURVIVE an Iroh Direct connect. An earlier variant
-            # cleared it here to force the controlled side to accept the OTP, but the
-            # same clear wiped the saved numeric-ID password on every iroh connect,
-            # forcing a password re-entry for every later ID-based connect. The OTP is
-            # always passed non-empty now, so there is no OTP/saved-password collision
-            # to defend against. Assert the clear is NOT present.
-            if grep -qF "mainForgetPassword(id: peer.id)" ./flutter/lib/common/widgets/peer_card.dart; then
-              echo "[FAIL] peer_card still forgets saved password on iroh direct connect"
-              exit 1
-            fi
           fi
-          # [v117] The injected _irohDirectConnect body ("Saved password FIRST") must
-          # survive: that is also where the saved-password-before-OTP lookup lives.
-          grep -q "Saved password FIRST" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117 iroh direct connect injection missing in peer_card.dart"; exit 1; }
+          # [v117-revert] Iroh Direct must CLEAR the saved password before connecting
+          # (the saved-password path froze the connect) and then connect with OTP.
+          # Assert the clear IS present and the old saved-password-first reversal is gone.
+          grep -q "mainForgetPassword(id: peer.id)" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117-revert: iroh direct connect must clear saved password"; exit 1; }
+          if grep -q "Saved password FIRST" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v117-revert: iroh saved-password-first must be removed"
+            exit 1
+          fi
       - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
         run: |
