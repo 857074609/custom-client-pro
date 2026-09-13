@@ -765,8 +765,9 @@ jobs:
         run: |
           python3 patches/patch_lan_quality.py .
           grep -q "LAN_ULTRA_IMAGE_QUALITY" ./src/client.rs || { echo "[FAIL] v116 lan quality missing in client.rs"; exit 1; }
-          grep -q "imageSharpeningDialog" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening dialog missing"; exit 1; }
-          grep -q "Image sharpening" ./flutter/lib/common/widgets/toolbar.dart || { echo "[FAIL] v116 sharpening menu missing in toolbar"; exit 1; }
+          grep -q "kOptionImageSharpening" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening slider missing in custom-quality dialog"; exit 1; }
+          grep -q "saveSharpening" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening persistence missing in custom-quality dialog"; exit 1; }
+          if grep -q "imageSharpeningDialog" ./flutter/lib/common/widgets/toolbar.dart; then echo "[FAIL] v116 sharpening must not sit in the action menu"; exit 1; fi
           grep -q "apply_image_sharpening" ./src/client.rs || { echo "[FAIL] v116 sharpening filter missing in client.rs"; exit 1; }
 
       - name: Install Rust toolchain
