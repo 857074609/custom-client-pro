@@ -1078,11 +1078,16 @@ jobs:
         run: |
           python3 patches/patch_cqp_quality.py .
           grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116 qp_for_ratio missing"; exit 1; }
-          grep -q "RC_CQP" ./libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v116 CQP rate control missing in hwcodec.rs"; exit 1; }
           grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116 hwcodec fork pin missing"; exit 1; }
-          for p in 0030-nvenc-support-dynamic-constQP-reconfigure 0031-amfenc-support-dynamic-QP-and-qmin-qmax-reconfigure 0032-amfenc-support-dynamic-VBV-buffer-size-initial-fulln; do
-            test -f "./res/vcpkg/ffmpeg/patch/$p.patch" || { echo "[FAIL] v116 ffmpeg patch $p missing"; exit 1; }
-          done
+
+      - name: v116 revert CQP (hwcodec 0.8.0 externals missing from git-data upload)
+        shell: bash
+        run: |
+          python3 patches/patch_v116_revert_cqp.py .
+          grep -q "v116-fix4" ./libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v116-fix4 revert marker missing"; exit 1; }
+          ! grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116-fix4 hwcodec pin not reverted"; exit 1; }
+          grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116-fix4 qp_for_ratio must survive revert"; exit 1; }
+          ! grep -q "patch/0030-nvenc" ./res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v116-fix4 portfile not reverted"; exit 1; }
 
       - name: iroh heartbeat (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
