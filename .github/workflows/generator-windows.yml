@@ -1136,10 +1136,17 @@ jobs:
             echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
             cargo fetch
           fi
-      - name: gate hwcodec cqp fork in lock (v116)
+      - name: gate hwcodec cqp fork NOT in lock (v116, CQP reverted)
+        # v116-fix4 reverts the hwcodec 0.8.0 migration (externals/ submodules
+        # are missing from the git-data API upload, so the C++ build fails).
+        # CQP lands in V117. The fork must NOT leak into Cargo.lock; if it
+        # does, the revert did not take and the build would fail at fetch.
         shell: bash
         run: |
-          grep -qF '857074609/hwcodec' ./Cargo.lock || { echo "[FAIL] v116 hwcodec cqp fork not materialized in lock"; exit 1; }
+          if grep -qF '857074609/hwcodec' ./Cargo.lock; then
+            echo "[FAIL] v116 hwcodec cqp fork must NOT be in lock (reverted for V116; lands in V117)"
+            exit 1
+          fi
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
