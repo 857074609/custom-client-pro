@@ -752,6 +752,13 @@ jobs:
         run: |
           python3 patches/patch_server_otp.py .
 
+      - name: lan quality (v116)
+        shell: bash
+        run: |
+          python3 patches/patch_lan_quality.py .
+          grep -q "LAN_ULTRA_IMAGE_QUALITY" ./src/client.rs || { echo "[FAIL] v116 lan quality missing in client.rs"; exit 1; }
+          grep -q "imageSharpeningDialog" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening dialog missing"; exit 1; }
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
