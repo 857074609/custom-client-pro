@@ -507,6 +507,13 @@ jobs:
           if grep -q "SW__" flutter/lib/utils/multi_window_manager.dart; then echo "[FAIL] multi_window_manager.dart 仍包含 v109 哨兵剥离"; exit 1; fi
           if grep -q "is_screen_wall\|SW__" src/server/connection.rs; then echo "[FAIL] connection.rs 仍残留 v109 is_screen_wall / SW__ 死代码"; exit 1; fi
           echo "[OK] 屏幕墙 v107 整合链（多实例/预览/添加入口）注入完成"
+          # [v119] 屏幕墙会话不自动进入隐私模式（握手期豁免，零闪黑）
+          python3 patches/patch_screen_wall_v119.py .
+          grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
+          grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
+          grep -q "bool? isScreenWall," flutter/lib/models/model.dart || { echo "[FAIL] model.dart 缺少 v119 isScreenWall 参数"; exit 1; }
+          grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v119 模式2 图标"; exit 1; }
+          echo "[OK] 屏幕墙 v119（隐私模式豁免 + 模式2 图标）注入完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
@@ -1178,10 +1185,19 @@ jobs:
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
-          # [v117-revert] Iroh Direct must CLEAR the saved password before connecting
-          # (the saved-password path froze the connect) and then connect with OTP.
-          # Assert the clear IS present and the old saved-password-first reversal is gone.
-          grep -q "mainForgetPassword(id: peer.id)" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117-revert: iroh direct connect must clear saved password"; exit 1; }
+          # [v119] Iroh Direct is OTP-only and must NOT touch the locally saved
+          # password: no destructive mainForgetPassword (v117-revert behaviour)
+          # and no saved-password-first reversal either. The Rust fallback that
+          # read PeerConfig::load(...).password on the iroh path is removed too
+          # (see patch_iroh_transport.py).
+          if grep -q "mainForgetPassword" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v119: iroh direct must not delete the saved password"
+            exit 1
+          fi
+          if grep -q "iroh_node_id_to_rustdesk_password\|PeerConfig::load" src/client.rs; then
+            echo "[FAIL] v119: iroh saved-password fallback must be removed from client.rs"
+            exit 1
+          fi
           if grep -q "Saved password FIRST" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: iroh saved-password-first must be removed"
             exit 1

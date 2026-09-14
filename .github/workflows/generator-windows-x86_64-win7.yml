@@ -382,6 +382,15 @@ jobs:
           done
           echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
+          # [v119] 与主线工作流保持一致：屏幕墙会话不自动进入隐私模式
+          # （握手期豁免，零闪黑）+ 小工具栏「模式 2」图标。
+          # v119 只改 client.rs / flutter_ffi.rs / io_loop.rs / model.dart，
+          # 不依赖 v107 链（本工作流不跑 v107），可直接运行。
+          python3 patches/patch_screen_wall_v119.py .
+          grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
+          grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
+          echo "[OK] 屏幕墙 v119（隐私模式豁免）注入完成"
+
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
         shell: bash
