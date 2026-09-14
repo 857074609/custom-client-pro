@@ -809,7 +809,7 @@ jobs:
           # bitrate / FPS rows (slider3/value1/label2) and the grey tip
           # paragraph must be gone. The layout token is the only searchable
           # proof that the row was restyled instead of left full-width.
-          grep -q "slider3/value1/label2" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v118: sharpening row layout not restyled"; exit 1; }
+          grep -q "slider3/value1/label2" ./flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] v118: sharpening row layout not restyled"; exit 1; }
           if grep -q "Image sharpening tip" ./flutter/lib/common/widgets/dialog.dart; then echo "[FAIL] v118: sharpening tip paragraph must be removed"; exit 1; fi
 
       - name: Install Rust toolchain
