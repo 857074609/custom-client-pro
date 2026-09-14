@@ -451,6 +451,8 @@ jobs:
           python3 patches/patch_iroh_transport.py .
           grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
+          grep -q "IROH_CANCELS" ./src/iroh_transport.rs || { echo "[FAIL] v118 iroh cancel must be per-session (IROH_CANCELS map missing)"; exit 1; }
+          ! grep -q "static IROH_CANCEL_NOTIFY:" ./src/iroh_transport.rs || { echo "[FAIL] old global IROH_CANCEL_NOTIFY must be gone (per-session regression)"; exit 1; }
 
       - name: iroh heartbeat (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'

@@ -1111,7 +1111,10 @@ jobs:
           # immediately on cancel. A race branch (Notify) wakes io_loop.rs, and the
           # Notify lives in iroh_transport.rs; assert both landed.
           grep -q "iroh_cancel_notified_async" ./src/client/io_loop.rs || { echo "[FAIL] v117 iroh cancel race branch missing in io_loop.rs"; exit 1; }
-          grep -q "IROH_CANCEL_NOTIFY" ./src/iroh_transport.rs || { echo "[FAIL] v117 iroh cancel Notify missing in iroh_transport.rs"; exit 1; }
+          # [v118] iroh cancel state is now PER-SESSION (keyed by peer id) so closing
+          # one session never freezes another. Assert the map landed and the old global is gone.
+          grep -q "IROH_CANCELS" ./src/iroh_transport.rs || { echo "[FAIL] v118 iroh cancel must be per-session (IROH_CANCELS map missing)"; exit 1; }
+          ! grep -q "static IROH_CANCEL_NOTIFY:" ./src/iroh_transport.rs || { echo "[FAIL] old global IROH_CANCEL_NOTIFY must be gone (per-session regression)"; exit 1; }
           ! grep -q "DnsDiscovery::new" ./src/iroh_transport.rs || { echo "[FAIL] stale DnsDiscovery still present"; exit 1; }
           grep -qF 'iroh-quinn = { git = "https://github.com/857074609/iroh-quinn"' ./Cargo.toml || { echo "[FAIL] iroh-quinn [patch] source missing"; exit 1; }
           ! grep -q "__IROH_N0_FALLBACK__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_N0_FALLBACK placeholder not substituted"; exit 1; }
