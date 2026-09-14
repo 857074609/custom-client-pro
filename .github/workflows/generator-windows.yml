@@ -1071,6 +1071,13 @@ jobs:
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
             exit 1
           fi
+          # [v117] The controlled side polls the server-issued OTP on its own
+          # interval (TIME_OTP_POLL). No other gate covers it, so a drifted
+          # anchor would silently keep the old interval while CI stays green.
+          # Assert the constant and echo the real line for searchable proof.
+          grep -q "TIME_OTP_POLL" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll constant missing in sync.rs"; exit 1; }
+          grep -q "from_millis(500)" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll interval is not 500ms"; exit 1; }
+          grep -n "TIME_OTP_POLL" ./src/hbbs_http/sync.rs
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
