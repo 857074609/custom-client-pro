@@ -1190,11 +1190,20 @@ jobs:
           # and no saved-password-first reversal either. The Rust fallback that
           # read PeerConfig::load(...).password on the iroh path is removed too
           # (see patch_iroh_transport.py).
-          if grep -q "mainForgetPassword" ./flutter/lib/common/widgets/peer_card.dart; then
-            echo "[FAIL] v119: iroh direct must not delete the saved password"
+          #
+          # Scope note (a whole-file grep is a false positive here):
+          #   * upstream peer_card.dart legitimately calls mainForgetPassword in
+          #     its own "forget password" menu entries, so only the
+          #     _irohDirectConnect body may be checked.
+          #   * upstream src/client.rs legitimately calls PeerConfig::load in
+          #     load_config(), so the patches-only marker
+          #     iroh_node_id_to_rustdesk_password is the needle.
+          grep -q "\[v119\] Passwordless iroh path" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v119: iroh OTP-only path not injected"; exit 1; }
+          if awk '/Future<void> _irohDirectConnect\(/{f=1} f{print} f&&/^  }$/{exit}' ./flutter/lib/common/widgets/peer_card.dart | grep -q "mainForgetPassword"; then
+            echo "[FAIL] v119: _irohDirectConnect still deletes the saved password"
             exit 1
           fi
-          if grep -q "iroh_node_id_to_rustdesk_password\|PeerConfig::load" src/client.rs; then
+          if grep -q "iroh_node_id_to_rustdesk_password" src/client.rs; then
             echo "[FAIL] v119: iroh saved-password fallback must be removed from client.rs"
             exit 1
           fi
