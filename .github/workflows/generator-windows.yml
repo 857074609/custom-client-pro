@@ -247,9 +247,19 @@ jobs:
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
               _relay = data.get('irohRelayUrl','') or ''
               _dnsu = ''
+              _host = ''
               if _relay:
                   _host = _relay.split('//')[-1].split(':')[0]
                   _dnsu = 'https://' + _host + ':3341/pkarr'
+              # [v117] The runner prints every step's env block, so any GITHUB_ENV
+              # value stays visible unless it is registered with ::add-mask::.
+              # irohRelayUrl is masked below; the pkarr host derived from it and
+              # the resulting IROH_DNS_URL were not, so the self-hosted endpoint
+              # leaked into every step's env block. Mask both, URL first.
+              if _dnsu:
+                  print('::add-mask::' + _dnsu)
+              if _host:
+                  print('::add-mask::' + _host)
               e.write(f\"IROH_RELAY_URL={_relay}\n\")
               e.write(f\"IROH_DNS_URL={_dnsu}\n\")
               _n0fb = str(data.get('irohN0Fallback','') or 'true').strip().lower() not in ('0','false','no','off')
@@ -270,6 +280,7 @@ jobs:
           echo "UNLOCK_PIN suffix:  ${UNLOCK_PIN: -1}"
           echo "PERMANENT_PASSWORD suffix:  ${PERMANENT_PASSWORD: -2}"
           echo "IROH_RELAY_URL present:  ${IROH_RELAY_URL:+yes}"
+          echo "IROH_DNS_URL present:  ${IROH_DNS_URL:+yes}"
       
       - name: Install ImageMagick on Windows
         run: |
