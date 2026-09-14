@@ -165,6 +165,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -217,7 +218,15 @@ jobs:
               e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
               e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
-              e.write(f\"IROH_RELAY_URL={data.get('irohRelayUrl','')}\n\")
+              _relay = data.get('irohRelayUrl','') or ''
+              _host = _relay.split('//')[-1].split(':')[0] if _relay else ''
+              _dnsu = ('https://' + _host + ':3341/pkarr') if _relay else ''
+              if _dnsu:
+                  print('::add-mask::' + _dnsu)
+              if _host:
+                  print('::add-mask::' + _host)
+              e.write(f\"IROH_RELAY_URL={_relay}\n\")
+              e.write(f\"IROH_DNS_URL={_dnsu}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
           "
@@ -226,6 +235,7 @@ jobs:
         shell: bash
         run: |
           echo "IROH_RELAY_URL present:  ${IROH_RELAY_URL:+yes}"
+          echo "IROH_DNS_URL present:  ${IROH_DNS_URL:+yes}"
 
       - name: Install ImageMagick on Windows
         run: |
@@ -893,6 +903,7 @@ jobs:
         shell: bash
         timeout-minutes: 60
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -904,6 +915,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -915,6 +927,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \

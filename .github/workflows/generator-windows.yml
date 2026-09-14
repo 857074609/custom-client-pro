@@ -193,6 +193,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -1746,6 +1747,7 @@ jobs:
         shell: bash
         timeout-minutes: 60
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -1756,6 +1758,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -1767,6 +1770,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
