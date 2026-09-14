@@ -776,6 +776,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+          python3 patches/patch_otp_autoretry.py .
           # Gates. patch_server_otp.py skips an edit whose anchor is absent
           # (SKIP-ABSENT) instead of failing, so a drifted anchor silently
           # drops the OTP fix while CI stays green. Assert the pieces that
@@ -788,17 +789,22 @@ jobs:
           # wins and the connect feels frozen.
           grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117-revert: OTP helper (_requestOtp) missing in peer_card.dart"; exit 1; }
           # [v118] After the API mints the code, wait kOtpDeliverySettleMs
-          # (800ms) before dialing, so the controlled side's 500ms poll has
+          # (1000ms) before dialing, so the controlled side's 500ms poll has
           # already picked the code up and the first attempt authenticates.
           # patch_server_otp.py skips an absent anchor silently, so assert both
           # the constant and its value.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle (kOtpDeliverySettleMs) missing in peer_card.dart"; exit 1; }
-          grep -q "kOtpDeliverySettleMs = 800" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 800ms"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 1000" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 1000ms"; exit 1; }
           grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
             exit 1
           fi
+          # [v120] OTP auto-retry wiring. The control-side re-dials once on a
+          # wrong-password OTP session (cold-start race). Assert the armed/fired
+          # helpers are present in model.dart, otherwise the retry silently no-ops.
+          grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
+          grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
           # [v117] The controlled side polls the server-issued OTP on its own
           # interval (TIME_OTP_POLL). No other gate covers it, so a drifted
           # anchor would silently keep the old interval while CI stays green.
