@@ -771,15 +771,19 @@ jobs:
           # must survive.
           grep -q "looks_like_otp" ./src/server/connection.rs || { echo "[FAIL] controlled-side OTP wait window missing (v113)"; exit 1; }
           grep -q "from_secs(6)" ./src/server/connection.rs || { echo "[FAIL] OTP wait deadline is not 6s"; exit 1; }
-          # [v117-revert] Device cards connect OTP-first again and connect
-          # IMMEDIATELY (no 3.5s settle, no saved-password-first). Assert the
-          # OTP helper is present and the removed logic is GONE, otherwise a
-          # stale saved password silently wins and the connect feels frozen.
+          # [v117-revert] Device cards connect OTP-first again (no
+          # saved-password-first). Assert the OTP helper is present and the
+          # removed logic is GONE, otherwise a stale saved password silently
+          # wins and the connect feels frozen.
           grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117-revert: OTP helper (_requestOtp) missing in peer_card.dart"; exit 1; }
-          if grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart; then
-            echo "[FAIL] v117-revert: OTP settle delay (kOtpDeliverySettleMs) must be removed"
-            exit 1
-          fi
+          # [v118] After the API mints the code, wait kOtpDeliverySettleMs
+          # (800ms) before dialing, so the controlled side's 500ms poll has
+          # already picked the code up and the first attempt authenticates.
+          # patch_server_otp.py skips an absent anchor silently, so assert both
+          # the constant and its value.
+          grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle (kOtpDeliverySettleMs) missing in peer_card.dart"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 800" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 800ms"; exit 1; }
+          grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
             exit 1
@@ -801,6 +805,12 @@ jobs:
           grep -q "saveSharpening" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening persistence missing in custom-quality dialog"; exit 1; }
           if grep -q "imageSharpeningDialog" ./flutter/lib/common/widgets/toolbar.dart; then echo "[FAIL] v116 sharpening must not sit in the action menu"; exit 1; fi
           grep -q "apply_image_sharpening" ./src/client.rs || { echo "[FAIL] v116 sharpening filter missing in client.rs"; exit 1; }
+          # [v118] The sharpening knob must use the same row layout as the
+          # bitrate / FPS rows (slider3/value1/label2) and the grey tip
+          # paragraph must be gone. The layout token is the only searchable
+          # proof that the row was restyled instead of left full-width.
+          grep -q "slider3/value1/label2" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v118: sharpening row layout not restyled"; exit 1; }
+          if grep -q "Image sharpening tip" ./flutter/lib/common/widgets/dialog.dart; then echo "[FAIL] v118: sharpening tip paragraph must be removed"; exit 1; fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
