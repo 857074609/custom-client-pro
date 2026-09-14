@@ -781,7 +781,7 @@ jobs:
           # drops the OTP fix while CI stays green. Assert the pieces that
           # must survive.
           grep -q "looks_like_otp" ./src/server/connection.rs || { echo "[FAIL] controlled-side OTP wait window missing (v113)"; exit 1; }
-          grep -q "from_secs(6)" ./src/server/connection.rs || { echo "[FAIL] OTP wait deadline is not 6s"; exit 1; }
+          grep -q "from_secs(20)" ./src/server/connection.rs || { echo "[FAIL] OTP wait deadline is not 20s (cold-start fix)"; exit 1; }
           # [v117-revert] Device cards connect OTP-first again (no
           # saved-password-first). Assert the OTP helper is present and the
           # removed logic is GONE, otherwise a stale saved password silently
