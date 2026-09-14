@@ -338,6 +338,8 @@ jobs:
           cp -f patches/connection_page_both.dart flutter/lib/desktop/pages/connection_page.dart
           # UI_MODE_BOTH 扁平化：设备卡片默认 1px 细边框 + 透明背景，与窗口背景形成层次感
           cp -f patches/peer_card_both.dart flutter/lib/common/widgets/peer_card.dart
+          # [v120] Accessible devices tab: assert the address-book alias helper is present.
+          grep -q "_accessibleDeviceTitle" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: accessible-device address-book alias helper (_accessibleDeviceTitle) missing"; exit 1; }
           # UI_MODE_BOTH: "查看"按钮需远程桌面窗口初始化时强制置为 view-only，
           # 通过临时全局 option 传递，避免轮询时序不可靠。
           cp -f patches/remote_page_both.dart flutter/lib/desktop/pages/remote_page.dart
