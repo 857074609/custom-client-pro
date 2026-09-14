@@ -501,12 +501,12 @@ jobs:
           grep -q "_pickScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 预览选择 Dialog"; exit 1; }
           grep -q "Add to Screen Wall" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 v108 菜单项"; exit 1; }
           grep -q "String? wallId" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 wallId 参数"; exit 1; }
-          grep -q "is_screen_wall" src/server/connection.rs || { echo "[FAIL] connection.rs 缺少 v109 is_screen_wall 字段"; exit 1; }
-          grep -q 'strip_prefix(b"SW__")' src/server/connection.rs || { echo "[FAIL] connection.rs 缺少 v109 哨兵识别"; exit 1; }
-          grep -q "self.is_screen_wall" src/server/connection.rs || { echo "[FAIL] connection.rs 缺少 v109 屏幕墙判定分支"; exit 1; }
-          # 反向断言：Dart 侧不得再给密码加 SW__ 前缀（否则正确密码会被判为错误）
+          # 反向断言：v109 的 SW__ 密码哨兵已整条下线（Dart 不再加前缀，
+          # Rust 侧 is_screen_wall 也随 V119 死代码清理移除），任何一侧残留都判失败。
           if grep -q "SW__" flutter/lib/desktop/widgets/mini_remote_view.dart; then echo "[FAIL] mini_remote_view.dart 仍包含 v109 密码哨兵前缀"; exit 1; fi
-          echo "[OK] 屏幕墙 v107 整合链（多实例/预览/添加入口/免踢）注入完成"
+          if grep -q "SW__" flutter/lib/utils/multi_window_manager.dart; then echo "[FAIL] multi_window_manager.dart 仍包含 v109 哨兵剥离"; exit 1; fi
+          if grep -q "is_screen_wall\|SW__" src/server/connection.rs; then echo "[FAIL] connection.rs 仍残留 v109 is_screen_wall / SW__ 死代码"; exit 1; fi
+          echo "[OK] 屏幕墙 v107 整合链（多实例/预览/添加入口）注入完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
