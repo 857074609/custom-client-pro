@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 9a68059a5ac6cc9fcf09a133a1735746b8d1a005
+          ref: fa1f34465a0cfce546cf8e0c5c1757ffc83c5d43
       
       - name: Report Status
         continue-on-error: true
@@ -392,11 +392,10 @@ jobs:
           grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
           grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
           grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
-          # [v120] 屏幕墙工具栏的隐私模式手动开关已禁用：icon 置灰、不再调用
-          # sessionTogglePrivacyMode；仅保留「disabled in screen wall」文案。
-          ! grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 仍含隐私模式手动开关"; exit 1; }
-          grep -q "Privacy mode (disabled in screen wall)" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式禁用图标"; exit 1; }
-          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（禁用隐私开关 + 图标间隔）注入完成"
+          # [v120] 屏幕墙工具栏保留隐私模式手动开关（默认关、可手动开）：icon 仍调用
+          # sessionTogglePrivacyMode；与 v119 握手期跳过自动进隐私（io_loop.rs）配合 = 默认关 + 图标可手动开。
+          grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式手动开关"; exit 1; }
+          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔）注入完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
