@@ -159,7 +159,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 9168f1b0eb60255b031d9e90affdfa344b7c2593
+          ref: 1223729ac4de6f811a726285e597d9dc9cd2dfa7
 
       - name: Report Status
         continue-on-error: true
@@ -721,6 +721,25 @@ jobs:
           # longer hover-only (touch / quick-glance observability). Idempotent
           # via the 'prod-line v94 tab-conn-badge' marker.
           python3 patches/patch_remote_tab_iroh_badge.py .
+      - name: Login timeout watchdog + stale saved-password self-heal (V105)
+        shell: bash
+        run: |
+          # 1) A stale saved password used to hang the session at "Connecting..."
+          #    forever (peer never answers, no prompt, no picture) - the exact
+          #    "stuck at the password dialog / frozen picture" symptom reported on
+          #    the portable-quick build. This patch (a) clears the persisted copy
+          #    when the failed attempt carried exactly that saved password, so the
+          #    next attempt prompts, and (b) arms a 20s watchdog that swaps the
+          #    endless spinner for a visible login-error dialog when no first
+          #    image ever arrives - turning every future silent hang into a
+          #    diagnosable "connection vs render" verdict.
+          # 2) The script auto-selects the no-iroh variant of the self-heal when
+          #    src/iroh_transport.rs is absent (enable_iroh_direct=false), so it is
+          #    safe for both quick toolchains (1.85 with iroh, 1.75 without).
+          python3 patches/patch_login_timeout.py .
+          grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
+          grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
+          echo "[OK] V105 login watchdog + stale-password self-heal"
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
