@@ -159,7 +159,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: main
+          ref: 2fb9ca0f5d273586d98b0530fef5180a8d854638
 
       - name: Report Status
         continue-on-error: true
@@ -532,6 +532,18 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+          # [v120] OTP auto-retry: patch_server_otp.py injects the armOtpRetry()
+          # CALLS into peer_card.dart; patch_otp_autoretry.py DEFINES
+          # armOtpRetry/fireOtpRetry in model.dart. Without this step the
+          # functions are never defined and flutter build fails with
+          # "armOtpRetry isn't defined" (CI run 34956572497, step 'Build rustdesk').
+          python3 patches/patch_otp_autoretry.py .
+          # Gates (mirror generator-windows.yml server_otp). patch_*_otp.py skips
+          # an absent anchor silently, so a drifted anchor would drop the OTP fix
+          # while CI stays green. Assert the pieces that must survive.
+          grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
+          grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
+          grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
