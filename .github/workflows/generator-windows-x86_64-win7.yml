@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: main
+          ref: e5b48287a71862a113958fb37dec6d15789d867e
       
       - name: Report Status
         continue-on-error: true
@@ -391,6 +391,7 @@ jobs:
           python3 patches/patch_screen_wall_v119.py .
           grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
           grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
+          grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
           echo "[OK] 屏幕墙 v119（隐私模式豁免）注入完成"
 
       - name: Inject LAN IP direct access board
@@ -794,7 +795,7 @@ jobs:
           # patch_server_otp.py skips an absent anchor silently, so assert both
           # the constant and its value.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle (kOtpDeliverySettleMs) missing in peer_card.dart"; exit 1; }
-          grep -q "kOtpDeliverySettleMs = 1000" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 1000ms"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 1500" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 1500ms"; exit 1; }
           grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
