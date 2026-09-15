@@ -64,8 +64,8 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
-  RUST_VERSION: "1.85.0" # iroh=on toolchain (idna_adapter/icu 1.x MSRV closure).
-  # dtolnay step selects 1.85 when enable_iroh_direct=true, else 1.75
+  RUST_VERSION: "1.81.0" # iroh 0.35 官方 MSRV=1.81（crates.io rust_version）；闭包已 pin idna_adapter=1.2.0 (icu 1.x) MSRV-safe。1.85 工具链疑似引发会话黑屏，故降档。
+    # dtolnay step selects 1.81 when enable_iroh_direct=true, else 1.75
   # (1.75 matches the 2026-08-26 1.4.9.0 good build toolchain).
   # Do NOT set CARGO_BUILD_TARGET: it makes cargo emit to target/<triple>/release/ instead
   # of target/release/, which breaks build.py (librustdesk.dll existence check at line 443)
@@ -607,8 +607,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          #toolchain: ${{ fromJson(inputs.extras).enable_iroh_direct == 'true' && '1.85.0' || '1.75' }}
-          toolchain: 1.85.0
+          #toolchain: ${{ fromJson(inputs.extras).enable_iroh_direct == 'true' && '1.81.0' || '1.75' }}
+          toolchain: 1.81.0
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
       - name: pin iroh lock closure to MSRV-safe versions (v88)
@@ -617,7 +617,7 @@ jobs:
           # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter.
           # idna_adapter is pinned to =1.2.0 in Cargo.toml (via patch_iroh_transport.py),
           # which drags the whole icu subtree to the 1.x line (MSRV 1.67) so the pinned
-          # 1.85.0 toolchain can build the iroh closure. 1.2.0 is the only 1.2.x build
+          # 1.81.0 toolchain (iroh 0.35 MSRV) can build the iroh closure. 1.2.0 is the only 1.2.x build
           # that depends on icu 1.x; 1.2.1/1.2.2 pull icu 2.x (rust-version 1.82/1.86)
           # which the toolchain cannot compile. The pin lives in Cargo.toml (not a
           # post-hoc `cargo update`), so the first lock resolution already selects it.
@@ -630,7 +630,7 @@ jobs:
             if grep -A1 'name = "icu_' ./Cargo.lock | grep -qE 'version = "2\.'; then
               echo "[FAIL] icu >= 2.0 (rust-version >= 1.86) still in lock"; exit 1
             fi
-            echo "[OK] MSRV-1.85 lock: idna_adapter $(grep -A1 'name = "idna_adapter"' ./Cargo.lock | tail -1)"
+            echo "[OK] MSRV lock: idna_adapter $(grep -A1 'name = "idna_adapter"' ./Cargo.lock | tail -1)"
           else
             echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
             cargo fetch
@@ -746,7 +746,7 @@ jobs:
           #    diagnosable "connection vs render" verdict.
           # 2) The script auto-selects the no-iroh variant of the self-heal when
           #    src/iroh_transport.rs is absent (enable_iroh_direct=false), so it is
-          #    safe for both quick toolchains (1.85 with iroh, 1.75 without).
+          #    safe for both quick toolchains (1.81 with iroh, 1.75 without).
           python3 patches/patch_login_timeout.py .
           grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
           grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
