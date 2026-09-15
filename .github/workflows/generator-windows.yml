@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d98149d657184dbb53f03fb12feaadd8d2352fc9
+          ref: 7a44d31bd51149b2dc04a8f7d0f20efc964edd48
       
       - name: Report Status
         continue-on-error: true
@@ -521,7 +521,14 @@ jobs:
           grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 view-style 切换"; exit 1; }
           # 首帧强制关闭隐私模式（清掉主窗口残留的全局 PrivacyModeState 单例，避免图标错显「已开隐私」）。
           grep -q "MiniRemoteView force privacy-off error" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙首帧强制关闭隐私模式"; exit 1; }
-          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换 + 首帧强制关隐私）注入完成"
+          # 图标必须改用本格私有 _privacyOn，不得再读全局 PrivacyModeState 单例
+          # （按 peer id 共享，会被主界面同设备会话污染 → 假性「已开隐私」）。
+          grep -q "_privacyOn" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙隐私图标私有状态"; exit 1; }
+          # 反向断言：图标不得再读 PrivacyModeState.find(widget.id)（主界面污染源）。
+          if grep -q "PrivacyModeState.find(widget.id)" flutter/lib/desktop/widgets/mini_remote_view.dart; then
+            echo "[FAIL] mini_remote_view.dart 隐私图标仍读全局 PrivacyModeState 单例"; exit 1;
+          fi
+          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换 + 首帧强制关隐私 + 图标私有状态）注入完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
