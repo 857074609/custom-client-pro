@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 6d08a2c4538b75c4f04115d77376063f838d4445
+          ref: bbcf8032d1cbde422deea221448aefe836c350ce
 
       - name: Report Status
         continue-on-error: true
@@ -498,6 +498,16 @@ jobs:
           grep -q "prod-line strip-port-forward" src/server/connection.rs || { echo "[FAIL] strip-port-forward marker missing"; exit 1; }
           grep -q "prod-line strip-voice-call" src/server/connection.rs || { echo "[FAIL] strip-voice-call marker missing"; exit 1; }
           echo "[OK] v121 extra features stripped"
+
+      - name: Strip outgoing-only UI (theme / account / printer / mouse options) (v121b)
+        shell: bash
+        run: |
+          # 只保留被控：删除设置页 主题卡片、Display/Plugin/Account/Printer 标签页，
+          # 以及会话默认选项里的 隐私模式/滚轮反向/交换鼠标 条目。
+          python3 patches/patch_strip_outgoing_ui.py .
+          grep -q "prod-line strip-outgoing-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] setting page marker missing"; exit 1; }
+          grep -q "prod-line strip-outgoing-ui" flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] setting_widgets marker missing"; exit 1; }
+          echo "[OK] v121b outgoing-only UI stripped"
 
       - name: Apply no-trace (portable zero-residue) patch
         shell: bash
