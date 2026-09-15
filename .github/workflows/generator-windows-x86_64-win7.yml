@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 323128c666244eafea4ba587cf756045478d7e12
+          ref: b40af8a2dc19d52651b523691731145027af9ec6
       
       - name: Report Status
         continue-on-error: true
@@ -395,7 +395,8 @@ jobs:
           # [v120] 屏幕墙工具栏保留隐私模式手动开关（默认关、可手动开）：icon 仍调用
           # sessionTogglePrivacyMode；与 v119 握手期跳过自动进隐私（io_loop.rs）配合 = 默认关 + 图标可手动开。
           grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式手动开关"; exit 1; }
-          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔）注入完成"
+          grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 view-style 切换"; exit 1; }
+          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换）注入完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
