@@ -159,7 +159,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: f68ce3ca17da5d4cd0b068abd4352111a4285582
+          ref: 2a18f14a39fb2d584306ab5b0afa2ee976bcbb03
 
       - name: Report Status
         continue-on-error: true
@@ -723,8 +723,9 @@ jobs:
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
-          # 注：去掉 --hwcodec --vram，改走纯软件编解码，避免 portable 下 _hwcodec 落盘失败导致黑屏。
-          python3 .\build.py --portable --flutter --skip-portable-pack
+          # 恢复 --hwcodec --vram：portable 黑屏根因是 notrace 下 _hwcodec 落盘失败，已由
+          # patch_portable_notrace.py 的 SHARED 例外（patches f68ce3c）修复，故 hwcodec 可恢复。
+          python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
 
           # Download usbmmidd_v2.zip and extract it to ./rustdesk
