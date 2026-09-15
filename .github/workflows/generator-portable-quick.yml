@@ -64,9 +64,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
-  RUST_VERSION: "1.81.0" # iroh 0.35 官方 MSRV=1.81（crates.io rust_version）；闭包已 pin idna_adapter=1.2.0 (icu 1.x) MSRV-safe。1.85 工具链疑似引发会话黑屏，故降档。
-    # dtolnay step selects 1.81 when enable_iroh_direct=true, else 1.75
-  # (1.75 matches the 2026-08-26 1.4.9.0 good build toolchain).
+  RUST_VERSION: "1.75.0" # matches the 2026-08-26 1.4.9.0 good build toolchain.
+    # v121: iroh is fully removed from quick, so there is no MSRV constraint
+    # and the 1.75 toolchain builds the whole dependency closure.
   # Do NOT set CARGO_BUILD_TARGET: it makes cargo emit to target/<triple>/release/ instead
   # of target/release/, which breaks build.py (librustdesk.dll existence check at line 443)
   # and flutter/windows/CMakeLists.txt (RUSTDESK_LIB). Host triple is already correct here.
@@ -80,7 +80,6 @@ env:
   UPLOAD_ARTIFACT: 'true'
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
-  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
 
 
 
@@ -159,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: d6e13d2b2a046169b8a6db236dc43710dd56c263
+          ref: 6d08a2c4538b75c4f04115d77376063f838d4445
 
       - name: Report Status
         continue-on-error: true
@@ -211,31 +210,16 @@ jobs:
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','permanentPassword','unlockPin']:
+          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
               e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
               e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
-              _relay = data.get('irohRelayUrl','') or ''
-              _host = _relay.split('//')[-1].split(':')[0] if _relay else ''
-              _dnsu = ('https://' + _host + ':3341/pkarr') if _relay else ''
-              if _dnsu:
-                  print('::add-mask::' + _dnsu)
-              if _host:
-                  print('::add-mask::' + _host)
-              e.write(f\"IROH_RELAY_URL={_relay}\n\")
-              e.write(f\"IROH_DNS_URL={_dnsu}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
           "
-
-      - name: Display last
-        shell: bash
-        run: |
-          echo "IROH_RELAY_URL present:  ${IROH_RELAY_URL:+yes}"
-          echo "IROH_DNS_URL present:  ${IROH_DNS_URL:+yes}"
 
       - name: Install ImageMagick on Windows
         run: |
@@ -373,12 +357,6 @@ jobs:
         run: |
           sed -i '/if (bind\.isCustomClient())/d' flutter/lib/desktop/pages/desktop_home_page.dart
 
-      - name: enable websocket
-        if: ${{ fromJson(inputs.extras || '{}').ws_port != '' }}
-        shell: bash
-        run: |
-           python3 patches/patch_websocket_custom_port.py
-
       - name: fix win_device SetupDi error spam
         shell: bash
         run: |
@@ -501,6 +479,26 @@ jobs:
           grep -q "prod-line cm-disable" src/ui.rs || { echo "[FAIL] ui.rs missing cm-disable marker"; exit 1; }
           echo "[OK] v99 cm window disabled"
 
+      - name: Force incoming-only (controlled side) (v121)
+        shell: bash
+        run: |
+          # quick 保留被接入功能：编译期硬编码 is_incoming_only()=true，
+          # 复用上游整套 incoming-only 机制（隐藏主控 UI、Rust 侧拒绝外连）。
+          python3 patches/patch_incoming_only.py .
+          grep -q "prod-line incoming-only" libs/hbb_common/src/config.rs || { echo "[FAIL] incoming-only marker missing"; exit 1; }
+          echo "[OK] v121 incoming-only forced"
+
+      - name: Strip extra features (privacy mode / port-forward / voice call) (v121)
+        shell: bash
+        run: |
+          # 只保留基础远程控制：隐私模式能力关闭（不再向控制端广播）；
+          # TCP 隧道/端口转发登录请求直接拒绝；语音通话请求自动拒接。
+          python3 patches/patch_strip_extra_features.py .
+          grep -q "prod-line strip-privacy-mode" src/privacy_mode.rs || { echo "[FAIL] strip-privacy-mode marker missing"; exit 1; }
+          grep -q "prod-line strip-port-forward" src/server/connection.rs || { echo "[FAIL] strip-port-forward marker missing"; exit 1; }
+          grep -q "prod-line strip-voice-call" src/server/connection.rs || { echo "[FAIL] strip-voice-call marker missing"; exit 1; }
+          echo "[OK] v121 extra features stripped"
+
       - name: Apply no-trace (portable zero-residue) patch
         shell: bash
         env:
@@ -532,33 +530,6 @@ jobs:
           grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
           grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
           grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
-      - name: iroh transport (v88)
-        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
-        shell: bash
-        run: |
-          python3 patches/patch_iroh_transport.py .
-          grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
-          grep -q "iroh_public_key_for_ui" ./src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs missing iroh node id bridge (IP Direct panel would show no iroh row)"; exit 1; }
-          grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
-          grep -q "IROH_CANCELS" ./src/iroh_transport.rs || { echo "[FAIL] v118 iroh cancel must be per-session (IROH_CANCELS map missing)"; exit 1; }
-          ! grep -q "static IROH_CANCEL_NOTIFY:" ./src/iroh_transport.rs || { echo "[FAIL] old global IROH_CANCEL_NOTIFY must be gone (per-session regression)"; exit 1; }
-
-      - name: iroh heartbeat (v88)
-        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
-        shell: bash
-        run: |
-          python3 patches/patch_iroh_heartbeat.py .
-          grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
-
-      - name: iroh menu (v88)
-        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
-        shell: bash
-        run: |
-          python3 patches/patch_iroh_menu.py .
-          if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
-            grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
-          fi
-
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
         with:
@@ -607,34 +578,21 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          #toolchain: ${{ fromJson(inputs.extras).enable_iroh_direct == 'true' && '1.81.0' || '1.75' }}
-          toolchain: 1.81.0
+          toolchain: 1.75
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
-      - name: pin iroh lock closure to MSRV-safe versions (v88)
+      - name: cargo fetch (resolve lockfile)
         shell: bash
         run: |
-          # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter.
-          # idna_adapter is pinned to =1.2.0 in Cargo.toml (via patch_iroh_transport.py),
-          # which drags the whole icu subtree to the 1.x line (MSRV 1.67) so the pinned
-          # 1.81.0 toolchain (iroh 0.35 MSRV) can build the iroh closure. 1.2.0 is the only 1.2.x build
-          # that depends on icu 1.x; 1.2.1/1.2.2 pull icu 2.x (rust-version 1.82/1.86)
-          # which the toolchain cannot compile. The pin lives in Cargo.toml (not a
-          # post-hoc `cargo update`), so the first lock resolution already selects it.
-          # Guarded so builds without iroh (e.g. quick) skip the pin cleanly.
-          if grep -q '^iroh' ./Cargo.toml; then
-            cargo fetch
-            if ! grep -A1 'name = "idna_adapter"' ./Cargo.lock | grep -q '1\.2\.0'; then
-              echo "[FAIL] idna_adapter is not 1.2.0"; exit 1
-            fi
-            if grep -A1 'name = "icu_' ./Cargo.lock | grep -qE 'version = "2\.'; then
-              echo "[FAIL] icu >= 2.0 (rust-version >= 1.86) still in lock"; exit 1
-            fi
-            echo "[OK] MSRV lock: idna_adapter $(grep -A1 'name = "idna_adapter"' ./Cargo.lock | tail -1)"
-          else
-            echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
-            cargo fetch
-          fi
+          cargo fetch
+
+      - name: Shrink release profile (opt-level z) (v121)
+        shell: bash
+        run: |
+          # 体积最小化：启用上游预留的 opt-level='z'（配合已有 lto+strip+panic=abort）。
+          sed -i "s|^#opt-level = 'z'|opt-level = 'z'|" Cargo.toml
+          grep -q "^opt-level = 'z'" Cargo.toml || { echo "[FAIL] opt-level z not enabled"; exit 1; }
+          echo "[OK] release profile: opt-level=z"
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
@@ -745,8 +703,8 @@ jobs:
           #    image ever arrives - turning every future silent hang into a
           #    diagnosable "connection vs render" verdict.
           # 2) The script auto-selects the no-iroh variant of the self-heal when
-          #    src/iroh_transport.rs is absent (enable_iroh_direct=false), so it is
-          #    safe for both quick toolchains (1.81 with iroh, 1.75 without).
+          #    src/iroh_transport.rs is absent (v121: iroh removed from quick,
+          #    toolchain is 1.75).
           python3 patches/patch_login_timeout.py .
           grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
           grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
@@ -759,12 +717,8 @@ jobs:
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
 
-          # Download usbmmidd_v2.zip and extract it to ./rustdesk
-          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
-          Expand-Archive usbmmidd_v2.zip -DestinationPath . -Force
-          Remove-Item -Path usbmmidd_v2\Win32 -Recurse
-          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
-          mv -Force .\usbmmidd_v2 ./rustdesk
+          # v121: usbmmidd_v2 (privacy-mode virtual display) no longer bundled -
+          # privacy mode is stripped from this build.
 
       - name: icon stuff
         if: ${{ inputs.iconlink == 'true' }}
