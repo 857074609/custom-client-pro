@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: b76df5b07531066708ecef086c0aa52383fd89d0
+          ref: d98149d657184dbb53f03fb12feaadd8d2352fc9
       
       - name: Report Status
         continue-on-error: true
@@ -801,7 +801,7 @@ jobs:
           # patch_server_otp.py skips an absent anchor silently, so assert both
           # the constant and its value.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle (kOtpDeliverySettleMs) missing in peer_card.dart"; exit 1; }
-          grep -q "kOtpDeliverySettleMs = 1500" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 1500ms"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 1800" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 1800ms"; exit 1; }
           grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
