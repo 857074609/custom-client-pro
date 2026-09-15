@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: bbcf8032d1cbde422deea221448aefe836c350ce
+          ref: ee5c6c0632b87e4c00afd9a54042a3322cbf9427
 
       - name: Report Status
         continue-on-error: true
@@ -508,6 +508,20 @@ jobs:
           grep -q "prod-line strip-outgoing-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] setting page marker missing"; exit 1; }
           grep -q "prod-line strip-outgoing-ui" flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] setting_widgets marker missing"; exit 1; }
           echo "[OK] v121b outgoing-only UI stripped"
+
+      - name: Strip remote_printer Rust crate (v121c)
+        shell: bash
+        run: |
+          # 物理移除打印模块：Cargo.toml 依赖/成员、CLI 分支、FFI、安装脚本注入点，
+          # 并删除 libs/remote_printer 目录。
+          python3 patches/patch_strip_rust_printer.py .
+          rm -rf libs/remote_printer
+          grep -q "prod-line strip-rust-printer" Cargo.toml || { echo "[FAIL] Cargo.toml marker missing"; exit 1; }
+          grep -q "prod-line strip-rust-printer" src/platform/windows.rs || { echo "[FAIL] windows.rs marker missing"; exit 1; }
+          if grep -q "remote_printer" Cargo.toml; then echo "[FAIL] remote_printer still in Cargo.toml"; exit 1; fi
+          if grep -rq "remote_printer::" src/; then echo "[FAIL] remote_printer:: call remains in src"; exit 1; fi
+          test ! -d libs/remote_printer || { echo "[FAIL] libs/remote_printer still exists"; exit 1; }
+          echo "[OK] v121c remote_printer crate stripped"
 
       - name: Apply no-trace (portable zero-residue) patch
         shell: bash
