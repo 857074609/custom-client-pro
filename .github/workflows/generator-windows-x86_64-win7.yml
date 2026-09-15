@@ -266,17 +266,7 @@ jobs:
          
           VER="${{ env.VERSION }}"
           echo "Building version: $VER"
-          version_ge() {
-            printf '%s\n%s\n' "$2" "$1" | sort -V -C
-          }
-
-          if version_ge "$VER" "1.4.7"; then
-            echo ">>> Version $VER >= 1.4.7, using new patch"
-            cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
-          else
-            echo ">>> Version $VER < 1.4.7, using old patch"
-            cp -f patches/desktop_home_page_old.dart flutter/lib/desktop/pages/desktop_home_page.dart
-          fi
+          cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
 
       - name: Extract conn-type (client type)
         id: conn
@@ -681,18 +671,7 @@ jobs:
         shell: bash
         run: |
           VER="${{ env.VERSION }}"
-
-          version_ge() {
-            printf '%s\n%s\n' "$2" "$1" | sort -V -C
-          }
-
-          if version_ge "$VER" "1.4.7"; then
-            echo ">>> Version $VER >= 1.4.7, using new password patch"
-            python3 patches/patch_permanent_password_new.py
-          else
-            echo ">>> Version $VER < 1.4.7, using old password patch"
-            python3 patches/patch_permanent_password_old.py
-          fi
+          python3 patches/patch_permanent_password_new.py
 
       - name: Apply unlock PIN patch
         shell: bash
