@@ -239,21 +239,12 @@ jobs:
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
       - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v4
         with:
             repository: rustdesk/rustdesk
-            ref: refs/tags/${{ env.VERSION }}
+            ref: ${{ env.VERSION == 'master' && 'master' || format('refs/tags/{0}', env.VERSION) }}
             submodules: recursive
             # No step in this workflow needs history (no git describe/rev-parse).
-            fetch-depth: 1
-  
-      - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
-        uses: actions/checkout@v4
-        with:
-            repository: rustdesk/rustdesk
-            submodules: recursive
             fetch-depth: 1
 
       - name: Checkout patches scripts

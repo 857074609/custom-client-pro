@@ -276,20 +276,12 @@ jobs:
                wget \
                imagemagick
       - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v5
         with:
           repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
+          ref: ${{ env.VERSION == 'master' && 'master' || format('refs/tags/{0}', env.VERSION) }}
           submodules: recursive
           # Full history is never used (no git describe/rev-parse in this workflow).
-          fetch-depth: 1
-      - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
-        uses: actions/checkout@v5
-        with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
           fetch-depth: 1
       - name: Checkout patches scripts
         uses: actions/checkout@v5
