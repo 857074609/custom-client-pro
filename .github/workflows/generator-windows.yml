@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: b40af8a2dc19d52651b523691731145027af9ec6
+          ref: b76df5b07531066708ecef086c0aa52383fd89d0
       
       - name: Report Status
         continue-on-error: true
@@ -519,7 +519,9 @@ jobs:
           grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式手动开关"; exit 1; }
           grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
           grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 view-style 切换"; exit 1; }
-          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换）注入完成"
+          # 首帧强制关闭隐私模式（清掉主窗口残留的全局 PrivacyModeState 单例，避免图标错显「已开隐私」）。
+          grep -q "MiniRemoteView force privacy-off error" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙首帧强制关闭隐私模式"; exit 1; }
+          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换 + 首帧强制关隐私）注入完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
