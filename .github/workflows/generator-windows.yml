@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2fb9ca0f5d273586d98b0530fef5180a8d854638
+          ref: e9c18606c11fdb5e7f84bf68a606a2a6459049b1
       
       - name: Report Status
         continue-on-error: true
@@ -1081,6 +1081,15 @@ jobs:
         shell: bash
         run: |
            python3 patches/patch_restart_service.py
+           # [v121] The Service button / tray label is translate("Restart service").
+           # When ui_mode == 'false' the "Replace custom patch files" step is
+           # skipped, so the stock upstream src/lang/cn.rs is compiled in and the
+           # key is absent -> a Chinese UI renders the English source string.
+           # patch_restart_service.py inserts the key (idempotent: a branded
+           # patches/cn.rs already carries it and is left untouched). Assert it is
+           # there either way, otherwise the button silently shows English again.
+           grep -q '"Restart service"' ./src/lang/cn.rs || { echo "[FAIL] restart_srver: cn.rs lacks the Restart service key (button will show English)"; exit 1; }
+           echo "[OK] cn.rs carries the localized Restart service key"
 
       - name: server_otp (v86)
         shell: bash
