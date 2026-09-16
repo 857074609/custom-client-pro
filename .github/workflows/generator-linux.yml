@@ -213,6 +213,16 @@ jobs:
           path: patches
           clean: false
 
+      - name: Report Status
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "\u73af\u5883\u51c6\u5907\u5c31\u7eea\uff0c\u5f00\u59cb\u5356\u529b\u5de5\u4f5c"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
       # ---------- 自定义补丁链 (跨平台部分) ----------
       - name: change appname to custom
         if: inputs.appname != 'rustdesk'
@@ -814,6 +824,28 @@ jobs:
           name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-suse.rpm
           path: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}-suse.rpm
 
+      - name: failed
+        if: failure()
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation failed, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+      - name: cancelled
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation cancelled, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
   build-appimage:
     name: Build appimage ${{ matrix.job.arch }}
     needs: [build-rustdesk-linux]
@@ -876,6 +908,28 @@ jobs:
           name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage
           path: appimage/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage
 
+      - name: failed
+        if: failure()
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation failed, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+      - name: cancelled
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation cancelled, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
   build-flatpak:
     name: Build flatpak ${{ matrix.job.arch }}
     needs: [build-rustdesk-linux]
@@ -933,6 +987,28 @@ jobs:
         with:
           name: ${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.flatpak
           path: flatpak/${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.flatpak
+
+      - name: failed
+        if: failure()
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation failed, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+      - name: cancelled
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation cancelled, try again"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
   release-linux:
     name: Release linux client
@@ -1057,6 +1133,17 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
             -d '{"uuid": "${{ inputs.uuid }}", "status": "Success"}' \
+            "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+      - name: failed
+        if: failure()
+        continue-on-error: true
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Generation failed, try again"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
       - name: Report cancellation
