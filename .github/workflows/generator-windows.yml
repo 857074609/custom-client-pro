@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d51976cb4691f0a223d147ebd4304393c81f37d4
+          ref: 6a9e5f4c674637c8956f8a3bf15875743e34a1bf
       
       - name: Report Status
         continue-on-error: true
@@ -519,6 +519,17 @@ jobs:
             echo "[FAIL] mini_remote_view.dart 隐私图标仍读全局 PrivacyModeState 单例"; exit 1;
           fi
           echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换 + 首帧强制关隐私 + 图标私有状态）注入完成"
+
+          # [screen_wall v121] Assert the v121 screen-wall enhancements really landed in
+          # the tree. windows / win7 / quick pin the patches checkout to a concrete sha
+          # instead of main, so a stale pin silently ships a build without these features
+          # (exactly what happened to run #1744). Fail here instead of at the user's desk.
+          grep -q "Set 1920x1080" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the one-click 1920x1080 button"; exit 1; }
+          grep -q "Icons.aspect_ratio" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the 1920x1080 icon"; exit 1; }
+          grep -q "Maximize Window" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing the Maximize Window label"; exit 1; }
+          grep -q "widget.onMaximize?.call()" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing toolbar double-click maximize"; exit 1; }
+          grep -q "requestExitZoom" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing the global Esc exit-zoom hook"; exit 1; }
+          echo "[OK] screen wall v121 verified (1920x1080 / double-click maximize / label fix / global Esc)"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
