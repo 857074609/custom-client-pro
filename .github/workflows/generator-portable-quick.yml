@@ -30,26 +30,6 @@ on:
         required: false
         default: 'false'
         type: string
-      ip_direct_board:
-        description: "LAN IP Direct Access board (show local LAN IP + direct port on left panel)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_e2ee:
-        description: "IP direct connection end-to-end encryption (decoupled from ip_direct_board)"
-        required: false
-        default: 'false'
-        type: string
-      ip_direct_udp:
-        description: "IP direct connection over UDP(KCP) transport (fallback to TCP)"
-        required: false
-        default: 'false'
-        type: string
-      api_device_sync:
-        description: "Sync online devices from API server into Accessible Devices tab, and add IP Direct / Delete Device menus"
-        required: false
-        default: 'false'
-        type: string
       iconlink:
         description: "icon link"
         required: false
@@ -77,8 +57,19 @@ on:
         type: string
 
 
+
+# Drop a superseded run: dispatching the same generator again cancels the run
+# that is already in flight instead of queueing behind it. Different generators
+# use different groups, so parallel Windows/Linux/Android builds are unaffected.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
-  RUST_VERSION: "1.75" # 对齐官方 1.4.9 Windows Flutter 构建
+  RUST_VERSION: "1.75.0" # matches the 2026-08-26 1.4.9.0 good build toolchain.
+    # v121: iroh is fully removed from quick, so there is no MSRV constraint
+    # and the 1.75 toolchain builds the whole dependency closure.
+  # Do NOT set CARGO_BUILD_TARGET: it makes cargo emit to target/<triple>/release/ instead
+  # of target/release/, which breaks build.py (librustdesk.dll existence check at line 443)
+  # and flutter/windows/CMakeLists.txt (RUSTDESK_LIB). Host triple is already correct here.
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
@@ -89,7 +80,6 @@ env:
   UPLOAD_ARTIFACT: 'true'
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
-  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
 
 
 
@@ -137,11 +127,17 @@ jobs:
         run: |
           echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> "$GITHUB_ENV"
 
+      - name: Compute sanitized app tag
+        shell: bash
+        run: |
+          APP_TAG=$(echo "${{ inputs.appname }}" | tr ' ' '_' | tr -cd 'A-Za-z0-9._-')
+          echo "APP_TAG=$APP_TAG" >> "$GITHUB_ENV"
+
       - name: Checkout source code
         uses: actions/checkout@v5
         with:
           repository: rustdesk/rustdesk
-          ref: ${{ (env.VERSION != 'master' && env.VERSION != 'main') && format('refs/tags/{0}', env.VERSION) || env.VERSION }}
+          ref: ${{ env.VERSION == 'master' && 'master' || format('refs/tags/{0}', env.VERSION) }}
           submodules: recursive
           fetch-depth: 1
 
@@ -162,12 +158,13 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: main
+          ref: d51976cb4691f0a223d147ebd4304393c81f37d4
 
       - name: Report Status
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -246,25 +243,8 @@ jobs:
 
           VER="${{ env.VERSION }}"
           echo "Building version: $VER"
-          version_ge() {
-            printf '%s\n%s\n' "$2" "$1" | sort -V -C
-          }
+          cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
 
-          if version_ge "$VER" "1.4.7"; then
-            echo ">>> Version $VER >= 1.4.7, using new patch"
-            cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
-          else
-            echo ">>> Version $VER < 1.4.7, using old patch"
-            cp -f patches/desktop_home_page_old.dart flutter/lib/desktop/pages/desktop_home_page.dart
-          fi
-
-          # portable-quick 专用：覆盖为精简单面板版首页（仅左面板，无右侧连接面板）。
-          # desktop_home_page_quick.dart 基于 new 基准精简，>=1.4.7 结构。
-          if version_ge "$VER" "1.4.7"; then
-            cp -f patches/desktop_home_page_quick.dart flutter/lib/desktop/pages/desktop_home_page.dart
-            echo "[OK] portable-quick 首页已替换为 desktop_home_page_quick.dart (单面板)"
-            grep -q "// portable-quick 精简版" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quick 首页标记缺失"; exit 1; }
-          fi
 
       - name: Enable copy ID & password button
         if: inputs.ui_mode == 'true'
@@ -302,7 +282,7 @@ jobs:
           echo "[OK] 复制按钮启用完成"
 
       - name: Inject LAN IP direct access board
-        if: inputs.ip_direct_board == 'true'
+        if: fromJson(inputs.extras).ip_direct_board == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -312,8 +292,19 @@ jobs:
           grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           echo "[OK] 内网 IP 直连看板注入完成"
 
+      - name: Report local IPv6 to API server (v70)
+        if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_udp == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v70: 把本机 lan-ipv6 上报到 API 服务器心跳，供设备菜单"IPv6 直连"使用。
+          # 必须在 patch_direct_access.py 之后运行（它写入 lan-ipv6 选项）。
+          python3 patches/patch_ipv6_heartbeat.py .
+          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
+
       - name: Inject direct connection E2EE (IPv4/IPv6)
-        if: inputs.ip_direct_board == 'true' || inputs.ip_direct_e2ee == 'true'
+        if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_e2ee == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -326,7 +317,7 @@ jobs:
           grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
 
       - name: Patch direct access UDP transport
-        if: inputs.ip_direct_udp == 'true'
+        if: fromJson(inputs.extras).ip_direct_udp == 'true'
         shell: bash
         run: |
           # IP 直连 UDP(KCP) 传输：主控端 UDP 优先（2s 超时自动回退 TCP）；
@@ -336,26 +327,22 @@ jobs:
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
-        if: inputs.api_device_sync == 'true'
+        if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
         shell: bash
         run: |
           # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
           # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
           python3 patches/patch_online_devices.py .
           grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
-          grep -q "_ipDirectAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _ipDirectAction"; exit 1; }
+          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
+
+
 
       - name: skip custom client
         shell: bash
         run: |
           sed -i '/if (bind\.isCustomClient())/d' flutter/lib/desktop/pages/desktop_home_page.dart
-
-      - name: enable websocket
-        if: ${{ fromJson(inputs.extras || '{}').ws_port != '' }}
-        shell: bash
-        run: |
-           python3 patches/patch_websocket_custom_port.py
 
       - name: fix win_device SetupDi error spam
         shell: bash
@@ -390,6 +377,9 @@ jobs:
 
           # ./src/lang/*.rs
           find ./src/lang -name "*.rs" -exec sed -i -e 's|RustDesk|${{ inputs.appname }}|' {} \;
+          # ./src/client.rs: hardcode the peer display name to APP_NAME so the
+          # connection shows the branded name instead of the builtin option.
+          sed -i '/let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);/,/\.join(" ");/c\        let display_name = "'"${APP_NAME}"'".to_string();' ./src/client.rs
 
       - name: fix registry if appname has a space
         if: contains(inputs.appname, ' ')
@@ -433,18 +423,7 @@ jobs:
         shell: bash
         run: |
           VER="${{ env.VERSION }}"
-
-          version_ge() {
-            printf '%s\n%s\n' "$2" "$1" | sort -V -C
-          }
-
-          if version_ge "$VER" "1.4.7"; then
-            echo ">>> Version $VER >= 1.4.7, using new password patch"
-            python3 patches/patch_permanent_password_new.py
-          else
-            echo ">>> Version $VER < 1.4.7, using old password patch"
-            python3 patches/patch_permanent_password_old.py
-          fi
+          python3 patches/patch_permanent_password_new.py
 
       - name: Apply unlock PIN patch
         shell: bash
@@ -504,6 +483,23 @@ jobs:
           grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 未改解压目录"; exit 1; }
           echo "[OK] no-trace 补丁注入完成"
 
+
+      - name: server_otp (v86)
+        shell: bash
+        run: |
+          python3 patches/patch_server_otp.py .
+          # [v120] OTP auto-retry: patch_server_otp.py injects the armOtpRetry()
+          # CALLS into peer_card.dart; patch_otp_autoretry.py DEFINES
+          # armOtpRetry/fireOtpRetry in model.dart. Without this step the
+          # functions are never defined and flutter build fails with
+          # "armOtpRetry isn't defined" (CI run 34956572497, step 'Build rustdesk').
+          python3 patches/patch_otp_autoretry.py .
+          # Gates (mirror generator-windows.yml server_otp). patch_*_otp.py skips
+          # an absent anchor silently, so a drifted anchor would drop the OTP fix
+          # while CI stays green. Assert the pieces that must survive.
+          grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
+          grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
+          grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
         with:
@@ -514,6 +510,8 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
+          # Cache the Flutter SDK itself (~1GB download+unzip) keyed by version.
+          cache: true
 
       # https://github.com/flutter/flutter/issues/155685
       - name: Replace engine with rustdesk custom flutter engine
@@ -527,16 +525,36 @@ jobs:
       - name: Patch flutter
         shell: bash
         run: |
-          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
-          cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+          set -u
+          if [[ "3.24.5" != "${{ env.FLUTTER_VERSION }}" ]]; then
+            echo "flutter version is not 3.24.5, no SDK patch needed"
+            exit 0
+          fi
+          FLUTTER_ROOT="$(dirname "$(dirname "$(which flutter)")")"
+          cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff "$FLUTTER_ROOT"
+          cd "$FLUTTER_ROOT"
+          # The SDK may be restored from the actions cache with this patch
+          # already applied, so never apply it blindly twice.
+          if git apply --check --reverse flutter_3.24.4_dropdown_menu_enableFilter.diff 2>/dev/null; then
+            echo "flutter SDK already patched (restored from cache), skipping"
+          elif git apply --check flutter_3.24.4_dropdown_menu_enableFilter.diff 2>/dev/null; then
+            git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+            echo "flutter SDK patched"
+          else
+            echo "::error::cannot determine flutter SDK patch state"
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: ${{ env.RUST_VERSION }}
+          toolchain: 1.75
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
+      - name: cargo fetch (resolve lockfile)
+        shell: bash
+        run: |
+          cargo fetch
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -548,6 +566,17 @@ jobs:
           vcpkgDirectory: C:\vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
+
+      - name: Cache vcpkg installed tree + source downloads
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/downloads
+          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
 
       - name: magick stuff
         if: ${{ inputs.iconlink == 'true' }}
@@ -581,6 +610,14 @@ jobs:
             s/iVBORw0KGgo[A-Za-z0-9+\/=]{100,}/$b64/g;
           ' "$b64" ./src/ui.rs
 
+      - name: Cache Dart/Flutter pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/Pub/Cache
+          key: pub-${{ matrix.job.os }}-${{ hashFiles('flutter/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ matrix.job.os }}-
+
       - name: replace flutter icons
         if: ${{ inputs.iconlink != 'false' }}
         run: |
@@ -590,6 +627,7 @@ jobs:
           cd ..
 
       - name: Install vcpkg dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         shell: bash
@@ -598,18 +636,52 @@ jobs:
             --triplet ${{ matrix.job.vcpkg-triplet }} \
             --x-install-root="$VCPKG_ROOT/installed"
 
+      - name: Verify vcpkg deps (cache-hit path)
+        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
+          echo "vcpkg deps restored from cache OK"
+
+      - name: session-tab connection mode always visible (v94)
+        shell: bash
+        run: |
+          # v94 (REQ-v94-001, design D): keep the secure/direct shield hover but
+          # show only the fingerprint; insert an always-visible connection-mode
+          # Text (msgConn) between the shield and the peerId label in
+          # flutter/lib/desktop/pages/remote_tab_page.dart so the mode is no
+          # longer hover-only (touch / quick-glance observability). Idempotent
+          # via the 'prod-line v94 tab-conn-badge' marker.
+          python3 patches/patch_remote_tab_iroh_badge.py .
+      - name: Login timeout watchdog + stale saved-password self-heal (V105)
+        shell: bash
+        run: |
+          # 1) A stale saved password used to hang the session at "Connecting..."
+          #    forever (peer never answers, no prompt, no picture) - the exact
+          #    "stuck at the password dialog / frozen picture" symptom reported on
+          #    the portable-quick build. This patch (a) clears the persisted copy
+          #    when the failed attempt carried exactly that saved password, so the
+          #    next attempt prompts, and (b) arms a 20s watchdog that swaps the
+          #    endless spinner for a visible login-error dialog when no first
+          #    image ever arrives - turning every future silent hang into a
+          #    diagnosable "connection vs render" verdict.
+          # 2) The script auto-selects the no-iroh variant of the self-heal when
+          #    src/iroh_transport.rs is absent (v121: iroh removed from quick,
+          #    toolchain is 1.75).
+          python3 patches/patch_login_timeout.py .
+          grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
+          grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
+          echo "[OK] V105 login watchdog + stale-password self-heal"
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
+          # 恢复 --hwcodec --vram：portable 黑屏根因是 notrace 下 _hwcodec 落盘失败，已由
+          # patch_portable_notrace.py 的 SHARED 例外（patches f68ce3c）修复，故 hwcodec 可恢复。
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
 
-          # Download usbmmidd_v2.zip and extract it to ./rustdesk
-          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
-          Expand-Archive usbmmidd_v2.zip -DestinationPath . -Force
-          Remove-Item -Path usbmmidd_v2\Win32 -Recurse
-          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
-          mv -Force .\usbmmidd_v2 ./rustdesk
+          # v121: usbmmidd_v2 (privacy-mode virtual display) no longer bundled -
+          # privacy mode is stripped from this build.
 
       - name: icon stuff
         if: ${{ inputs.iconlink == 'true' }}
@@ -673,7 +745,9 @@ jobs:
           python3 ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${{ inputs.appname }}.exe"
           popd
           mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/${{ inputs.appname }}-quick.exe"
+          PACKER=$(find ./target -name "rustdesk-portable-packer.exe" | head -1)
+          if [ -z "$PACKER" ]; then echo "::error::rustdesk-portable-packer.exe not found"; exit 1; fi
+          mv "$PACKER" "./SignOutput/${APP_TAG}-quick.exe"
           ls -l ./SignOutput
 
       - name: Sign Windows binary (EXE only)
@@ -739,6 +813,7 @@ jobs:
 
       - name: Create GitHub Release and Upload Assets
         if: success()
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -765,11 +840,11 @@ jobs:
             "$URL"
 
       - name: Report Status
-        if: success()
         continue-on-error: true
         shell: bash
         timeout-minutes: 60
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -781,6 +856,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
@@ -792,6 +868,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
           curl -fsS --max-time 30 -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
