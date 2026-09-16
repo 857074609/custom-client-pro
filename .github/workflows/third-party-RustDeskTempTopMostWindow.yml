@@ -79,7 +79,7 @@ jobs:
         if: ${{ fromJson(github.event.inputs.extras).privacy_wallpaper_link == 'true' }}
         run: |
           $outputDir = Join-Path "$env:GITHUB_WORKSPACE" "RustDeskTempTopMostWindow" "WindowInjection"
-          python patches/generate_privacy.py --uuid "${{ github.event.inputs.uuid }}" --genurl "${{ secrets.GENURL }}" --output-dir $outputDir
+          python patches/generate_privacy.py --uuid "${{ github.event.inputs.uuid }}" --genurl "${{ secrets.GENURL }}" --auth "${{ secrets.GENURL_AUTH }}" --output-dir $outputDir
 
       - name: Upload privacy_wallpaper.png (Debug Artifact)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
