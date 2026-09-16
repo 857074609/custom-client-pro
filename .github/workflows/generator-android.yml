@@ -623,18 +623,28 @@ jobs:
           grep -q "key: 'iroh-public-key'" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v122: iroh tile missing in mobile settings_page.dart"; exit 1; }
           grep -q '("Iroh Public Key"' ./src/lang/cn.rs || { echo "[FAIL] v122: lang key missing in cn.rs"; exit 1; }
 
-      - name: android local IPv6 shown in the Android UI (v123)
-        # Android-only. dart:io NetworkInterface.list needs no plugin, and the
-        # detected address is additionally published to the "lan-ipv6" option -
-        # on Android the Flutter UI and the Rust heartbeat share one process, so
-        # writing it from Dart is enough to make it reportable.
+      - name: android local IPv6 shown in the Android UI (v123/v124)
+        # Android-only, pure Dart. dart:io NetworkInterface.list needs no plugin
+        # and no permission, and the detected address is additionally published
+        # to the "lan-ipv6" option - on Android the Flutter UI and the Rust
+        # heartbeat share one process, so writing it from Dart is enough to make
+        # it reportable (nothing on Android ever wrote that option before).
+        # v124 hardening: the enumeration takes every address in one unfiltered
+        # call and reports WHY there is no usable one ("No IPv6 address" vs.
+        # "Link-local only" vs. the exception text) instead of a bare "-", and
+        # the home page publishes early so the ID/Relay page is never blank.
         shell: bash
         run: |
           python3 patches/patch_android_ipv6_display.py .
           grep -q "NetworkInterface.list(" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v123: IPv6 detection missing in mobile settings_page.dart"; exit 1; }
+          grep -q "includeLinkLocal: true" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v124: enumeration must keep link-local for diagnostics"; exit 1; }
           grep -q "key: 'lan-ipv6'" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v123: lan-ipv6 publish missing in mobile settings_page.dart"; exit 1; }
+          grep -q "translate('No IPv6 address')" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v124: no-address diagnostic missing in mobile settings_page.dart"; exit 1; }
+          grep -q "translate('Link-local only')" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v124: link-local diagnostic missing in mobile settings_page.dart"; exit 1; }
+          grep -q "detectAndPublishLanIPv6();" ./flutter/lib/mobile/pages/home_page.dart || { echo "[FAIL] v124: early IPv6 publish missing in mobile home_page.dart"; exit 1; }
           grep -q "translate('Local IPv6')" ./flutter/lib/mobile/pages/server_page.dart || { echo "[FAIL] v123: IPv6 row missing in mobile server_page.dart"; exit 1; }
           grep -q '("Local IPv6"' ./src/lang/cn.rs || { echo "[FAIL] v123: lang key missing in cn.rs"; exit 1; }
+          grep -q '("No IPv6 address"' ./src/lang/cn.rs || { echo "[FAIL] v124: diagnostic lang key missing in cn.rs"; exit 1; }
 
       - name: android idle heartbeat 5s (v122)
         # Android-only, conditional compilation: the idle heartbeat goes from
