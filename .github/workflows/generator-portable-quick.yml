@@ -245,11 +245,6 @@ jobs:
           echo "Building version: $VER"
           cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
 
-          # portable-quick 专用：覆盖为精简单面板版首页（仅左面板，无右侧连接面板）。
-          # desktop_home_page_quick.dart 基于 new 基准精简。
-          cp -f patches/desktop_home_page_quick.dart flutter/lib/desktop/pages/desktop_home_page.dart
-          echo "[OK] portable-quick 首页已替换为 desktop_home_page_quick.dart (单面板)"
-          grep -q "// portable-quick 精简版" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quick 首页标记缺失"; exit 1; }
 
       - name: Enable copy ID & password button
         if: inputs.ui_mode == 'true'
@@ -479,50 +474,6 @@ jobs:
           grep -q "prod-line cm-disable" src/ui.rs || { echo "[FAIL] ui.rs missing cm-disable marker"; exit 1; }
           echo "[OK] v99 cm window disabled"
 
-      - name: Force incoming-only (controlled side) (v121)
-        shell: bash
-        run: |
-          # quick 保留被接入功能：编译期硬编码 is_incoming_only()=true，
-          # 复用上游整套 incoming-only 机制（隐藏主控 UI、Rust 侧拒绝外连）。
-          python3 patches/patch_incoming_only.py .
-          grep -q "prod-line incoming-only" libs/hbb_common/src/config.rs || { echo "[FAIL] incoming-only marker missing"; exit 1; }
-          echo "[OK] v121 incoming-only forced"
-
-      - name: Strip extra features (privacy mode / port-forward / voice call) (v121)
-        shell: bash
-        run: |
-          # 只保留基础远程控制：隐私模式能力关闭（不再向控制端广播）；
-          # TCP 隧道/端口转发登录请求直接拒绝；语音通话请求自动拒接。
-          python3 patches/patch_strip_extra_features.py .
-          grep -q "prod-line strip-privacy-mode" src/privacy_mode.rs || { echo "[FAIL] strip-privacy-mode marker missing"; exit 1; }
-          grep -q "prod-line strip-port-forward" src/server/connection.rs || { echo "[FAIL] strip-port-forward marker missing"; exit 1; }
-          grep -q "prod-line strip-voice-call" src/server/connection.rs || { echo "[FAIL] strip-voice-call marker missing"; exit 1; }
-          echo "[OK] v121 extra features stripped"
-
-      - name: Strip outgoing-only UI (theme / account / printer / mouse options) (v121b)
-        shell: bash
-        run: |
-          # 只保留被控：删除设置页 主题卡片、Display/Plugin/Account/Printer 标签页，
-          # 以及会话默认选项里的 隐私模式/滚轮反向/交换鼠标 条目。
-          python3 patches/patch_strip_outgoing_ui.py .
-          grep -q "prod-line strip-outgoing-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] setting page marker missing"; exit 1; }
-          grep -q "prod-line strip-outgoing-ui" flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] setting_widgets marker missing"; exit 1; }
-          echo "[OK] v121b outgoing-only UI stripped"
-
-      - name: Strip remote_printer Rust crate (v121c)
-        shell: bash
-        run: |
-          # 物理移除打印模块：Cargo.toml 依赖/成员、CLI 分支、FFI、安装脚本注入点，
-          # 并删除 libs/remote_printer 目录。
-          python3 patches/patch_strip_rust_printer.py .
-          rm -rf libs/remote_printer
-          grep -q "prod-line strip-rust-printer" Cargo.toml || { echo "[FAIL] Cargo.toml marker missing"; exit 1; }
-          grep -q "prod-line strip-rust-printer" src/platform/windows.rs || { echo "[FAIL] windows.rs marker missing"; exit 1; }
-          if grep -q "remote_printer" Cargo.toml; then echo "[FAIL] remote_printer still in Cargo.toml"; exit 1; fi
-          if grep -rq "remote_printer::" src/; then echo "[FAIL] remote_printer:: call remains in src"; exit 1; fi
-          test ! -d libs/remote_printer || { echo "[FAIL] libs/remote_printer still exists"; exit 1; }
-          echo "[OK] v121c remote_printer crate stripped"
-
       - name: Apply no-trace (portable zero-residue) patch
         shell: bash
         env:
@@ -624,13 +575,6 @@ jobs:
         run: |
           cargo fetch
 
-      - name: Shrink release profile (opt-level z) (v121)
-        shell: bash
-        run: |
-          # 体积最小化：启用上游预留的 opt-level='z'（配合已有 lto+strip+panic=abort）。
-          sed -i "s|^#opt-level = 'z'|opt-level = 'z'|" Cargo.toml
-          grep -q "^opt-level = 'z'" Cargo.toml || { echo "[FAIL] opt-level z not enabled"; exit 1; }
-          echo "[OK] release profile: opt-level=z"
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
