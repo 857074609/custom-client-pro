@@ -444,6 +444,22 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+          # [v120] OTP auto-retry. patch_server_otp.py injects the armOtpRetry()
+          # CALLS into peer_card.dart and leaves the "[LNDESK_OTP_AUTORETRY_HOOK]"
+          # markers that this line consumes; patch_otp_autoretry.py DEFINES
+          # armOtpRetry/fireOtpRetry in model.dart. The iroh menu step further
+          # down also injects an armOtpRetry() call into _irohDirectConnect, so
+          # without this line flutter build fails with "The method 'armOtpRetry'
+          # isn't defined for the class 'BasePeerCard'" (run #20,
+          # peer_card.dart:616). Linux-only fix: no shared patch script is
+          # modified and the other targets keep their existing chains.
+          python3 patches/patch_otp_autoretry.py .
+          # Gates. patch_*_otp.py skips an absent anchor silently (SKIP-ABSENT),
+          # so a drifted anchor would drop the OTP wiring while CI stays green.
+          # Assert the definition and the import that makes it visible here.
+          grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
+          grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
+          grep -n "armOtpRetry(" ./flutter/lib/common/widgets/peer_card.dart
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
