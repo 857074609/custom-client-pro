@@ -623,7 +623,7 @@ jobs:
           grep -q "key: 'iroh-public-key'" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v122: iroh tile missing in mobile settings_page.dart"; exit 1; }
           grep -q '("Iroh Public Key"' ./src/lang/cn.rs || { echo "[FAIL] v122: lang key missing in cn.rs"; exit 1; }
 
-      - name: android local IPv6 shown in the Android UI (v123/v124)
+      - name: android local IPv6 shown in the Android UI (v123/v124/v126)
         # Android-only, pure Dart. dart:io NetworkInterface.list needs no plugin
         # and no permission, and the detected address is additionally published
         # to the "lan-ipv6" option - on Android the Flutter UI and the Rust
@@ -633,6 +633,13 @@ jobs:
         # call and reports WHY there is no usable one ("No IPv6 address" vs.
         # "Link-local only" vs. the exception text) instead of a bare "-", and
         # the home page publishes early so the ID/Relay page is never blank.
+        # v126: candidates keep their interface name and are ranked Wi-Fi /
+        # ethernet first, then cellular and tunnels last - a phone with mobile
+        # data and Wi-Fi both up used to publish a CELLULAR address, which no LAN
+        # peer can dial (field symptom: IPv4 direct connect works from the same
+        # LAN while "ping -6 <shown address>" answers "host unreachable"). The
+        # row now shows the interface ("wlan0  240e:.."); the option still
+        # carries the bare address.
         shell: bash
         run: |
           python3 patches/patch_android_ipv6_display.py .
@@ -645,6 +652,11 @@ jobs:
           grep -q "translate('Local IPv6')" ./flutter/lib/mobile/pages/server_page.dart || { echo "[FAIL] v123: IPv6 row missing in mobile server_page.dart"; exit 1; }
           grep -q '("Local IPv6"' ./src/lang/cn.rs || { echo "[FAIL] v123: lang key missing in cn.rs"; exit 1; }
           grep -q '("No IPv6 address"' ./src/lang/cn.rs || { echo "[FAIL] v124: diagnostic lang key missing in cn.rs"; exit 1; }
+          grep -qF "int _ifaceRank(String name)" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v126: per-interface ranking missing"; exit 1; }
+          grep -qF "usable.add(LanIPv6Entry(iface.name, s))" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v126: interface name not captured with the address"; exit 1; }
+          grep -qF ": _lanIPv6Display," ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v126: row does not show the interface name"; exit 1; }
+          grep -qF "value: info.primary);" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v126: lan-ipv6 option must keep the BARE address"; exit 1; }
+          [ "$(grep -c 'mainSetOption(key: .lan-ipv6.' ./flutter/lib/mobile/pages/settings_page.dart)" = "2" ] || { echo "[FAIL] v126: lan-ipv6 publish count != 2 in settings_page.dart"; exit 1; }
 
       - name: android idle heartbeat 5s (v122)
         # Android-only, conditional compilation: the idle heartbeat goes from
