@@ -460,6 +460,37 @@ jobs:
           grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
           grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
           grep -n "armOtpRetry(" ./flutter/lib/common/widgets/peer_card.dart
+
+      - name: "Linux-only: reconcile the duplicate http alias (v127)"
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v127] peer_card.dart ends up with TWO libraries bound to the same
+          # prefix because two shared scripts both claim it:
+          #   patch_online_devices.py -> import '../../utils/http_service.dart' as http;
+          #   patch_server_otp.py     -> import 'package:http/http.dart' as http;
+          # Dart then rejects every http.post(...) with
+          #   Error: 'post' is imported from both
+          #          'package:flutter_hbb/utils/http_service.dart' and
+          #          'package:http/http.dart'.
+          # (run #21: x86_64 + aarch64 both died in `flutter build linux`; the
+          # Rust half was already green -- "Finished release profile in 19m 58s".)
+          # Linux-only fix, mirroring the v120 rule: drop the package:http line,
+          # keep http_service.dart (it exposes post/get/put/delete and re-exports
+          # Response, so _requestOtp() compiles unchanged and now uses the same
+          # Rust-backed HttpService path as the rest of the fork). No shared
+          # patch script is modified, so the other targets keep their chains.
+          python3 patches/patch_linux_otp_http_alias.py .
+          # Hard gate: fail at patch time, not 20 minutes into the Dart build.
+          if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
+             && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v127: peer_card.dart still binds two libraries to 'http' (ambiguous)"; exit 1
+          fi
+          grep -q "http.post(" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v127: no http.post() call left in peer_card.dart"; exit 1; }
+          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v127: OTP helper (_requestOtp) missing"; exit 1; }
+          echo "[OK] v127: single 'as http' alias in peer_card.dart"
+
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
