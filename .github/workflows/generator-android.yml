@@ -609,6 +609,34 @@ jobs:
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
 
+      - name: iroh NodeId always shown in the Android UI (v122)
+        # Android-only. The Android UI had no place showing this device's own
+        # iroh NodeId, so a controller could never learn it and the peer-card
+        # "Iroh Direct" entry always reported "no record". Adds the key to the
+        # ID/Relay page (ServerInfo) and below "Direct IP Access" in Settings,
+        # both copyable. New script - no shared patch is touched.
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_android_iroh_display.py .
+          grep -q "key: 'iroh-public-key'" ./flutter/lib/mobile/pages/server_page.dart || { echo "[FAIL] v122: iroh row missing in mobile server_page.dart"; exit 1; }
+          grep -q "key: 'iroh-public-key'" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v122: iroh tile missing in mobile settings_page.dart"; exit 1; }
+          grep -q '("Iroh Public Key"' ./src/lang/cn.rs || { echo "[FAIL] v122: lang key missing in cn.rs"; exit 1; }
+
+      - name: android idle heartbeat 5s (v122)
+        # Android-only, conditional compilation: the idle heartbeat goes from
+        # 15s to 5s on Android while every other target keeps 15s, so this step
+        # cannot leak into another platform even if it is wired elsewhere.
+        # NOTE: the API server only persists last_online_* every 30s
+        # (rustdesk-api Heartbeat) and the controller re-reads /api/peers every
+        # 20s (patch_online_devices.py) - neither is Android-side, see
+        # Docs/patches/v122 for the full chain.
+        shell: bash
+        run: |
+          python3 patches/patch_android_heartbeat.py .
+          grep -q '#\[cfg(target_os = "android")\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] v122: android heartbeat branch missing in sync.rs"; exit 1; }
+          grep -q 'const TIME_HEARTBEAT: Duration = Duration::from_secs(5);' ./src/hbbs_http/sync.rs || { echo "[FAIL] v122: 5s TIME_HEARTBEAT missing in sync.rs"; exit 1; }
+
       - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
         run: |
