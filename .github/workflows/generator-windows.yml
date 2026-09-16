@@ -1086,6 +1086,23 @@ jobs:
         run: |
           python3 patches/patch_server_otp.py .
           python3 patches/patch_otp_autoretry.py .
+          # [v131] Reconcile the duplicate 'as http' alias. patch_online_devices.py
+          # binds '../../utils/http_service.dart' as http and patch_server_otp.py
+          # binds 'package:http/http.dart' as http -- one prefix, two libraries, so
+          # every http.post() in peer_card.dart is ambiguous and the Dart front end
+          # aborts (run #1745: ambiguous_import at peer_card.dart:728 / 1779).
+          # The helper is named *_linux_* because Linux hit this first (v127); its
+          # logic is platform independent. It drops the package:http import --
+          # http_service.dart exposes post/get/put/delete and re-exports Response,
+          # so _requestOtp() compiles unchanged. Gate here, not 40 min into the build.
+          python3 patches/patch_linux_otp_http_alias.py .
+          if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
+             && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v131: peer_card.dart still binds two libraries to 'http' (ambiguous)"; exit 1
+          fi
+          grep -q "http.post(" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v131: no http.post() left in peer_card.dart"; exit 1; }
+          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v131: OTP helper (_requestOtp) missing"; exit 1; }
+          echo "[OK] v131: single 'as http' alias in peer_card.dart"
           # Gates. patch_server_otp.py skips an edit whose anchor is absent
           # (SKIP-ABSENT) instead of failing, so a drifted anchor silently
           # drops the OTP fix while CI stays green. Assert the pieces that
