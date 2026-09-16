@@ -660,6 +660,24 @@ jobs:
           grep -q '#\[cfg(target_os = "android")\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] v122: android heartbeat branch missing in sync.rs"; exit 1; }
           grep -q 'const TIME_HEARTBEAT: Duration = Duration::from_secs(5);' ./src/hbbs_http/sync.rs || { echo "[FAIL] v122: 5s TIME_HEARTBEAT missing in sync.rs"; exit 1; }
 
+      - name: android direct-access listener default ON (v125)
+        # Android-only. The direct-access listener is gated by
+        # option2bool("direct-server") == "Y"; the desktop builds force that in
+        # main_check_connect_status(), but the block is
+        # #[cfg(not(any(target_os = "android", target_os = "ios")))] and
+        # patch_direct_access.py is a desktop-only step - so on Android a fresh
+        # install never listened on the direct-access port and every inbound
+        # IP / IPv6 direct connection was refused, while the UI still showed the
+        # device's addresses ("shows" != "listens").
+        # The injection is wrapped in #[cfg(target_os = "android")], so it stays
+        # inert even if this step were ever wired into another platform's chain.
+        shell: bash
+        run: |
+          python3 patches/patch_android_direct_server.py .
+          grep -qF '[LnDesk v125]' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: marker missing in rendezvous_mediator.rs"; exit 1; }
+          grep -q 'Config::get_option(OPTION_DIRECT_SERVER) != "Y"' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: direct-server guard missing in rendezvous_mediator.rs"; exit 1; }
+          [ "$(grep -c 'force enabling direct-server (android)' ./src/rendezvous_mediator.rs)" = "1" ] || { echo "[FAIL] v125: expected exactly 1 forced enable in rendezvous_mediator.rs"; exit 1; }
+
       - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
         run: |
