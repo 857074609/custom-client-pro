@@ -572,6 +572,17 @@ jobs:
         run: |
           python3 patches/patch_server_otp.py .
 
+      - name: direct e2ee (TOFU long-term pk) (v88)
+        shell: bash
+        run: |
+          # Must run BEFORE iroh transport: it adds the 6th parameter
+          # `send_long_term_pk` to `create_tcp_connection`, which the iroh
+          # transport patch calls with 6 arguments. Without this, android
+          # build fails with E0061 (5 vs 6 args). Same ordering as
+          # windows/macos/linux generators.
+          python3 patches/patch_direct_e2ee.py .
+          grep -q "send_long_term_pk" ./src/server.rs || { echo "[FAIL] create_tcp_connection missing send_long_term_pk (e2ee not applied)"; exit 1; }
+
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
