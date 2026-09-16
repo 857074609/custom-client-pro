@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: d11ebcfda2804fda3110bc7f89a523416b878796
+          ref: d51976cb4691f0a223d147ebd4304393c81f37d4
 
       - name: Report Status
         continue-on-error: true
@@ -537,6 +537,20 @@ jobs:
           grep -q "std::atexit(rustdesk_notrace_cleanup)" flutter/windows/runner/main.cpp || { echo "[FAIL] main.cpp 缺少 atexit 注册"; exit 1; }
           grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 未改解压目录"; exit 1; }
           echo "[OK] no-trace 补丁注入完成"
+
+      - name: quick-ephemeral (random id + destroy on close)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 每次启动生成全新随机 ID，关闭主窗口立即销毁配置与日志。
+          # 依赖上一步 no-trace：quick_ephemeral_cleanup() 调其 no_trace_cleanup()
+          # 并额外删除 shared 身份目录（id/key/密码）。
+          python3 patches/patch_quick_ephemeral.py .
+          grep -q "prod-line quick-ephemeral" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缺少 quick-ephemeral 标记"; exit 1; }
+          grep -q "pub fn quick_ephemeral_cleanup" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缺少 quick_ephemeral_cleanup"; exit 1; }
+          grep -q "hbb_common::config::quick_ephemeral_cleanup()" src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs 未接入关闭清理"; exit 1; }
+          echo "[OK] quick-ephemeral 补丁注入完成"
 
       - name: server_otp (v86)
         shell: bash
