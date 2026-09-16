@@ -623,6 +623,19 @@ jobs:
           grep -q "key: 'iroh-public-key'" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v122: iroh tile missing in mobile settings_page.dart"; exit 1; }
           grep -q '("Iroh Public Key"' ./src/lang/cn.rs || { echo "[FAIL] v122: lang key missing in cn.rs"; exit 1; }
 
+      - name: android local IPv6 shown in the Android UI (v123)
+        # Android-only. dart:io NetworkInterface.list needs no plugin, and the
+        # detected address is additionally published to the "lan-ipv6" option -
+        # on Android the Flutter UI and the Rust heartbeat share one process, so
+        # writing it from Dart is enough to make it reportable.
+        shell: bash
+        run: |
+          python3 patches/patch_android_ipv6_display.py .
+          grep -q "NetworkInterface.list(" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v123: IPv6 detection missing in mobile settings_page.dart"; exit 1; }
+          grep -q "key: 'lan-ipv6'" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v123: lan-ipv6 publish missing in mobile settings_page.dart"; exit 1; }
+          grep -q "translate('Local IPv6')" ./flutter/lib/mobile/pages/server_page.dart || { echo "[FAIL] v123: IPv6 row missing in mobile server_page.dart"; exit 1; }
+          grep -q '("Local IPv6"' ./src/lang/cn.rs || { echo "[FAIL] v123: lang key missing in cn.rs"; exit 1; }
+
       - name: android idle heartbeat 5s (v122)
         # Android-only, conditional compilation: the idle heartbeat goes from
         # 15s to 5s on Android while every other target keeps 15s, so this step
