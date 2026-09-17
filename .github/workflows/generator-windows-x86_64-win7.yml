@@ -401,12 +401,15 @@ jobs:
           # the tree. windows / win7 / quick pin the patches checkout to a concrete sha
           # instead of main, so a stale pin silently ships a build without these features
           # (exactly what happened to run #1744). Fail here instead of at the user's desk.
-          grep -q "Set 1920x1080" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the one-click 1920x1080 button"; exit 1; }
-          grep -q "Icons.aspect_ratio" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the 1920x1080 icon"; exit 1; }
+                    # [screen_wall v136] The one-shot 1920x1080 button is now a resolution
+          # cycle (2560x1440 -> ... -> 1360x768) that skips unsupported modes.
+          grep -q "_kCycleResolutions" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the v136 resolution cycle list"; exit 1; }
+          grep -q "_resCycleIdx" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the v136 resolution cycle cursor"; exit 1; }
+          grep -q "Icons.aspect_ratio" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the resolution icon"; exit 1; }
           grep -q "Maximize Window" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing the Maximize Window label"; exit 1; }
           grep -q "widget.onMaximize?.call()" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing toolbar double-click maximize"; exit 1; }
           grep -q "requestExitZoom" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing the global Esc exit-zoom hook"; exit 1; }
-          echo "[OK] screen wall v121 verified (1920x1080 / double-click maximize / label fix / global Esc)"
+          echo "[OK] screen wall v121 verified (resolution icon / double-click maximize / label fix / global Esc)"
 
           # [screen_wall v132] Two runtime fixes that v121 shipped broken:
           # 1) Escape never reached the local UI while the keyboard was grabbed --
