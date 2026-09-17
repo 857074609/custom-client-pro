@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 6a9e5f4c674637c8956f8a3bf15875743e34a1bf
+          ref: 9dcbda2603c52e6ba32cf41a6c87ee687cc6df22
       
       - name: Report Status
         continue-on-error: true
@@ -530,6 +530,19 @@ jobs:
           grep -q "widget.onMaximize?.call()" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing toolbar double-click maximize"; exit 1; }
           grep -q "requestExitZoom" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing the global Esc exit-zoom hook"; exit 1; }
           echo "[OK] screen wall v121 verified (1920x1080 / double-click maximize / label fix / global Esc)"
+
+          # [screen_wall v132] Two runtime fixes that v121 shipped broken:
+          # 1) Escape never reached the local UI while the keyboard was grabbed --
+          #    rdev swallows every key-down (returns None), so the zoom's local Esc
+          #    handler was unreachable from inside a grabbed device view.
+          # 2) The 1920x1080 button did nothing on view-only sessions (the controlled
+          #    side's change_resolution is gated on `if self.keyboard`) and on peers
+          #    whose SupportedResolutions lacks 1920x1080.
+          grep -q "LnDesk v132\] Let Escape ALSO reach the local Flutter UI" src/keyboard.rs || { echo "[FAIL] keyboard.rs: v132 Escape passthrough missing"; exit 1; }
+          grep -q "if key == Key::Escape {" src/keyboard.rs || { echo "[FAIL] keyboard.rs: v132 Escape branch missing"; exit 1; }
+          grep -q "_ffi.ffiModel.viewOnly" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution button lacks the view-only guard"; exit 1; }
+          grep -q "Unsupported resolution" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution precheck missing"; exit 1; }
+          echo "[OK] screen wall v132 verified (Escape passthrough + resolution guard)"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
