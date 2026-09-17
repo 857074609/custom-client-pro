@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2f6b4cdd24b50b94e898b38a8cd3060011f7a8c8
+          ref: b8d1c5912c4808f66873409dab283dba9848c911
       
       - name: Report Status
         continue-on-error: true
@@ -469,6 +469,14 @@ jobs:
           # 客户端中文环境显示"屏幕墙"、英文环境显示 "Screen Wall"。
           # 任一锚点缺失/歧义即报错退出，构建显式失败。
           python3 patches/patch_screen_wall.py .
+
+          # [screen_wall v137] _peerBrief() uses bind.mainGetPeerOptionSync; `bind`
+          # comes from models/platform_model.dart. Base patch now injects the import
+          # itself so chains without v107 (win7) compile too; v107 skips its own B1
+          # when it is already there. Guard it so a missing import fails here and not
+          # halfway through `flutter build windows` ("Undefined name 'bind'").
+          grep -q "models/platform_model.dart" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart: missing platform_model import (bind undefined)"; exit 1; }
+          echo "[OK] screen wall v137 verified (platform_model import present)"
 
           # 注入后验证多语言 key 已就位（en.rs/cn.rs 必须含 Screen Wall）
           for f in src/lang/en.rs src/lang/cn.rs; do
