@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 9dcbda2603c52e6ba32cf41a6c87ee687cc6df22
+          ref: b802abdd1382b0631d12e5f68f95c2f623d5ae3c
       
       - name: Report Status
         continue-on-error: true
@@ -442,7 +442,16 @@ jobs:
           python3 patches/patch_V102_happy_eyeballs_lift.py .
           grep -q "prod-line v102 happy-eyeballs-lift" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v102 marker"; exit 1; }
           grep -q "DNS_LOOKUP_TIMEOUT_SEC" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DNS_LOOKUP_TIMEOUT_SEC"; exit 1; }
+          # [LnDesk dns-flush] A DDNS host that moved to a new IP stays pinned inside
+          # the OS resolver cache (Windows Dnscache honours the A-record TTL), so the
+          # client keeps dialling the dead address and never reconnects. Verify the
+          # flush hook actually shipped -- at patch time, not 40 minutes into the build.
+          grep -q "pub fn flush_os_dns_cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing flush_os_dns_cache"; exit 1; }
+          grep -q "DnsFlushResolverCache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DnsFlushResolverCache FFI"; exit 1; }
+          grep -qF "[dns-flush] OS resolver cache flushed" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing the dns-flush log marker"; exit 1; }
+          grep -q "flush_os_dns_cache();" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs: the dns-flush hook is defined but never called"; exit 1; }
           echo "[OK] V102 happy-eyeballs lift + DNS timeout injected"
+          echo "[OK] dns-flush hook verified (OS resolver cache cleared once all addrs fail)"
 
       - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true'
