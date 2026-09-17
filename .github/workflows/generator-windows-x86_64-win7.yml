@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8809b705bd0e26fcb6aeac600f6da3d2006268ff
+          ref: ebf78c85e99ba180221979c93c3e311f89a776e7
       
       - name: Report Status
         continue-on-error: true
@@ -709,28 +709,39 @@ jobs:
           python3 patches/patch_permanent_password_new.py
 
       - name: Apply QR code payload patch (v138)
+        if: inputs.ui_mode == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 仅被连接（incoming-only）模式主页二维码：Rust 侧把 ID/临时密码/IP/iroh
-          # 用预设密码派生密钥加密，Dart 侧用 qr_flutter 渲染并每 5 秒自动刷新
-          # （无人值守机器没有键盘鼠标可点刷新，且临时密码每次连接后会轮换）。
-          # 口令取自 patch_permanent_password_new.py 注入的预设密码，故排在其后。
+          # Custom UI only (ui_mode): the QR connection-info band on the
+          # incoming-only home page. Rust encrypts ID / temporary password /
+          # network info / iroh NodeId with a key derived from the preset
+          # password; Dart renders it with qr_flutter between the security-code
+          # area and the Quit/Copy row, refreshing every 5 s (unattended boxes
+          # have no keyboard or mouse to press refresh, and the temporary
+          # password is rotated after every authorized session).
+          # Gating: services.py forces ui_mode=False for direction in
+          # (outgoing, both), so ui_mode=true always means incoming; Dart adds an
+          # isIncomingOnly guard on top of that.
+          # The anchor deliberately avoids `buildPasswordBoard(context),`:
+          # patch_direct_access.py inserts the optional IP-direct line right
+          # after it, which would break that anchor when the IP board is enabled.
           python3 patches/patch_qr_code.py .
-          test -f src/qr_payload.rs || { echo "[FAIL] src/qr_payload.rs 未生成"; exit 1; }
-          grep -q "pub mod qr_payload;" src/lib.rs || { echo "[FAIL] src/lib.rs 缺少 pub mod qr_payload"; exit 1; }
-          grep -q 'qr-payload' src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs 缺少 qr-payload 分支"; exit 1; }
-          grep -q 'aes-gcm' Cargo.toml || { echo "[FAIL] Cargo.toml 缺少 aes-gcm 依赖"; exit 1; }
-          grep -q '"aes-gcm",' Cargo.lock || { echo "[FAIL] Cargo.lock 未登记 aes-gcm（--locked 会失败）"; exit 1; }
-          grep -q "injected_permanent_password" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缺少预设密码 getter"; exit 1; }
-          grep -q "fn b64url" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs 缺少 base64url 编码"; exit 1; }
-          grep -q "qr-payload-force" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs 缺少强制刷新分支"; exit 1; }
-          grep -q "if (isIncomingOnly) buildQrBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 二维码未挂在 incoming-only 分支"; exit 1; }
-          grep -q "_ConnectionQrBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 主页缺少 _ConnectionQrBoard"; exit 1; }
-          grep -q "Timer.periodic" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 二维码缺少自动刷新定时器"; exit 1; }
-          grep -q "qr_flutter" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 主页缺少 qr_flutter 引用"; exit 1; }
-          echo "[OK] 二维码连接信息（v138）注入完成"
+          test -f src/qr_payload.rs || { echo "[FAIL] src/qr_payload.rs was not created"; exit 1; }
+          grep -q "pub mod qr_payload;" src/lib.rs || { echo "[FAIL] src/lib.rs is missing pub mod qr_payload"; exit 1; }
+          grep -q 'qr-payload' src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs is missing the qr-payload branch"; exit 1; }
+          grep -q 'aes-gcm' Cargo.toml || { echo "[FAIL] Cargo.toml is missing the aes-gcm dependency"; exit 1; }
+          grep -q '"aes-gcm",' Cargo.lock || { echo "[FAIL] Cargo.lock does not list aes-gcm for rustdesk (--locked would fail)"; exit 1; }
+          grep -q "injected_permanent_password" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs is missing the preset-password getter"; exit 1; }
+          grep -q "fn b64url" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the base64url encoder"; exit 1; }
+          grep -q "qr-payload-force" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the force-refresh branch"; exit 1; }
+          grep -q "if (isIncomingOnly) const _ConnectionQrBoard()," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR band is not mounted on the incoming-only branch"; exit 1; }
+          grep -q "class _ConnectionQrBoard extends StatefulWidget" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart is missing the _ConnectionQrBoard widget"; exit 1; }
+          grep -q "Timer.periodic" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR band is missing its auto-refresh timer"; exit 1; }
+          grep -q "_kQrSize = 164.0" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR size constant is missing"; exit 1; }
+          grep -q "qr_flutter" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart is missing the qr_flutter import"; exit 1; }
+          echo "[OK] v138 QR connection-info band injected"
 
       - name: Apply unlock PIN patch
         shell: bash
