@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: ebf78c85e99ba180221979c93c3e311f89a776e7
+          ref: 94c824eebceddb3c743155f1e1c81f041e2582a3
 
       - name: Report Status
         continue-on-error: true
@@ -424,6 +424,62 @@ jobs:
         run: |
           VER="${{ env.VERSION }}"
           python3 patches/patch_permanent_password_new.py
+
+      - name: Apply QR code payload patch (v139)
+        if: inputs.ui_mode == 'true' && fromJson(inputs.extras).enableQrCode == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Custom UI only (ui_mode): the QR connection-info band on the
+          # incoming-only home page. Rust encrypts ID / temporary password /
+          # network info / iroh NodeId with a key derived from the preset
+          # password; Dart renders it with qr_flutter between the security-code
+          # area and the Quit/Copy row, refreshing every 5 s.
+          # Gating: services.py forces ui_mode=False for direction in
+          # (outgoing, both), so ui_mode=true always means incoming; Dart adds
+          # an isIncomingOnly guard on top of that.
+          python3 patches/patch_qr_code.py .
+          test -f src/qr_payload.rs || { echo "[FAIL] src/qr_payload.rs was not created"; exit 1; }
+          grep -q "pub mod qr_payload;" src/lib.rs || { echo "[FAIL] src/lib.rs is missing pub mod qr_payload"; exit 1; }
+          grep -q 'qr-payload' src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs is missing the qr-payload branch"; exit 1; }
+          grep -q 'aes-gcm' Cargo.toml || { echo "[FAIL] Cargo.toml is missing the aes-gcm dependency"; exit 1; }
+          grep -q '"aes-gcm",' Cargo.lock || { echo "[FAIL] Cargo.lock does not list aes-gcm for rustdesk (--locked would fail)"; exit 1; }
+          grep -q "injected_permanent_password" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs is missing the preset-password getter"; exit 1; }
+          grep -q "fn b64url" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the base64url encoder"; exit 1; }
+          grep -q "qr-payload-force" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the force-refresh branch"; exit 1; }
+          grep -q "if (isIncomingOnly) const _ConnectionQrBoard()," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR band is not mounted on the incoming-only branch"; exit 1; }
+          grep -q "class _ConnectionQrBoard extends StatefulWidget" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart is missing the _ConnectionQrBoard widget"; exit 1; }
+          grep -q "Timer.periodic" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR band is missing its auto-refresh timer"; exit 1; }
+          grep -q "_kQrSize = 164.0" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR size constant is missing"; exit 1; }
+          grep -q "qr_flutter" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart is missing the qr_flutter import"; exit 1; }
+          grep -q "prod-line v139" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR board background not matched to UI theme"; exit 1; }
+          echo "[OK] v139 QR connection-info band injected"
+
+      - name: Apply hide-ID and QR tip patch (v139)
+        if: fromJson(inputs.extras).hideIdDisplay == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机扫描获取本机信息」，
+          # 与启用二维码(enableQrCode) 配套。仅在定制 UI(ui_mode) + 被控(incoming) 生效。
+          python3 patches/patch_hide_id_qr_tip.py .
+          grep -q "//       buildIDBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] ID board was not hidden"; exit 1; }
+          grep -q "请使用手机扫描获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
+          echo "[OK] v139 hide-ID + QR tip applied"
+
+      - name: hide-password_uimode_true
+        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        run: |
+          sed -i 's|^\([[:space:]]*\)buildPasswordBoard(context),|// \1buildPasswordBoard(context),|' flutter/lib/desktop/pages/desktop_home_page.dart
+
+      - name: hide-password_uimode_false
+        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'false'
+        shell: bash
+        run: |
+          python3 patches/hide_password_board_uimode_false.py
 
       - name: Apply unlock PIN patch
         shell: bash

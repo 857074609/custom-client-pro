@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: ebf78c85e99ba180221979c93c3e311f89a776e7
+          ref: 94c824eebceddb3c743155f1e1c81f041e2582a3
       
       - name: Report Status
         continue-on-error: true
@@ -709,7 +709,7 @@ jobs:
           python3 patches/patch_permanent_password_new.py
 
       - name: Apply QR code payload patch (v138)
-        if: inputs.ui_mode == 'true'
+        if: inputs.ui_mode == 'true' && fromJson(inputs.extras).enableQrCode == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -741,6 +741,7 @@ jobs:
           grep -q "Timer.periodic" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR band is missing its auto-refresh timer"; exit 1; }
           grep -q "_kQrSize = 164.0" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR size constant is missing"; exit 1; }
           grep -q "qr_flutter" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart is missing the qr_flutter import"; exit 1; }
+          grep -q "prod-line v139" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR board background not matched to UI theme"; exit 1; }
           echo "[OK] v138 QR connection-info band injected"
 
       - name: Apply unlock PIN patch
@@ -975,6 +976,19 @@ jobs:
 
 
       
+      - name: Apply hide-ID and QR tip patch (v139)
+        if: fromJson(inputs.extras).hideIdDisplay == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机扫描获取本机信息」，
+          # 与启用二维码(enableQrCode) 配套。仅在定制 UI(ui_mode) + 被控(incoming) 生效。
+          python3 patches/patch_hide_id_qr_tip.py .
+          grep -q "//       buildIDBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] ID board was not hidden"; exit 1; }
+          grep -q "请使用手机扫描获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
+          echo "[OK] v139 hide-ID + QR tip applied"
+
       - name: hide-password_uimode_true
         if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'
         shell: bash
