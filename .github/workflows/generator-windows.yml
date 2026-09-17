@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: e8d32de75045d5fbbf07140bdfbca7ec96ac8865
+          ref: 8809b705bd0e26fcb6aeac600f6da3d2006268ff
       
       - name: Report Status
         continue-on-error: true
@@ -846,9 +846,10 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 仅连接（outgoing-only）模式主页二维码：Rust 侧把 ID/临时密码/IP/iroh
-          # 用预设密码派生密钥加密，Dart 侧用 qr_flutter 渲染。口令取自
-          # patch_permanent_password_new.py 注入的预设密码，故排在其后。
+          # 仅被连接（incoming-only）模式主页二维码：Rust 侧把 ID/临时密码/IP/iroh
+          # 用预设密码派生密钥加密，Dart 侧用 qr_flutter 渲染并每 5 秒自动刷新
+          # （无人值守机器没有键盘鼠标可点刷新，且临时密码每次连接后会轮换）。
+          # 口令取自 patch_permanent_password_new.py 注入的预设密码，故排在其后。
           python3 patches/patch_qr_code.py .
           test -f src/qr_payload.rs || { echo "[FAIL] src/qr_payload.rs 未生成"; exit 1; }
           grep -q "pub mod qr_payload;" src/lib.rs || { echo "[FAIL] src/lib.rs 缺少 pub mod qr_payload"; exit 1; }
@@ -856,7 +857,11 @@ jobs:
           grep -q 'aes-gcm' Cargo.toml || { echo "[FAIL] Cargo.toml 缺少 aes-gcm 依赖"; exit 1; }
           grep -q '"aes-gcm",' Cargo.lock || { echo "[FAIL] Cargo.lock 未登记 aes-gcm（--locked 会失败）"; exit 1; }
           grep -q "injected_permanent_password" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缺少预设密码 getter"; exit 1; }
-          grep -q "buildQrBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 主页缺少 buildQrBoard"; exit 1; }
+          grep -q "fn b64url" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs 缺少 base64url 编码"; exit 1; }
+          grep -q "qr-payload-force" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs 缺少强制刷新分支"; exit 1; }
+          grep -q "if (isIncomingOnly) buildQrBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 二维码未挂在 incoming-only 分支"; exit 1; }
+          grep -q "_ConnectionQrBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 主页缺少 _ConnectionQrBoard"; exit 1; }
+          grep -q "Timer.periodic" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 二维码缺少自动刷新定时器"; exit 1; }
           grep -q "qr_flutter" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 主页缺少 qr_flutter 引用"; exit 1; }
           echo "[OK] 二维码连接信息（v138）注入完成"
 
