@@ -1878,3 +1878,29 @@ jobs:
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
             -d '{"uuid": "${{ inputs.uuid }}", "status": "\u65e0\u826f\u8001\u677f\u628a\u725b\u9a6c\u7d2f\u574f\u4e86\uff0c\u5df2\u7ecf\u5ba3\u5e03\u7f62\u5de5"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
+
+  # [build-fallback v135] Never leave the builder page polling forever.
+  # The terminal "Success" report lives in the last job of this graph, so when an
+  # upstream job fails that job is skipped and NOTHING is reported - the waiting
+  # page used to spin until the browser was closed. This job depends on the
+  # reporting job with `always()` and files a failure only when that job did not
+  # succeed (failure / cancelled / skipped).
+  notify-final-status:
+    name: Notify final status
+    needs: [build-for-windows-flutter]
+    if: ${{ always() && needs.build-for-windows-flutter.result != 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # "Failed" is the canonical terminal string the builder maps to its failure
+      # page, so this also works against a builder that predates the v135 fix.
+      - name: Report failed status
+        continue-on-error: true
+        shell: bash
+        run: |
+          echo "::add-mask::${{ fromJson(inputs.extras || '{}').token }}"
+          curl -fsS --max-time 30 -X POST \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -H "Authorization: Bearer ${{ fromJson(inputs.extras || '{}').token }}" \
+            -d '{"uuid": "${{ inputs.uuid }}", "status": "Failed"}' \
+            "${{ secrets.GENURL }}/updategh" || echo "Report status ping failed (non-fatal)"
