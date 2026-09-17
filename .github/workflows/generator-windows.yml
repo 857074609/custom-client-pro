@@ -1855,6 +1855,7 @@ jobs:
 
       - name: Create GitHub Release and Upload Assets
         if: success()
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
