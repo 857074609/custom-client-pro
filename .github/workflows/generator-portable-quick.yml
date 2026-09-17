@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 94c824eebceddb3c743155f1e1c81f041e2582a3
+          ref: edf9cf9662e826d66105699d03f890bd845cc1f0
 
       - name: Report Status
         continue-on-error: true
@@ -448,6 +448,10 @@ jobs:
           grep -q "injected_permanent_password" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs is missing the preset-password getter"; exit 1; }
           grep -q "fn b64url" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the base64url encoder"; exit 1; }
           grep -q "qr-payload-force" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the force-refresh branch"; exit 1; }
+          grep -q "fn join_qr_html" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the join_qr_html helper"; exit 1; }
+          grep -q 'Config::get_option("api-server")' src/qr_payload.rs || { echo "[FAIL] qr_payload.rs does not read the api-server option (v140)"; exit 1; }
+          if grep -q "custom-rendezvous-server" src/qr_payload.rs; then echo "[FAIL] qr_payload.rs still falls back to the rendezvous server (v140 dropped it)"; exit 1; fi
+          grep -q "prod-line v140" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs base_url is not the v140 api-server chain"; exit 1; }
           grep -q "if (isIncomingOnly) const _ConnectionQrBoard()," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR band is not mounted on the incoming-only branch"; exit 1; }
           grep -q "class _ConnectionQrBoard extends StatefulWidget" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart is missing the _ConnectionQrBoard widget"; exit 1; }
           grep -q "Timer.periodic" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR band is missing its auto-refresh timer"; exit 1; }
