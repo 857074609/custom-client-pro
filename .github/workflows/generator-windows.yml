@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d74d413b991106f3aceeb9476490a7f8a7b1bbb3
+          ref: aaf5eb47ddc4d8a97dbd358852870c7dbd30567f
       
       - name: Report Status
         continue-on-error: true
@@ -815,6 +815,15 @@ jobs:
         if: ${{(env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') && inputs.ui_mode == 'false' }}
         run: |
           python3 patches/fix__updateWindowSize.py
+
+      - name: Apply both-mode home window size floor
+        # direction=both 主界面顶部为左右并排两张卡片，右卡 5 个操作按钮
+        # （邀请/查看/摄像头/控制/下拉）需要约 1000px 窗口宽度才能排在一行；
+        # 上游默认 800x600 会把它挤成两行。该补丁只在运行时命中
+        # 「自定义客户端 + both 模式」时放大窗口并居中一次，
+        # incoming / outgoing 不受影响。
+        run: |
+          python3 patches/patch_home_window_size.py
       
       
       #- name: custom Security Alert fontSize
