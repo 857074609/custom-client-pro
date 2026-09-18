@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: aaf5eb47ddc4d8a97dbd358852870c7dbd30567f
+          ref: c44c6444fc99e86438439a342933f9c1ba58022b
 
       - name: Report Status
         continue-on-error: true
@@ -577,6 +577,19 @@ jobs:
           grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
           grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
           grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
+      - name: invite remote assistance (v143)
+        shell: bash
+        run: |
+          python3 patches/patch_invite.py .
+          # patch_invite.py installs the Dart module unconditionally but SKIPS a
+          # Rust/Dart anchor that is absent (tolerant), so assert the pieces that
+          # must survive -- otherwise the green Invite button silently does
+          # nothing while CI stays green.
+          grep -q "showInviteDialog" ./flutter/lib/common/invite.dart || { echo "[FAIL] v143: invite.dart not installed"; exit 1; }
+          grep -q "invite_otp" ./src/hbbs_http/sync.rs || { echo "[FAIL] v143: heartbeat invite_otp parsing missing"; exit 1; }
+          grep -q "startInviteWatcher" ./flutter/lib/main.dart || { echo "[FAIL] v143: invite watcher not started in main.dart"; exit 1; }
+          grep -q "common/invite.dart" ./flutter/lib/main.dart || { echo "[FAIL] v143: main.dart does not import invite.dart"; exit 1; }
+          echo "[OK] v143: invite module wired"
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
         with:
