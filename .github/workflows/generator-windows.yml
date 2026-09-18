@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: a88bc70ded11de9060140aa0265c434a6a2c88fc
+          ref: 434012771e0407486f550d381597b516ed6a6f80
       
       - name: Report Status
         continue-on-error: true
@@ -390,6 +390,20 @@ jobs:
             exit 1
           fi
           echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
+
+      - name: Apply main-interface security lock (home-lock)
+        if: fromJson(inputs.extras).enableHomeLock == 'true' && (env.CLIENT_TYPE == 'both' || env.CLIENT_TYPE == 'outgoing')
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 主界面安全锁：打开需 PIN；无远程会话且本地键鼠空闲 3 分钟自动锁定；密码复用 PIN。
+          # 仅 both/outgoing（主控型）的 windows/win7 生效；PIN 未设置时注入的闸门自动失效。
+          python3 patches/patch_home_lock.py .
+          grep -q "prod-line home-lock" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] home-lock: gate was not injected"; exit 1; }
+          grep -q "_HomeLockGate" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] home-lock: _HomeLockGate missing"; exit 1; }
+          echo "[OK] home-lock applied"
+
 
       - name: Inject TCP keepalive + DNS cache (v98)
         shell: bash
