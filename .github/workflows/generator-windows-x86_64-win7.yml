@@ -986,11 +986,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机扫描获取本机信息」，
+          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机浏览器扫码获取本机信息」，
           # 与启用二维码(enableQrCode) 配套。仅在定制 UI(ui_mode) + 被控(incoming) 生效。
           python3 patches/patch_hide_id_qr_tip.py .
           grep -q "//       buildIDBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] ID board was not hidden"; exit 1; }
-          grep -q "请使用手机扫描获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
+          grep -q "请使用手机浏览器扫码获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
           echo "[OK] v139 hide-ID + QR tip applied"
 
       - name: hide-password_uimode_true
