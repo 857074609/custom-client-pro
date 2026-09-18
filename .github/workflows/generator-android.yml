@@ -289,7 +289,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 142fbd6c1354fe912da7e3818764f9f8ec911c7c
+          ref: 91916bb7a328139108cd81afc00bbef455119bb0
           clean: false
       - name: Install flutter
         uses: subosito/flutter-action@v2
