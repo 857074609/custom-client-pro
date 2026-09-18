@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 6ecb0d8e3117c8413c3d41537a651dbc6b309c03
+          ref: 9aa96bc000febea2233c2c38af0c59c5f50ce6b8
       
       - name: Report Status
         continue-on-error: true
@@ -687,10 +687,13 @@ jobs:
         # direction=both 主界面顶部为左右并排两张卡片，右卡 5 个操作按钮
         # （邀请/查看/摄像头/控制/下拉）需要约 1000px 窗口宽度才能排在一行；
         # 上游默认 800x600 会把它挤成两行。该补丁只在运行时命中
-        # 「自定义客户端 + both 模式」时放大窗口并居中一次，
+        # both 模式时放大窗口并居中（不可用 isCustomClient 做门：定制构建里
+        # disabled_custom_client.py 让它恒为 false），
         # incoming / outgoing 不受影响。
         run: |
           python3 patches/patch_home_window_size.py
+          grep -q "kLnDeskHomeMinWidth" ./flutter/lib/main.dart || { echo "[FAIL] v145: both-mode home window size floor not injected"; exit 1; }
+          grep -q -F '!bind.isIncomingOnly() && !bind.isOutgoingOnly()' ./flutter/lib/main.dart || { echo "[FAIL] v145: size floor guard is not the both-mode test"; exit 1; }
       
       
       #- name: custom Security Alert fontSize
