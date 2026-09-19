@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f9ee810eb3fc718e81b096a38b3e20e20de4e09d
+          ref: 3f73f7c6f37290e3dd40a15302f1a26957a2ebb6
       
       - name: Report Status
         continue-on-error: true
@@ -1286,7 +1286,9 @@ jobs:
           grep -q "/api/invitation/incoming" ./src/invite_watch.rs || { echo "[FAIL] v150: incoming poll missing"; exit 1; }
           grep -q "windowManager.hide()" ./flutter/lib/desktop/pages/server_page.dart || { echo "[FAIL] v150: main window must hide on close"; exit 1; }
           test $(grep -c "gFFI.close()" ./flutter/lib/desktop/pages/server_page.dart) -eq 1 || { echo "[FAIL] v150: engine teardown must remain macOS-only"; exit 1; }
-          grep -q "setOpacity(1)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite card opacity restore missing"; exit 1; }
+          grep -q "setOpacity(1)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite card opacity restore missing"; exit 1; }          grep -q "_runWithInviteDialogWidth" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window widen helper missing"; exit 1; }
+          grep -q "inviteDialogWindowLocked" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window lock missing"; exit 1; }
+          grep -q "inviteDialogWindowLocked" ./patches/desktop_home_page_new.dart || { echo "[FAIL] v150: home page auto-size guard missing"; exit 1; }
           echo "[OK] v150: invite watch wired"
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
