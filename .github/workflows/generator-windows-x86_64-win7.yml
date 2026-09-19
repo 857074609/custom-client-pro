@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 10ebe17b09e89b7cc2dc5acfa81729370f7a8f0e
+          ref: e1dc9d4dc1f302b3390fb576ad33404e0ca486fd
       
       - name: Report Status
         continue-on-error: true
@@ -974,6 +974,7 @@ jobs:
           grep -q "ShareApi" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: device share api missing"; exit 1; }
           grep -q "kBrandAppName" ./flutter/lib/common/brand.dart || { echo "[FAIL] v150: brand.dart not injected"; exit 1; }
           grep -q "kBrandAppName" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: brand name not used by the toast"; exit 1; }
+          grep -q "main_write_log" ./src/flutter_ffi.rs || { echo "[FAIL] v150: dart log bridge missing"; exit 1; }
           echo "[OK] v150: invite watch wired"
 
       - name: lan quality (v116)
