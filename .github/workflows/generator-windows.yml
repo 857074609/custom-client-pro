@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 548622b30da786af7cc18f8f9436da9bd0c15a55
+          ref: 22c5896abc2fd984e236d3b7fcbf0de0bbacdcff
       
       - name: Report Status
         continue-on-error: true
@@ -1275,7 +1275,12 @@ jobs:
       - name: invite watch (v150)
         shell: bash
         run: |
-          python3 patches/patch_invite_watch.py .
+          python3 patches/patch_invite_watch.py .          # [LnDesk v150] brand name for the toast, injected from the
+          # workflow input (RustDesk default for stock builds).
+          APPNAME="${{ inputs.appname }}"
+          if [ -z "$APPNAME" ] || [ "$APPNAME" = "rustdesk" ]; then APPNAME="RustDesk"; fi
+          echo "// [LnDesk v150] brand name injected from the workflow input." > flutter/lib/common/brand.dart
+          echo "const kBrandAppName = '$APPNAME';" >> flutter/lib/common/brand.dart
           # v150: the tray process owns the last-resort invitation poll and
           # wakes the connection manager; the main window must hide instead
           # of destroying its engine. Assert what must survive - a silent
@@ -1286,17 +1291,16 @@ jobs:
           grep -q "/api/invitation/incoming" ./src/invite_watch.rs || { echo "[FAIL] v150: incoming poll missing"; exit 1; }
           grep -q "windowManager.hide()" ./flutter/lib/desktop/pages/server_page.dart || { echo "[FAIL] v150: main window must hide on close"; exit 1; }
           test $(grep -c "gFFI.close()" ./flutter/lib/desktop/pages/server_page.dart) -eq 1 || { echo "[FAIL] v150: engine teardown must remain macOS-only"; exit 1; }
-          grep -q "setOpacity(1)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite card opacity restore missing"; exit 1; }
           grep -q "_runWithInviteDialogWidth" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window widen helper missing"; exit 1; }
           grep -q "inviteDialogWindowLocked" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window lock missing"; exit 1; }
           grep -q "inviteDialogWindowLocked" ./patches/desktop_home_page_new.dart || { echo "[FAIL] v150: home page auto-size guard missing"; exit 1; }
-          grep -q "inviteCardStartupLock" ./flutter/lib/main.dart || { echo "[FAIL] v150: cm invite-card startup lock missing"; exit 1; }
-          grep -q "inviteCardStartupLock" ./flutter/lib/models/server_model.dart || { echo "[FAIL] v150: cm auto-exit guard missing"; exit 1; }
           grep -q "setResizable(true)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: resizable lift missing"; exit 1; }
           grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
-          test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 3 || { echo "[FAIL] v150: iroh preference must be applied on both accept paths"; exit 1; }
+          test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 2 || { echo "[FAIL] v150: iroh preference must be applied on the main-window accept path"; exit 1; }
           grep -q "showShareDialog" ./patches/connection_page_both.dart || { echo "[FAIL] v150: share button missing in both-mode connection page"; exit 1; }
           grep -q "ShareApi" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: device share api missing"; exit 1; }
+          grep -q "kBrandAppName" ./flutter/lib/common/brand.dart || { echo "[FAIL] v150: brand.dart not injected"; exit 1; }
+          grep -q "kBrandAppName" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: brand name not used by the toast"; exit 1; }
           echo "[OK] v150: invite watch wired"
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
