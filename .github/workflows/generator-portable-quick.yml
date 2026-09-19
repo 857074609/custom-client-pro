@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 559e93fa96e184f162904af266fc731b281139f4
+          ref: 4f343412c92251bbc18744ee1a3b5fc957cc8b3a
 
       - name: Report Status
         continue-on-error: true
@@ -616,6 +616,8 @@ jobs:
           grep -q "inviteCardStartupLock" ./flutter/lib/main.dart || { echo "[FAIL] v150: cm invite-card startup lock missing"; exit 1; }
           grep -q "inviteCardStartupLock" ./flutter/lib/models/server_model.dart || { echo "[FAIL] v150: cm auto-exit guard missing"; exit 1; }
           grep -q "setResizable(true)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: resizable lift missing"; exit 1; }
+          grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
+          test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 3 || { echo "[FAIL] v150: iroh preference must be applied on both accept paths"; exit 1; }
           echo "[OK] v150: invite watch wired"
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
