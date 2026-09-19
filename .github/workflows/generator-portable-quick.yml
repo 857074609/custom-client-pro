@@ -589,6 +589,11 @@ jobs:
           grep -q "invite_otp" ./src/hbbs_http/sync.rs || { echo "[FAIL] v143: heartbeat invite_otp parsing missing"; exit 1; }
           grep -q "startInviteWatcher" ./flutter/lib/main.dart || { echo "[FAIL] v143: invite watcher not started in main.dart"; exit 1; }
           grep -q "common/invite.dart" ./flutter/lib/main.dart || { echo "[FAIL] v143: main.dart does not import invite.dart"; exit 1; }
+          # [LnDesk v148] invite nickname + system toast gates
+          grep -q "from_nickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: invite nickname attach/parse missing"; exit 1; }
+          grep -q "_myNickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: _myNickname helper missing"; exit 1; }
+          grep -q "_showSystemNotification" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: system toast helper missing"; exit 1; }
+          grep -q "local_notifier" ./flutter/pubspec.yaml || { echo "[FAIL] v148: local_notifier dependency missing"; exit 1; }
           echo "[OK] v143: invite module wired"
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
