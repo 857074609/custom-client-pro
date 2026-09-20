@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c0bbf2d7f2a8c23e95187cb8a71840314c0f3056
+          ref: eea273dee2b6747fc20b9d43cca9bd20071242fd
       
       - name: Report Status
         continue-on-error: true
@@ -254,20 +254,6 @@ jobs:
           sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.lock
           sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.yaml
 
-      - name: Replace custom patch files 
-        if: inputs.ui_mode == 'true'
-        shell: bash
-        run: |
-          mkdir -p src/lang/
-          mkdir -p flutter/lib/desktop/pages/
-          cp -f patches/cn.rs  src/lang/cn.rs
-          cp -f patches/en.rs src/lang/en.rs
-       
-         
-          VER="${{ env.VERSION }}"
-          echo "Building version: $VER"
-          cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
-
       - name: Extract conn-type (client type)
         id: conn
         shell: pwsh
@@ -302,8 +288,81 @@ jobs:
           "CLIENT_TYPE=$t" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host " Final conn-type output: $t"
 
+      - name: Resolve UI variant
+        shell: bash
+        run: |
+          # [LnDesk v152] single gate for every interface-variant step.
+          if [ "${{ inputs.ui_mode }}" != "true" ]; then
+            echo "UI_VARIANT=upstream" >> $GITHUB_ENV
+          elif [ "$CLIENT_TYPE" = "incoming" ]; then
+            echo "UI_VARIANT=incoming_custom" >> $GITHUB_ENV
+          else
+            echo "UI_VARIANT=control_custom" >> $GITHUB_ENV
+          fi
+          grep UI_VARIANT $GITHUB_ENV
+
+      - name: S1 Apply incoming custom UI
+        if: env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: |
+          mkdir -p src/lang/
+          mkdir -p flutter/lib/desktop/pages/
+          cp -f patches/cn.rs  src/lang/cn.rs
+          cp -f patches/en.rs src/lang/en.rs
+
+          VER="${{ env.VERSION }}"
+          echo "Building version: $VER"
+          cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
+          grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] S1: desktop_home_page_new.dart not installed"; exit 1; }
+          echo "[OK] S1: incoming custom UI applied"
+
+      - name: Add Copy key (upstream)
+        if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v152] The upstream home page has no COPY_BUTTON_CONTROL
+          # marker, so the button is injected by script instead of sed
+          # (anchor: buildPasswordBoard2). Gated to incoming: upstream + both
+          # must stay stock.
+          python3 patches/patch_add_copy_button_uimode_false.py .
+          grep -qF "[LnDesk copy button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream copy button not injected"; exit 1; }
+          grep -qF '("Copy ID & Password"' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Copy ID & Password key"; exit 1; }
+          echo "[OK] v152: upstream copy button applied"
+
+      - name: Enable share button (upstream)
+        if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v152] must run before the invite step: the invite script
+          # reuses the Row created here so both buttons share one line.
+          python3 patches/patch_share_button_uimode_false.py .
+          grep -qF "[LnDesk share button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream share button not injected"; exit 1; }
+          grep -qF '("Share", "分享")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Share key"; exit 1; }
+          echo "[OK] v152: upstream share button applied"
+
+      - name: Enable invite button (upstream)
+        if: fromJson(inputs.extras).addinvite == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          python3 patches/patch_invite_button_uimode_false.py .
+          grep -qF "[LnDesk invite button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream invite button not injected"; exit 1; }
+          grep -qF '("Invite", "邀请")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Invite key"; exit 1; }
+          echo "[OK] v152: upstream invite button applied"
+
+      - name: Apply window size guard (upstream + incoming)
+        if: env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v152] ported from desktop_home_page_quick.dart: keep the
+          # settings tab from being squeezed back to the home auto-fit size
+          # after a theme/language tree rebuild.
+          python3 patches/patch_window_size_guard_uimode_false.py .
+          grep -qF "[LnDesk window size guard]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: window size guard not injected"; exit 1; }
+          echo "[OK] v152: window size guard applied"
+
+
       - name: Replace desktop_home_page for direction=both
-        if: fromJson(inputs.extras).hide_sensitive_ui == 'true' && env.CLIENT_TYPE == 'both'
+        if: env.UI_VARIANT == 'control_custom'
         shell: bash
         run: |
           # direction=both 专属 UI：仅在「连接类型=both」且「勾选隐藏左侧面板(hide_sensitive_ui)」
@@ -352,7 +411,7 @@ jobs:
           echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
 
       - name: Apply main-interface security lock (home-lock)
-        if: fromJson(inputs.extras).enableHomeLock == 'true' && (env.CLIENT_TYPE == 'both' || env.CLIENT_TYPE == 'outgoing')
+        if: fromJson(inputs.extras).enableHomeLock == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -366,7 +425,7 @@ jobs:
 
 
       - name: Apply screen wall patch + i18n
-        if: inputs.screen_wall == 'true'
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
         env:
           # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
@@ -447,7 +506,7 @@ jobs:
           echo "[OK] screen wall v132 verified (Escape passthrough + resolution guard)"
 
       - name: Inject LAN IP direct access board
-        if: fromJson(inputs.extras).ip_direct_board == 'true'
+        if: fromJson(inputs.extras).ip_direct_board == 'true' && (env.UI_VARIANT != 'upstream' || env.CLIENT_TYPE == 'incoming')
         shell: bash
         env:
           # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
@@ -690,9 +749,10 @@ jobs:
         # both 模式时放大窗口并居中（不可用 isCustomClient 做门：定制构建里
         # disabled_custom_client.py 让它恒为 false），
         # incoming / outgoing 不受影响。
+        shell: bash
         run: |
           python3 patches/patch_home_window_size.py
-          grep -q "kLnDeskHomeMinWidth" ./flutter/lib/main.dart || { echo "[FAIL] v145: both-mode home window size floor not injected"; exit 1; }
+          grep -q "kLnDeskHomeWidth" ./flutter/lib/main.dart || { echo "[FAIL] v145: both-mode home window size floor not injected"; exit 1; }
           grep -q -F '!bind.isIncomingOnly() && !bind.isOutgoingOnly()' ./flutter/lib/main.dart || { echo "[FAIL] v145: size floor guard is not the both-mode test"; exit 1; }
       
       
@@ -1056,7 +1116,7 @@ jobs:
 
       
       - name: Apply hide-ID and QR tip patch (v139)
-        if: fromJson(inputs.extras).hideIdDisplay == 'true' && inputs.ui_mode == 'true'
+        if: fromJson(inputs.extras).hideIdDisplay == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1069,13 +1129,13 @@ jobs:
           echo "[OK] v139 hide-ID + QR tip applied"
 
       - name: hide-password_uimode_true
-        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'
+        if: fromJson(inputs.extras).hidePassword == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: | 
           sed -i 's|^\([[:space:]]*\)buildPasswordBoard(context),|// \1buildPasswordBoard(context),|' flutter/lib/desktop/pages/desktop_home_page.dart
           
       - name: hide-password_uimode_false
-        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'false'
+        if: fromJson(inputs.extras).hidePassword == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: | 
           python3  patches/hide_password_board_uimode_false.py
@@ -1088,25 +1148,25 @@ jobs:
           python3  patches/dis_setting.py
 
       - name:  Remove Quit Button_uimode_true  
-        if: fromJson(inputs.extras).hideQuit == 'true' && inputs.ui_mode == 'true'
+        if: fromJson(inputs.extras).hideQuit == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
             sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart       
      
       - name:  Remove Quit Button_uimode_false  
-        if: fromJson(inputs.extras).hideQuit == 'true' && inputs.ui_mode == 'false'
+        if: fromJson(inputs.extras).hideQuit == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: |
             python3 patches/hide_quit_button_uimode_false.py
       
       - name:  Add Copy key
-        if: fromJson(inputs.extras).addcopy == 'true' && inputs.ui_mode == 'true'
+        if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
           sed -i '/COPY_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
           
       - name:  Enable share button
-        if: fromJson(inputs.extras).addshare == 'true' && inputs.ui_mode == 'true'
+        if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
           # [LnDesk v151] Share button shares the polarity of the copy button: the
