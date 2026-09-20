@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 95d1be699a8481e692c0a81a069bef9e45839bb7
+          ref: c0bbf2d7f2a8c23e95187cb8a71840314c0f3056
 
       - name: Report Status
         continue-on-error: true
@@ -280,6 +280,40 @@ jobs:
           ! grep -q "COPY_BUTTON_CONTROL" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净"; exit 1; }
           grep -q "buildCopyIdPasswordButton" "$PAGE" || { echo "[FAIL] 缺少 buildCopyIdPasswordButton"; exit 1; }
           echo "[OK] 复制按钮启用完成"
+
+      - name: Enable share button
+        if: inputs.ui_mode == 'true' && fromJson(inputs.extras).addshare == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v151] 分享按钮与复制按钮同极性（基准文件默认被提前 return 关闭）：
+          #   // SHARE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # 删除该提前 return 使分享按钮逻辑生效。分享与「退出按钮」共用同一个
+          # 槽位、二者互斥，故同步骤内解开 QUIT 提前 return 把退出按钮隐藏
+          # （addshare 恒蕴含 hideQuit，前端联动 + 后端守卫均已保证）。
+          PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
+          python3 - "$PAGE" <<'EOF'
+          import sys, re
+          p = sys.argv[1]
+          t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
+          m = re.search(r"[ \t]*// SHARE_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
+          if not m:
+              print("[FAIL] 未找到 SHARE_BUTTON_CONTROL 提前 return")
+              sys.exit(3)
+          t = t[:m.start()] + t[m.end():]
+          t, n = re.subn(r"// QUIT:(return const SizedBox\.shrink\(\);)", r"\1", t)
+          if n != 1:
+              print("[FAIL] 未找到 QUIT 提前 return")
+              sys.exit(3)
+          open(p, "w", encoding="utf-8").write(t)
+          print("[OK] 分享按钮已启用（移除 SHARE_BUTTON_CONTROL 提前 return + 隐藏退出按钮）")
+          EOF
+          ! grep -q "SHARE_BUTTON_CONTROL" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净"; exit 1; }
+          grep -q "_buildShareButton" "$PAGE" || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
+          ! grep -q "// QUIT:return" "$PAGE" || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
+          echo "[OK] 分享按钮启用完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'

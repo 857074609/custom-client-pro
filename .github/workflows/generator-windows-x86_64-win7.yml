@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 95d1be699a8481e692c0a81a069bef9e45839bb7
+          ref: c0bbf2d7f2a8c23e95187cb8a71840314c0f3056
       
       - name: Report Status
         continue-on-error: true
@@ -1104,6 +1104,27 @@ jobs:
         shell: bash
         run: |
           sed -i '/COPY_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          
+      - name:  Enable share button
+        if: fromJson(inputs.extras).addshare == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        run: |
+          # [LnDesk v151] Share button shares the polarity of the copy button: the
+          # base file disables it with an early return.
+          #   // SHARE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # sed comments out the line after the marker, which kills the early
+          # return and lets the button render.
+          sed -i '/SHARE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # Share and Quit occupy the SAME slot, so they are mutually exclusive:
+          # unhide the QUIT early return in the same pass to hide Quit.
+          # addshare always implies hideQuit (front-end linkage + back-end
+          # guard), so this is a no-op when the hideQuit step already ran.
+          sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart
+          grep -q "^//[[:space:]]*return const SizedBox\.shrink();" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] SHARE_BUTTON_CONTROL early return not commented"; exit 1; }
+          grep -q "_buildShareButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildShareButton missing"; exit 1; }
+          ! grep -q "// QUIT:return" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quit button not hidden (same slot as share)"; exit 1; }
+          echo "[OK] share button enabled (quit button hidden in the same slot)"
           
       - name: Disable CM window (v99)
         if: fromJson(inputs.extras).supercm == 'true'

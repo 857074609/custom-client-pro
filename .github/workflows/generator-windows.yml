@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 95d1be699a8481e692c0a81a069bef9e45839bb7
+          ref: c0bbf2d7f2a8c23e95187cb8a71840314c0f3056
       
       - name: Report Status
         continue-on-error: true
@@ -1110,6 +1110,24 @@ jobs:
         shell: bash
         run: |
           sed -i '/COPY_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          
+      - name:  Enable share button
+        if: fromJson(inputs.extras).addshare == 'true' && inputs.ui_mode == 'true'
+        shell: bash
+        run: |
+          # [LnDesk v151] 分享按钮与复制按钮同极性：基准文件里被提前 return 关闭
+          #   // SHARE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
+          sed -i '/SHARE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # 分享与「退出按钮」共用同一个槽位，二者互斥：同步骤内解开 QUIT 提前 return
+          # 把退出按钮隐藏。addshare 恒蕴含 hideQuit（前端联动 + 后端守卫），
+          # 已执行 hideQuit 步骤时本行无匹配、幂等。
+          sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart
+          grep -q "^//[[:space:]]*return const SizedBox\.shrink();" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] SHARE_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
+          grep -q "_buildShareButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
+          ! grep -q "// QUIT:return" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
+          echo "[OK] 分享按钮已启用（退出按钮同槽隐藏）"
           
       - name: Disable CM window (v99)
         if: fromJson(inputs.extras).supercm == 'true'
