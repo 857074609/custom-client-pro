@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: eea273dee2b6747fc20b9d43cca9bd20071242fd
+          ref: c0185b3a8dc01373da4d8b8cc44bceaca47c253a
       
       - name: Report Status
         continue-on-error: true
@@ -1185,6 +1185,23 @@ jobs:
           grep -q "_buildShareButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildShareButton missing"; exit 1; }
           ! grep -q "// QUIT:return" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quit button not hidden (same slot as share)"; exit 1; }
           echo "[OK] share button enabled (quit button hidden in the same slot)"
+          
+      - name:  Enable invite button
+        if: fromJson(inputs.extras).addinvite == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: |
+          # [LnDesk v160] Invite button shares the polarity of copy/share: the base
+          # file disables it with an early return.
+          #   // INVITE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # sed comments out the line after the marker, which kills the early
+          # return and lets the button render. Custom UI reveals it via this sed
+          # driven by the addinvite checkbox; upstream uses
+          # patch_invite_button_uimode_false.py instead.
+          sed -i '/INVITE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          grep -A1 "INVITE_BUTTON_CONTROL" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "//return" || { echo "[FAIL] INVITE_BUTTON_CONTROL early return not commented"; exit 1; }
+          grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildInviteButton missing"; exit 1; }
+          echo "[OK] invite button enabled (INVITE_BUTTON_CONTROL early return removed)"
           
       - name: Disable CM window (v99)
         if: fromJson(inputs.extras).supercm == 'true'

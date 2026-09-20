@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: eea273dee2b6747fc20b9d43cca9bd20071242fd
+          ref: c0185b3a8dc01373da4d8b8cc44bceaca47c253a
 
       - name: Report Status
         continue-on-error: true
@@ -314,6 +314,34 @@ jobs:
           grep -q "_buildShareButton" "$PAGE" || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
           ! grep -q "// QUIT:return" "$PAGE" || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
           echo "[OK] 分享按钮启用完成"
+
+      - name: Enable invite button
+        if: inputs.ui_mode == 'true' && fromJson(inputs.extras).addinvite == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v160] 邀请按钮与复制/分享同极性（基准文件默认被提前 return 关闭）：
+          #   // INVITE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # 删除该提前 return 使邀请按钮逻辑生效（定制 UI 下由本步骤按复选框揭示；
+          # 上游版则由 patch_invite_button_uimode_false.py 注入，不在此路径）。
+          PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
+          python3 - "$PAGE" <<'EOF'
+          import sys, re
+          p = sys.argv[1]
+          t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
+          m = re.search(r"[ \t]*// INVITE_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
+          if not m:
+              print("[FAIL] 未找到 INVITE_BUTTON_CONTROL 提前 return")
+              sys.exit(3)
+          t = t[:m.start()] + t[m.end():]
+          open(p, "w", encoding="utf-8").write(t)
+          print("[OK] 邀请按钮已启用（移除 INVITE_BUTTON_CONTROL 提前 return）")
+          EOF
+          ! grep -q "INVITE_BUTTON_CONTROL" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净"; exit 1; }
+          grep -q "_buildInviteButton" "$PAGE" || { echo "[FAIL] 缺少 _buildInviteButton"; exit 1; }
+          echo "[OK] 邀请按钮启用完成"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'

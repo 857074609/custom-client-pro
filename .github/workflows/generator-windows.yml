@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: eea273dee2b6747fc20b9d43cca9bd20071242fd
+          ref: c0185b3a8dc01373da4d8b8cc44bceaca47c253a
       
       - name: Report Status
         continue-on-error: true
@@ -1188,6 +1188,21 @@ jobs:
           grep -q "_buildShareButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
           ! grep -q "// QUIT:return" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
           echo "[OK] 分享按钮已启用（退出按钮同槽隐藏）"
+          
+      - name:  Enable invite button
+        if: fromJson(inputs.extras).addinvite == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: |
+          # [LnDesk v160] 邀请按钮与复制/分享同极性：基准文件里被提前 return 关闭
+          #   // INVITE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
+          # 定制 UI 下按钮由 desktop_home_page_new.dart 的 INVITE_BUTTON_CONTROL 标记
+          # 按复选框经本步骤 sed 揭示；上游版则由 patch_invite_button_uimode_false.py 注入。
+          sed -i '/INVITE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          grep -A1 "INVITE_BUTTON_CONTROL" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "//return" || { echo "[FAIL] INVITE_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
+          grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 缺少 _buildInviteButton"; exit 1; }
+          echo "[OK] 邀请按钮已启用（移除 INVITE_BUTTON_CONTROL 提前 return）"
           
       - name: Disable CM window (v99)
         if: fromJson(inputs.extras).supercm == 'true'
