@@ -1792,6 +1792,31 @@ jobs:
           grep -q "settings page resilient to theme-change" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing theme-rebuild resilience"; exit 1; }
           echo "[OK] settings page immune to theme-change rebuilds"
 
+      - name: Relax upstream lint noise for analyze gate
+        shell: bash
+        run: |
+          # [LnDesk v160] Upstream rustdesk ships many cosmetic lint issues
+          # (constant_identifier_names / camel_case_types / unnecessary_import /
+          # unused_import / unnecessary_this / unused_element) in web-platform
+          # files we never patch (lib/web/**, lib/models/web_model.dart,
+          # lib/utils/multi_window_manager.dart). They are infos/warnings, but
+          # to keep the analyze gate focused on REAL compile errors only, drop a
+          # scoped analysis_options that silences exactly those rules while
+          # inheriting the repo's own settings. Compile errors (undefined names,
+          # type mismatches) are NOT in this set and remain fatal.
+          cat > flutter/analysis_options.yaml <<'YAML'
+          include: ../analysis_options.yaml
+          linter:
+            rules:
+              constant_identifier_names: false
+              camel_case_types: false
+              unnecessary_import: false
+              unused_import: false
+              unnecessary_this: false
+              unused_element: false
+          YAML
+          echo "[OK] suppressed upstream cosmetic lint rules for analyze gate"
+
       - name: Gate - flutter analyze (fail fast on Dart compile errors)
         shell: bash
         run: |
@@ -1800,6 +1825,7 @@ jobs:
           # burying them inside MSB8066 during 'flutter build'.
           # Only ERRORS are fatal: upstream carries many lint infos/warnings
           # that must not block the build. 'lib' only (test/ often noisy).
+          # [LnDesk v160] cosmetic rules already silenced via flutter/analysis_options.yaml.
           cd ./flutter
           flutter pub get
           flutter analyze lib --no-fatal-infos --no-fatal-warnings
