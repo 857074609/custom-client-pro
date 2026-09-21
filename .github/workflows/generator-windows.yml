@@ -1170,7 +1170,7 @@ jobs:
         if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
-          sed -i '/COPY_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/COPY_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           
       - name:  Enable share button
         if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'incoming_custom'
@@ -1180,7 +1180,7 @@ jobs:
           #   // SHARE_BUTTON_CONTROL
           #   return const SizedBox.shrink();
           # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
-          sed -i '/SHARE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/SHARE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           # 分享与「退出按钮」共用同一个槽位，二者互斥：同步骤内解开 QUIT 提前 return
           # 把退出按钮隐藏。addshare 恒蕴含 hideQuit（前端联动 + 后端守卫），
           # 已执行 hideQuit 步骤时本行无匹配、幂等。
@@ -1200,7 +1200,7 @@ jobs:
           # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
           # 定制 UI 下按钮由 desktop_home_page_new.dart 的 INVITE_BUTTON_CONTROL 标记
           # 按复选框经本步骤 sed 揭示；上游版则由 patch_invite_button_uimode_false.py 注入。
-          sed -i '/INVITE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/INVITE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           grep -A1 "INVITE_BUTTON_CONTROL" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "//return" || { echo "[FAIL] INVITE_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
           grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 缺少 _buildInviteButton"; exit 1; }
           echo "[OK] 邀请按钮已启用（移除 INVITE_BUTTON_CONTROL 提前 return）"

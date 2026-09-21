@@ -1164,7 +1164,7 @@ jobs:
         if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
-          sed -i '/COPY_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/COPY_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           
       - name:  Enable share button
         if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'incoming_custom'
@@ -1176,7 +1176,7 @@ jobs:
           #   return const SizedBox.shrink();
           # sed comments out the line after the marker, which kills the early
           # return and lets the button render.
-          sed -i '/SHARE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/SHARE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           # Share and Quit occupy the SAME slot, so they are mutually exclusive:
           # unhide the QUIT early return in the same pass to hide Quit.
           # addshare always implies hideQuit (front-end linkage + back-end
@@ -1199,7 +1199,7 @@ jobs:
           # return and lets the button render. Custom UI reveals it via this sed
           # driven by the addinvite checkbox; upstream uses
           # patch_invite_button_uimode_false.py instead.
-          sed -i '/INVITE_BUTTON_CONTROL/{n;s/^/\/\//;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/INVITE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           grep -A1 "INVITE_BUTTON_CONTROL" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "//return" || { echo "[FAIL] INVITE_BUTTON_CONTROL early return not commented"; exit 1; }
           grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildInviteButton missing"; exit 1; }
           echo "[OK] invite button enabled (INVITE_BUTTON_CONTROL early return removed)"
