@@ -1668,21 +1668,59 @@ jobs:
           URL="${{ secrets.GENURL }}/save_custom_client"
           TOKEN="${{ fromJson(inputs.extras).token }}"
           UUID="${{ inputs.uuid }}"
-          curl -i -X POST \
-            -H "Content-Type: multipart/form-data" \
-            -H "Authorization: Bearer $TOKEN" \
-            -F "file=@$EXE" \
-            -F "uuid=$UUID" \
-            "$URL"
-          test -f "$MSI" && \
-            curl -i -X POST \
-              -H "Content-Type: multipart/form-data" \
-              -H "Authorization: Bearer $TOKEN" \
-              -F "file=@$MSI" \
-              -F "uuid=$UUID" \
-              "$URL" && \
-            echo " MSI uploaded" || \
-            echo "⚠ MSI not found, skipping upload."
+          # [LnDesk v169] Cross-border upload resilience.
+          # Healthy link: 9-18s (~2.4MB/s). Degraded: 8-40KB/s and then the
+          # connection is reset (curl 55/56) - run 35582468723 died at 30%
+          # after 11m48s, while run 35583260254 crawled the same way for 626s
+          # and only happened to finish.
+          # --retry alone does NOT retry 55/56; --retry-all-errors is required.
+          # --retry-delay is deliberately unset so curl keeps its built-in
+          # exponential backoff (1s,2s,4s,8s), which suits a congested link
+          # better than a fixed delay.
+          # --speed-limit is a conservative STALL guard only: the observed
+          # "slow" (8-47KB/s) and "dead" (4-15KB/s) ranges overlap, so a more
+          # aggressive valve would abort transfers that do finish.
+          # -f turns an HTTP error (401/413/500) into a real failure. Without
+          # it curl exits 0 and the step silently passes with no file saved.
+          # EXE and MSI are attempted independently: under `set -e` the old
+          # `&&` chain stopped at the first failure and never tried the MSI.
+          CURL_OPTS=(
+            -X POST
+            -H "Content-Type: multipart/form-data"
+            -H "Authorization: Bearer $TOKEN"
+            --connect-timeout 30
+            --retry 4
+            --retry-all-errors
+            --max-time 1800
+            --speed-limit 1024
+            --speed-time 180
+          )
+          STAT='\n[upload] http=%{http_code} sent=%{size_upload}B in %{time_total}s\n'
+          rc_exe=0
+          rc_msi=0
+          echo "== [1/2] EXE =="
+          if curl -f "${CURL_OPTS[@]}" -w "$STAT" \
+              -F "file=@$EXE" -F "uuid=$UUID" "$URL"; then
+            echo "[OK] EXE uploaded"
+          else
+            rc_exe=$?
+            echo "[FAIL] EXE upload rc=$rc_exe"
+          fi
+          echo "== [2/2] MSI =="
+          if [ ! -f "$MSI" ]; then
+            echo "[SKIP] MSI not found, skipping upload."
+          elif curl -f "${CURL_OPTS[@]}" -w "$STAT" \
+              -F "file=@$MSI" -F "uuid=$UUID" "$URL"; then
+            echo "[OK] MSI uploaded"
+          else
+            rc_msi=$?
+            echo "[FAIL] MSI upload rc=$rc_msi"
+          fi
+          if [ "$rc_exe" -ne 0 ] || [ "$rc_msi" -ne 0 ]; then
+            echo "[FAIL] file server upload failed (EXE rc=$rc_exe, MSI rc=$rc_msi)"
+            exit 1
+          fi
+          echo "[OK] both artifacts uploaded to file server"
            
       - name: Report Status
         continue-on-error: true
