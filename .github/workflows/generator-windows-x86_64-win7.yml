@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: ab112e95c4763d130d25a2f50a7c1e0b83a45f56
+          ref: d820613100310d58ac3d7b99178d2bb77d65a28c
       
       - name: Report Status
         continue-on-error: true
@@ -1111,7 +1111,8 @@ jobs:
         if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
         shell: bash
         run: |
-          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+          python3 patches/patch_delay_fix.py .
+          grep -qF '// [LnDesk v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
 
 
       

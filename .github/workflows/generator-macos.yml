@@ -779,7 +779,8 @@ jobs:
         if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
         shell: bash
         run: |
-          sed -i -e 's|!key.is_empty()|false|' ./src/client.rs
+          python3 patches/patch_delay_fix.py .
+          grep -qF '// [LnDesk v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
 
       - name: add cycle monitors to toolbar
         continue-on-error: true
