@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 64874d8f916f9738016c670a1c0a94c8cf97995c
+          ref: 95b0d13704b0d191b06ad02d66a8f95a7f41cb00
       
       - name: Report Status
         continue-on-error: true
@@ -316,25 +316,32 @@ jobs:
           grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] S1: desktop_home_page_new.dart not installed"; exit 1; }
           echo "[OK] S1: incoming custom UI applied"
 
-      - name: Add Copy key (upstream)
-        if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+      - name: Use the customized language files (upstream + incoming)
+        if: env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: |
-          # [LnDesk v152] The upstream home page has no COPY_BUTTON_CONTROL
-          # marker, so the button is injected by script instead of sed
-          # (anchor: buildPasswordBoard2). Gated to incoming: upstream + both
-          # must stay stock.
-          python3 patches/patch_add_copy_button_uimode_false.py .
-          grep -qF "[LnDesk copy button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream copy button not injected"; exit 1; }
-          grep -qF '("Copy ID & Password"' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Copy ID & Password key"; exit 1; }
-          echo "[OK] v152: upstream copy button applied"
+          # [LnDesk v166] The upstream variant compiles the stock upstream
+          # src/lang/cn.rs, which carries none of the LnDesk keys: the invite /
+          # share dialogs live in invite.dart and every one of their translate()
+          # keys would fall back to English. Reuse the customized language files
+          # here too, so the upstream incoming build is localized exactly like
+          # the custom one. patches/en.rs is a full replacement as well (it also
+          # restores the upstream-only install/upgrade tips that the custom
+          # builds never needed).
+          mkdir -p src/lang/
+          cp -f patches/cn.rs  src/lang/cn.rs
+          cp -f patches/en.rs src/lang/en.rs
+          grep -qF '("Invite an administrator"' src/lang/cn.rs || { echo "[FAIL] v166: cn.rs lacks the invite dialog keys"; exit 1; }
+          grep -qF '("The recipient opens the link in a browser and connects from the web client (valid for 30 minutes)."' src/lang/cn.rs || { echo "[FAIL] v166: cn.rs lacks the share hint key"; exit 1; }
+          echo "[OK] v166: customized cn.rs / en.rs applied to the upstream variant"
 
       - name: Enable share button (upstream)
         if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: |
-          # [LnDesk v152] must run before the invite step: the invite script
-          # reuses the Row created here so both buttons share one line.
+          # [LnDesk v166] Runs FIRST: it creates the shared Row that the invite
+          # and copy scripts append themselves to, in that order
+          # (Share -> Invite -> Copy -- same order as the custom home page).
           python3 patches/patch_share_button_uimode_false.py .
           grep -qF "[LnDesk share button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream share button not injected"; exit 1; }
           grep -qF '("Share", "分享")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Share key"; exit 1; }
@@ -348,6 +355,20 @@ jobs:
           grep -qF "[LnDesk invite button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream invite button not injected"; exit 1; }
           grep -qF '("Invite", "邀请")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Invite key"; exit 1; }
           echo "[OK] v152: upstream invite button applied"
+
+      - name: Add Copy key (upstream)
+        if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v166] Runs AFTER share/invite on purpose: the three upstream
+          # entries share one Row in the custom home page's order
+          # (Share -> Invite -> Copy), and each script appends itself at the
+          # previous script's end marker. The upstream page has no
+          # COPY_BUTTON_CONTROL marker, so a script (not sed) injects it.
+          python3 patches/patch_add_copy_button_uimode_false.py .
+          grep -qF "[LnDesk copy button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v166: upstream copy button not injected"; exit 1; }
+          grep -qF '("Copy ID & Password"' src/lang/cn.rs || { echo "[FAIL] v166: cn.rs lacks the Copy ID & Password key"; exit 1; }
+          echo "[OK] v166: upstream copy button applied (one click copies ID + password + IP + iroh)"
 
       - name: Apply window size guard (upstream + incoming)
         if: env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
