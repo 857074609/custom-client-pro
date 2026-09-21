@@ -1185,7 +1185,20 @@ jobs:
         if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
-          sed -i '/COPY_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # [LnDesk v167] Anchor the address to the marker line that owns the whole
+          # line and only comment the early return right after it. The baseline
+          # file also *mentions* the marker inside prose comments (e.g. the SHARE
+          # block says "// step (mirrors COPY_BUTTON_CONTROL) ..."), so a loose
+          # address would also mangle those comment lines.
+          # Address body {n;/^\/\//!s|^|//|;}: n pulls the next line, and the
+          # /^\/\//! guard keeps the step idempotent (no double "//" stacking).
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # The gate is anchored to the very same marker line and only accepts a
+          # commented line right below it: copy / share / invite produce byte-identical
+          # lines, so the old "whole-file ^//  return" search could be satisfied by a
+          # sibling button's line and pass even when this step did nothing.
+          grep -A1 "^[[:space:]]*//[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] COPY_BUTTON_CONTROL early return not commented"; exit 1; }
+          echo "[OK] copy button enabled (COPY_BUTTON_CONTROL early return removed)"
           
       - name:  Enable share button
         if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'incoming_custom'
@@ -1197,13 +1210,13 @@ jobs:
           #   return const SizedBox.shrink();
           # sed comments out the line after the marker, which kills the early
           # return and lets the button render.
-          sed -i '/SHARE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           # Share and Quit occupy the SAME slot, so they are mutually exclusive:
           # unhide the QUIT early return in the same pass to hide Quit.
           # addshare always implies hideQuit (front-end linkage + back-end
           # guard), so this is a no-op when the hideQuit step already ran.
           sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart
-          grep -q "^//[[:space:]]*return const SizedBox\.shrink();" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] SHARE_BUTTON_CONTROL early return not commented"; exit 1; }
+          grep -A1 "^[[:space:]]*//[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] SHARE_BUTTON_CONTROL early return not commented"; exit 1; }
           grep -q "_buildShareButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildShareButton missing"; exit 1; }
           ! grep -q "// QUIT:return" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quit button not hidden (same slot as share)"; exit 1; }
           echo "[OK] share button enabled (quit button hidden in the same slot)"
@@ -1220,8 +1233,17 @@ jobs:
           # return and lets the button render. Custom UI reveals it via this sed
           # driven by the addinvite checkbox; upstream uses
           # patch_invite_button_uimode_false.py instead.
-          sed -i '/INVITE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
-          grep -A1 "INVITE_BUTTON_CONTROL" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "//return" || { echo "[FAIL] INVITE_BUTTON_CONTROL early return not commented"; exit 1; }
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # [LnDesk v167] The old gate was
+          #   grep -A1 "INVITE_BUTTON_CONTROL" ... | grep -q "//return"
+          # which failed for two independent reasons:
+          #   1) sed writes "//" at column 0 followed by the original indentation,
+          #      i.e. "//  return const SizedBox.shrink();" - the literal "//return"
+          #      (no space) can never match it;
+          #   2) the marker word occurs twice (prose comment at L472 + the real
+          #      marker at L477), so grep -A1 emits two groups split by "--".
+          # Replaced by the anchored two-stage gate used for copy/share.
+          grep -A1 "^[[:space:]]*//[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] INVITE_BUTTON_CONTROL early return not commented"; exit 1; }
           grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildInviteButton missing"; exit 1; }
           echo "[OK] invite button enabled (INVITE_BUTTON_CONTROL early return removed)"
           

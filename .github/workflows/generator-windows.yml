@@ -1191,7 +1191,16 @@ jobs:
         if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
-          sed -i '/COPY_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # [LnDesk v167] 地址锚定到「独占一行的标记行」，只注释紧随其后的提前
+          # return。基准文件的说明注释里也含同名标记词（如 SHARE 段落里
+          # "// step (mirrors COPY_BUTTON_CONTROL) ..."），松散地址会误伤注释行。
+          # 地址内 {n;/^\/\//!s|^|//|;}：n 取标记的下一行，/^\/\//! 守卫保证该行
+          # 已被注释时不再叠加，重复执行幂等。
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # 门禁锚定同一标记行、只认它下一行被注释。复制/分享/邀请三者的产物
+          # 完全同形，旧的「整文件搜 ^//  return」会被兄弟按钮的注释行假通过。
+          grep -A1 "^[[:space:]]*//[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] COPY_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
+          echo "[OK] 复制按钮已启用（移除 COPY_BUTTON_CONTROL 提前 return）"
           
       - name:  Enable share button
         if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'incoming_custom'
@@ -1201,12 +1210,12 @@ jobs:
           #   // SHARE_BUTTON_CONTROL
           #   return const SizedBox.shrink();
           # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
-          sed -i '/SHARE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
           # 分享与「退出按钮」共用同一个槽位，二者互斥：同步骤内解开 QUIT 提前 return
           # 把退出按钮隐藏。addshare 恒蕴含 hideQuit（前端联动 + 后端守卫），
           # 已执行 hideQuit 步骤时本行无匹配、幂等。
           sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart
-          grep -q "^//[[:space:]]*return const SizedBox\.shrink();" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] SHARE_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
+          grep -A1 "^[[:space:]]*//[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] SHARE_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
           grep -q "_buildShareButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
           ! grep -q "// QUIT:return" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
           echo "[OK] 分享按钮已启用（退出按钮同槽隐藏）"
@@ -1221,8 +1230,13 @@ jobs:
           # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
           # 定制 UI 下按钮由 desktop_home_page_new.dart 的 INVITE_BUTTON_CONTROL 标记
           # 按复选框经本步骤 sed 揭示；上游版则由 patch_invite_button_uimode_false.py 注入。
-          sed -i '/INVITE_BUTTON_CONTROL/{n;s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
-          grep -A1 "INVITE_BUTTON_CONTROL" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "//return" || { echo "[FAIL] INVITE_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # [LnDesk v167] 旧门禁为 grep -A1 "INVITE_BUTTON_CONTROL" | grep -q "//return"，
+          # 两处同时失配：①sed 产物是行首 "//" + 原有缩进（"//  return ..."），
+          # "//return" 连写永远搜不到；②标记词在文件里出现两次（第 472 行说明
+          # 注释 + 第 477 行真标记），-A1 输出被 - 分隔符切成两组、语义不确定。
+          # 改为与复制/分享同款的锚定两段门禁。
+          grep -A1 "^[[:space:]]*//[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] INVITE_BUTTON_CONTROL 提前 return 未注释"; exit 1; }
           grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] 缺少 _buildInviteButton"; exit 1; }
           echo "[OK] 邀请按钮已启用（移除 INVITE_BUTTON_CONTROL 提前 return）"
           

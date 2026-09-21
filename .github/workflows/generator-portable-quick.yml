@@ -277,7 +277,10 @@ jobs:
           open(p, "w", encoding="utf-8").write(t2)
           print("[OK] 复制按钮已启用（移除 COPY_BUTTON_CONTROL 提前 return + isIncomingOnly 门槛）")
           EOF
-          ! grep -q "COPY_BUTTON_CONTROL" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净"; exit 1; }
+          # [LnDesk v167] 断言锚定「独占一行的标记行」：文件说明注释里也含同名
+          # 标记词（SHARE 段落写着 "// step (mirrors COPY_BUTTON_CONTROL) ..."），
+          # 旧的 ! grep -q "COPY_BUTTON_CONTROL" 全文件搜索必然误判为未清理干净。
+          ! grep -q "^[[:space:]]*//[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
           grep -q "buildCopyIdPasswordButton" "$PAGE" || { echo "[FAIL] 缺少 buildCopyIdPasswordButton"; exit 1; }
           echo "[OK] 复制按钮启用完成"
 
@@ -310,7 +313,8 @@ jobs:
           open(p, "w", encoding="utf-8").write(t)
           print("[OK] 分享按钮已启用（移除 SHARE_BUTTON_CONTROL 提前 return + 隐藏退出按钮）")
           EOF
-          ! grep -q "SHARE_BUTTON_CONTROL" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净"; exit 1; }
+          # [LnDesk v167] 同 COPY：断言锚定标记行本身，避免被说明注释误伤。
+          ! grep -q "^[[:space:]]*//[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
           grep -q "_buildShareButton" "$PAGE" || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
           ! grep -q "// QUIT:return" "$PAGE" || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
           echo "[OK] 分享按钮启用完成"
@@ -339,7 +343,8 @@ jobs:
           open(p, "w", encoding="utf-8").write(t)
           print("[OK] 邀请按钮已启用（移除 INVITE_BUTTON_CONTROL 提前 return）")
           EOF
-          ! grep -q "INVITE_BUTTON_CONTROL" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净"; exit 1; }
+          # [LnDesk v167] 同 COPY：断言锚定标记行本身，避免被说明注释误伤。
+          ! grep -q "^[[:space:]]*//[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
           grep -q "_buildInviteButton" "$PAGE" || { echo "[FAIL] 缺少 _buildInviteButton"; exit 1; }
           echo "[OK] 邀请按钮启用完成"
 
