@@ -601,17 +601,21 @@ jobs:
           grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
 
       - name: online devices data chain (v174) - android enablement
-        # Android-only enablement. patch_iroh_menu.py anchors on the irohId
-        # field / peerIrohId map that THIS script injects; without it every
-        # iroh-menu edit silently [SKIP-ABSENT]s and Android ends up with no
-        # iroh card entry at all (the patch is lenient, so CI stayed green).
-        # Brings the same card entries desktop already has (direct / IPv6
-        # direct / remove device) plus the /api/peers iroh_id polling.
+        # Android-only enablement. patch_iroh_menu.py anchors on content THIS
+        # script injects (the peerLastIpv6 declaration and its fill block), so
+        # without it every iroh-menu edit silently [SKIP-ABSENT]s and Android
+        # ends up with no iroh card entry at all (the patch is lenient, so CI
+        # stayed green). Brings the same card entries desktop already has
+        # (direct / IPv6 direct / remove device) plus /api/peers polling.
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           python3 patches/patch_online_devices.py .
-          grep -q "peerIrohId" ./flutter/lib/models/group_model.dart || { echo "[FAIL] v174: online devices data chain missing"; exit 1; }
+          # [LnDesk v175] same two needles the other five workflows use.
+          # Do NOT assert the iroh NodeId map here: it belongs to the next step
+          # (patch_iroh_menu.py) and asserting it here broke build 35749812102.
+          grep -q "void startOnlinePoll" ./flutter/lib/models/group_model.dart || { echo "[FAIL] v174: group_model.dart missing startOnlinePoll"; exit 1; }
+          grep -q "_directAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v174: peer_card.dart missing _directAction"; exit 1; }
 
       - name: iroh menu (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
