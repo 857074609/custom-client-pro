@@ -604,6 +604,8 @@ jobs:
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
+          # [v170] add-to-ab auto rename + desktop toolbar toggles
+          python3 patches/patch_add_to_ab_rename.py .
           python3 patches/patch_iroh_menu.py .
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
