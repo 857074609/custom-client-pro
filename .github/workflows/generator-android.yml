@@ -111,13 +111,17 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - {
-              arch: aarch64,
-              target: aarch64-linux-android,
-              os: ubuntu-24.04,
-              reltype: release,
-              suffix: "",
-            }
+          # [LnDesk v176] Android builds the ARM (armeabi-v7a) APK only for now.
+          # aarch64 (arm64-v8a) and x86_64 are kept below, commented out, so the
+          # matrix can be restored by deleting the leading '#' on those blocks
+          # (do not re-add the '-' indentation by hand -- it is already there).
+          # - {
+          #     arch: aarch64,
+          #     target: aarch64-linux-android,
+          #     os: ubuntu-24.04,
+          #     reltype: release,
+          #     suffix: "",
+          #   }
           - {
               arch: armv7,
               target: armv7-linux-androideabi,
@@ -125,13 +129,13 @@ jobs:
               reltype: release,
               suffix: "",
             }
-          - {
-              arch: x86_64,
-              target: x86_64-linux-android,
-              os: ubuntu-24.04,
-              reltype: release,
-              suffix: "",
-            }
+          # - {
+          #     arch: x86_64,
+          #     target: x86_64-linux-android,
+          #     os: ubuntu-24.04,
+          #     reltype: release,
+          #     suffix: "",
+          #   }
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -616,6 +620,70 @@ jobs:
           # (patch_iroh_menu.py) and asserting it here broke build 35749812102.
           grep -q "void startOnlinePoll" ./flutter/lib/models/group_model.dart || { echo "[FAIL] v174: group_model.dart missing startOnlinePoll"; exit 1; }
           grep -q "_directAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v174: peer_card.dart missing _directAction"; exit 1; }
+
+      - name: otp auto-retry (v120) - android enablement
+        # [LnDesk v176] Android-only enablement of an existing, already-verified
+        # patch (windows / win7 / portable-quick / linux run it). It is required
+        # for COMPILATION, not just for the feature: patch_iroh_menu.py (next
+        # step) injects a hard `armOtpRetry([nodeId, peer.id], ...)` call into
+        # _irohDirectConnect, and armOtpRetry/fireOtpRetry are DEFINED by
+        # patch_otp_autoretry.py in model.dart -- upstream 1.4.9 has no such
+        # symbol. Once the v174 iroh-menu enablement landed on Android the Dart
+        # front end aborted with
+        #   "The method 'armOtpRetry' isn't defined for the class 'BasePeerCard'"
+        # (run 35753382383, peer_card.dart:617). This step also consumes the
+        # "[LNDESK_OTP_AUTORETRY_HOOK]" markers patch_server_otp.py leaves at
+        # the two OTP connect paths.
+        #
+        # ORDERING IS LOAD-BEARING: this script inserts
+        #   import '../../models/model.dart';
+        # right after `import '../../common.dart';`, which breaks the
+        # patch_online_devices.py anchor
+        #   import '../../common.dart';\nimport '../../common/formatter/id_formatter.dart';
+        # (that script then exits 3 with "[FAIL] anchor not found ... #1" --
+        # reproduced offline). Every other generator runs online-devices first
+        # (linux 424<469, windows 733<1329, win7 601<954, quick 402<623), so
+        # Android must do the same: patch_online_devices.py has ALREADY RUN
+        # above, and the reconcile step below runs after both.
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_otp_autoretry.py .
+          # Gates. patch_otp_autoretry.py skips an absent anchor silently
+          # (SKIP-ABSENT), so a drifted anchor would leave armOtpRetry undefined
+          # while CI stays green until the Dart build dies minutes later.
+          grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
+          grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
+
+      - name: "reconcile the duplicate http alias (v127) - android enablement"
+        # [LnDesk v176] Android-only enablement of the same helper the other five
+        # generators run (despite the "linux" in its name it is target-neutral).
+        # Two shared scripts both claim the `http` prefix in peer_card.dart:
+        #   patch_server_otp.py     -> import 'package:http/http.dart' as http;
+        #   patch_online_devices.py -> import '../../utils/http_service.dart' as http;
+        # Dart then rejects every call site with
+        #   Error: 'post' is imported from both
+        #          'package:flutter_hbb/utils/http_service.dart' and
+        #          'package:http/http.dart'.
+        # (run 35753382383, peer_card.dart:677 and :1738 -- the second Dart
+        # error in the same armv7 job.) The helper drops the package:http line
+        # and keeps http_service.dart, which exposes post/get/put/delete and
+        # re-exports Response, so _requestOtp() compiles unchanged -- and it now
+        # goes through the same Rust-backed HttpService path (proxy aware) the
+        # rest of the fork uses. MUST run after both injections above.
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python3 patches/patch_linux_otp_http_alias.py .
+          # Hard gate: fail at patch time, not minutes into the Gradle build.
+          if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
+             && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v127: peer_card.dart still binds two libraries to 'http' (ambiguous)"; exit 1
+          fi
+          grep -q "http.post(" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v127: no http.post() call left in peer_card.dart"; exit 1; }
+          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v127: OTP helper (_requestOtp) missing"; exit 1; }
 
       - name: iroh menu (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
