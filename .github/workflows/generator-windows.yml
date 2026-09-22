@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f18e80ee154c4f51bd19cd6008013eacb723d680
+          ref: 8013b985d3e53955945d3994b6349dc735031cd9
       
       - name: Report Status
         continue-on-error: true
@@ -1824,6 +1824,15 @@ jobs:
           # "enable-" prefix makes it default-on.
           python3 patches/patch_family_match_setting.py .
           grep -qF "prod-line v100 family-match-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing v100 family-match toggle"; exit 1; }
+          # [v175] switchWidget() funnels the title and the tooltip through
+          # listTile() -> translate(), so the row stays English unless cn.rs
+          # carries both strings byte-for-byte. Asserted only when the
+          # customized cn.rs is in play: the upstream-only variant compiles the
+          # stock upstream file and must not be forced to use ours.
+          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
+            grep -qF '("DNS resolve by address family (IPv6 preferred)"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match toggle title"; exit 1; }
+            grep -qF '("Enable IPv6-first DNS resolution for P2P connections.' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match tooltip"; exit 1; }
+          fi
           echo "[OK] V100 rendezvous family-match UI toggle"
 
       - name: auto iroh (v149)
@@ -1835,6 +1844,14 @@ jobs:
           grep -q "auto-iroh-node-id" ./src/client.rs || { echo "[FAIL] v149: auto-iroh routing missing in client.rs"; exit 1; }
           grep -q "auto-iroh-node-id" ./flutter/lib/common.dart || { echo "[FAIL] v149: peerIrohId lookup hook missing in common.dart"; exit 1; }
           grep -q "enable-auto-iroh" ./flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v149: auto-iroh settings toggle missing"; exit 1; }
+          # [v175] same translate() path as the family-match toggle: the key and
+          # the tooltip must exist in the customized cn.rs, otherwise the row
+          # renders in English even on a Chinese UI.
+          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
+            grep -qF '("Iroh first connection"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the Iroh-first toggle title"; exit 1; }
+            grep -qF '("Try the iroh P2P transport first for numeric IDs' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the Iroh-first tooltip"; exit 1; }
+          fi
+          echo "[OK] v149 auto-iroh toggle localized"
 
       - name: Settings page survives theme-change rebuilds (V104)
         shell: bash
