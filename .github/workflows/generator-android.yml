@@ -289,7 +289,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 41a4c438e596ff4df69d55df11a8d8427b2de702
+          ref: f18e80ee154c4f51bd19cd6008013eacb723d680
           clean: false
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -600,6 +600,19 @@ jobs:
           python3 patches/patch_iroh_heartbeat.py .
           grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
 
+      - name: online devices data chain (v174) - android enablement
+        # Android-only enablement. patch_iroh_menu.py anchors on the irohId
+        # field / peerIrohId map that THIS script injects; without it every
+        # iroh-menu edit silently [SKIP-ABSENT]s and Android ends up with no
+        # iroh card entry at all (the patch is lenient, so CI stayed green).
+        # Brings the same card entries desktop already has (direct / IPv6
+        # direct / remove device) plus the /api/peers iroh_id polling.
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_online_devices.py .
+          grep -q "peerIrohId" ./flutter/lib/models/group_model.dart || { echo "[FAIL] v174: online devices data chain missing"; exit 1; }
+
       - name: iroh menu (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
@@ -610,6 +623,23 @@ jobs:
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
+
+      - name: iroh first connection (v149) - android enablement
+        # Turns on the desktop "Iroh first connection" machinery for Android:
+        # rendezvous family match, its setting, then the auto-iroh path.
+        # patch_auto_iroh.py writes the per-peer "auto-iroh-node-id" option
+        # from Dart; that write was guarded by desktop-main-only, so Android
+        # never wrote it and the Rust auto-iroh path could never trigger even
+        # with the toggle on. v174 relaxes the guard to every platform while
+        # keeping the secondary-window exclusion.
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_rendezvous_family_match.py .
+          python3 patches/patch_family_match_setting.py .
+          python3 patches/patch_auto_iroh.py .
+          grep -q "auto_iroh_node_id" ./src/iroh_transport.rs || { echo "[FAIL] v174: auto-iroh helper missing"; exit 1; }
+          grep -q 'if (!isDesktop || desktopType == DesktopType.main) {' ./flutter/lib/common.dart || { echo "[FAIL] v174: auto-iroh guard not relaxed for mobile"; exit 1; }
 
       - name: iroh NodeId always shown in the Android UI (v122)
         # Android-only. The Android UI had no place showing this device's own
@@ -624,6 +654,19 @@ jobs:
           grep -q "key: 'iroh-public-key'" ./flutter/lib/mobile/pages/server_page.dart || { echo "[FAIL] v122: iroh row missing in mobile server_page.dart"; exit 1; }
           grep -q "key: 'iroh-public-key'" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v122: iroh tile missing in mobile settings_page.dart"; exit 1; }
           grep -q '("Iroh Public Key"' ./src/lang/cn.rs || { echo "[FAIL] v122: lang key missing in cn.rs"; exit 1; }
+
+      - name: iroh first connection toggle - Android UI (v174)
+        # Android-only. Desktop gets the same switch from patch_auto_iroh.py
+        # (Network tab); the mobile settings page had no tile, so
+        # "enable-auto-iroh" could not be turned off on a phone. This adds the
+        # tile next to "Adaptive bitrate" and the zh-CN language key. Both
+        # sides read/write the same LocalConfig key.
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          python3 patches/patch_android_iroh_first.py .
+          grep -q "enable-auto-iroh" ./flutter/lib/mobile/pages/settings_page.dart || { echo "[FAIL] v174: mobile iroh-first toggle missing"; exit 1; }
+          grep -q '("Iroh first connection"' ./src/lang/cn.rs || { echo "[FAIL] v174: lang key missing in cn.rs"; exit 1; }
 
       - name: android local IPv6 shown in the Android UI (v123/v124/v126)
         # Android-only, pure Dart. dart:io NetworkInterface.list needs no plugin
