@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 95b0d13704b0d191b06ad02d66a8f95a7f41cb00
+          ref: fec601ea01efb55cbfd30cf45cc2aeb7ec4892c6
 
       - name: Report Status
         continue-on-error: true
