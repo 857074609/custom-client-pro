@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: b0bd1c1abe9d9ec811d98e7fbab38625b831a0da
+          ref: 9f8ca2ad34c7a715bb4920b429364e2fc663118d
       
       - name: Report Status
         continue-on-error: true
@@ -1844,6 +1844,18 @@ jobs:
           grep -q "auto-iroh-node-id" ./src/client.rs || { echo "[FAIL] v149: auto-iroh routing missing in client.rs"; exit 1; }
           grep -q "auto-iroh-node-id" ./flutter/lib/common.dart || { echo "[FAIL] v149: peerIrohId lookup hook missing in common.dart"; exit 1; }
           grep -q "enable-auto-iroh" ./flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v149: auto-iroh settings toggle missing"; exit 1; }
+          # [v177] The peer option must be keyed by the RAW id. formatID() is a
+          # DISPLAY formatter that pads numeric ids with spaces
+          # ("123456789" -> "123 456 789"), so keying off it made every
+          # double-click miss the peerIrohId map AND store the option under an
+          # id the Rust side never loads (PeerConfig::load(raw id)) - the
+          # "Iroh first" toggle looked dead while right-click Iroh Direct kept
+          # working. Guard the SHAPE, not just the presence of the hook.
+          grep -q "final fid = trimID(id);" ./flutter/lib/common.dart || { echo "[FAIL] v177: auto-iroh must key off the raw id (trimID)"; exit 1; }
+          if grep -q "final fid = formatID(id);" ./flutter/lib/common.dart; then
+            echo "[FAIL] v177: auto-iroh still keyed off the display formatter (formatID)"; exit 1
+          fi
+          grep -q "if (autoNodeId.isNotEmpty) {" ./flutter/lib/common.dart || { echo "[FAIL] v177: auto-iroh must not wipe a known NodeId on an empty lookup"; exit 1; }
           # [v175] same translate() path as the family-match toggle: the key and
           # the tooltip must exist in the customized cn.rs, otherwise the row
           # renders in English even on a Chinese UI.

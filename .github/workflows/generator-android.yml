@@ -293,7 +293,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: b0bd1c1abe9d9ec811d98e7fbab38625b831a0da
+          ref: 9f8ca2ad34c7a715bb4920b429364e2fc663118d
           clean: false
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -712,6 +712,15 @@ jobs:
           python3 patches/patch_auto_iroh.py .
           grep -q "auto_iroh_node_id" ./src/iroh_transport.rs || { echo "[FAIL] v174: auto-iroh helper missing"; exit 1; }
           grep -q 'if (!isDesktop || desktopType == DesktopType.main) {' ./flutter/lib/common.dart || { echo "[FAIL] v174: auto-iroh guard not relaxed for mobile"; exit 1; }
+          # [v177] Same raw-id requirement as the desktop step: formatID() pads
+          # a numeric id with spaces, which made the peerIrohId lookup miss and
+          # stored the option under an id the Rust side never loads, so the
+          # toggle had no effect on Android double-click either.
+          grep -q "final fid = trimID(id);" ./flutter/lib/common.dart || { echo "[FAIL] v177: auto-iroh must key off the raw id (trimID)"; exit 1; }
+          if grep -q "final fid = formatID(id);" ./flutter/lib/common.dart; then
+            echo "[FAIL] v177: auto-iroh still keyed off the display formatter (formatID)"; exit 1
+          fi
+          grep -q "if (autoNodeId.isNotEmpty) {" ./flutter/lib/common.dart || { echo "[FAIL] v177: auto-iroh must not wipe a known NodeId on an empty lookup"; exit 1; }
 
       - name: iroh NodeId always shown in the Android UI (v122)
         # Android-only. The Android UI had no place showing this device's own
