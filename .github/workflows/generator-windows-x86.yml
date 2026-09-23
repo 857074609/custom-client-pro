@@ -486,6 +486,8 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+          # [v177] Stop a spurious right-click in control mode on first hover.
+          python3 patches/patch_input_hover_fix.py .
       - name: iroh transport (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash

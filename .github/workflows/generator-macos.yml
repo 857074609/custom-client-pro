@@ -483,6 +483,8 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+          # [v177] Stop a spurious right-click in control mode on first hover.
+          python3 patches/patch_input_hover_fix.py .
           # [v131] Reconcile the duplicate 'as http' alias. patch_online_devices.py
           # binds '../../utils/http_service.dart' as http and patch_server_otp.py
           # binds 'package:http/http.dart' as http -- one prefix, two libraries, so

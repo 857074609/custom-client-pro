@@ -211,7 +211,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 9f8ca2ad34c7a715bb4920b429364e2fc663118d
+          ref: bfcf7475e489a43a84bbfd1228a7e8648143c096
           clean: false
 
       - name: Report Status
@@ -457,6 +457,8 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
+          # [v177] Stop a spurious right-click in control mode on first hover.
+          python3 patches/patch_input_hover_fix.py .
           # [v120] OTP auto-retry. patch_server_otp.py injects the armOtpRetry()
           # CALLS into peer_card.dart and leaves the "[LNDESK_OTP_AUTORETRY_HOOK]"
           # markers that this line consumes; patch_otp_autoretry.py DEFINES

@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 9f8ca2ad34c7a715bb4920b429364e2fc663118d
+          ref: bfcf7475e489a43a84bbfd1228a7e8648143c096
       
       - name: Report Status
         continue-on-error: true
@@ -1337,6 +1337,10 @@ jobs:
           # http_service.dart exposes post/get/put/delete and re-exports Response,
           # so _requestOtp() compiles unchanged. Gate here, not 40 min into the build.
           python3 patches/patch_linux_otp_http_alias.py .
+          # [v177] Stop a spurious right-click being sent to the controlled side
+          # right after connect in control mode (some platforms report a non-zero
+          # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
+          python3 patches/patch_input_hover_fix.py .
           if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
              && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v131: peer_card.dart still binds two libraries to 'http' (ambiguous)"; exit 1
@@ -1361,7 +1365,16 @@ jobs:
           # patch_server_otp.py skips an absent anchor silently, so assert both
           # the constant and its value.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle (kOtpDeliverySettleMs) missing in peer_card.dart"; exit 1; }
-          grep -q "kOtpDeliverySettleMs = 1800" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle is not 1800ms"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 3000" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v177: OTP delivery settle is not 3000ms"; exit 1; }
+          # [v177] Hover must only move the remote cursor, never synthesize a
+          # down/up from a stale button mask. The hover handler used to route
+          # through _getMouseEvent (which infers a press from evt.buttons), so
+          # assert the marker is present and that exactly ONE _getMouseEvent
+          # move call survives (the onPointMoveImage one) -- the hover one must
+          # be gone, otherwise a spurious right-click is sent on first hover.
+          grep -q "LnDesk v177] Hover must only move the remote cursor" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v177: input hover fix marker missing in input_model.dart"; exit 1; }
+          _hover_count=$(grep -c "_getMouseEvent(e, _kMouseEventMove)" ./flutter/lib/models/input_model.dart)
+          [ "$_hover_count" = "1" ] || { echo "[FAIL] v177: _getMouseEvent move count is $_hover_count (expect 1: only onPointMoveImage)"; exit 1; }
           grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
