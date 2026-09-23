@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: ab52c74806559b8093934a5d3d31cdeaff519f6b
+          ref: c2c31f525c1c0bb1200c2968c730a607a24036a3
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -1434,6 +1434,7 @@ jobs:
           # via the 'prod-line v94 tab-conn-badge' marker.
           # [v170] add-to-ab auto rename + desktop toolbar toggles
           python3 patches/patch_add_to_ab_rename.py .
+          python3 patches/patch_peer_card_alias.py .
           python3 patches/patch_desktop_toolbar_toggles.py .
           python3 patches/patch_remote_tab_iroh_badge.py .
       - name: Build rustdesk

@@ -293,7 +293,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: ab52c74806559b8093934a5d3d31cdeaff519f6b
+          ref: c2c31f525c1c0bb1200c2968c730a607a24036a3
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -696,6 +696,7 @@ jobs:
         run: |
           # [v170] add-to-ab auto rename + desktop toolbar toggles
           python3 patches/patch_add_to_ab_rename.py .
+          python3 patches/patch_peer_card_alias.py .
           python3 patches/patch_iroh_menu.py .
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
