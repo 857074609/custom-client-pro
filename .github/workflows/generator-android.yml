@@ -86,6 +86,9 @@ env:
   TAG_NAME: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  # Bump this to invalidate a corrupted "vcpkg installed tree" cache entry
+  # without touching the port manifest hashes below.
+  VCPKG_CACHE_BUST: "v2"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VERSION: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
   RUSTDESK_BUILD_NUMBER: "${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
@@ -345,9 +348,9 @@ jobs:
           path: |
             /opt/artifacts/vcpkg/installed
             /opt/artifacts/vcpkg/downloads
-          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
+          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ env.VCPKG_CACHE_BUST }}-${{ runner.os }}-${{ matrix.job.target }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
           restore-keys: |
-            vcpkg-${{ env.VCPKG_COMMIT_ID }}-
+            vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ env.VCPKG_CACHE_BUST }}-${{ runner.os }}-${{ matrix.job.target }}-
 
       - name: Install vcpkg dependencies
         run: |
@@ -366,14 +369,22 @@ jobs:
             ;;
           esac
           if ! ./flutter/build_android_deps.sh "${ANDROID_TARGET}"; then
-            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
-              echo "$_1:"
-              echo "======"
-              cat "$_1"
-              echo "======"
-              echo ""
-            done
-            exit 1
+            # A restored "installed" tree can be inconsistent (e.g. a port listed
+            # as installed while its pkgconfig file is missing), which makes vcpkg
+            # abort. Drop it and rebuild once from scratch before giving up.
+            echo "::warning::vcpkg install failed; discarding a possibly corrupted installed tree and retrying once"
+            rm -rf "${VCPKG_ROOT}/installed" "${VCPKG_ROOT}/downloads"
+            mkdir -p "${VCPKG_ROOT}/installed" "${VCPKG_ROOT}/downloads"
+            if ! ./flutter/build_android_deps.sh "${ANDROID_TARGET}"; then
+              find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+                echo "$_1:"
+                echo "======"
+                cat "$_1"
+                echo "======"
+                echo ""
+              done
+              exit 1
+            fi
           fi
         shell: bash
       - name: Restore bridge files
