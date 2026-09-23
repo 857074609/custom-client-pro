@@ -256,7 +256,7 @@ jobs:
             ref: main
             clean: false
 
-      - name: Apply LnDesk v178 activate_os no-right-click patch
+      - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
 
       # Homebrew bottle download cache. A miss is harmless (brew just re-downloads);
@@ -1168,7 +1168,7 @@ jobs:
             ref: main
             clean: false
 
-      - name: Apply LnDesk v178 activate_os no-right-click patch
+      - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
 
       - name: Download STATUS_URL artifacts

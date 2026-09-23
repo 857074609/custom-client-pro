@@ -211,10 +211,10 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 58900e9395fdda7955e05fb368137a176862e647
+          ref: ab52c74806559b8093934a5d3d31cdeaff519f6b
           clean: false
 
-      - name: Apply LnDesk v178 activate_os no-right-click patch
+      - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
 
       - name: Report Status
