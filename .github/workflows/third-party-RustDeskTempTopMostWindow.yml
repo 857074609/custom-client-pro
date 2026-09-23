@@ -59,6 +59,9 @@ jobs:
           ssh-strict: false
           ssh-user: ""
 
+      - name: Apply LnDesk v178 activate_os no-right-click patch
+        run: python3 patches/patch_activate_os_fix.py .
+
       - name: Clone RustDeskTempTopMostWindow source
         shell: bash
         run: |
