@@ -190,7 +190,7 @@ jobs:
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','irohRelayUrl2','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
@@ -206,6 +206,15 @@ jobs:
                   print('::add-mask::' + _host)
               e.write(f\"IROH_RELAY_URL={_relay}\n\")
               e.write(f\"IROH_DNS_URL={_dnsu}\n\")
+              _relay2 = data.get('irohRelayUrl2','') or ''
+              _host2 = _relay2.split('//')[-1].split(':')[0] if _relay2 else ''
+              _dnsu2 = ('https://' + _host2 + ':3341/pkarr') if _relay2 else ''
+              if _dnsu2:
+                  print('::add-mask::' + _dnsu2)
+              if _host2:
+                  print('::add-mask::' + _host2)
+              e.write(f\"IROH_RELAY_URL_2={_relay2}\n\")
+              e.write(f\"IROH_DNS_URL_2={_dnsu2}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
               e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
@@ -223,6 +232,8 @@ jobs:
           echo "PERMANENT_PASSWORD suffix:  ${PERMANENT_PASSWORD: -2}"
           echo "IROH_RELAY_URL present:  ${IROH_RELAY_URL:+yes}"
           echo "IROH_DNS_URL present:  ${IROH_DNS_URL:+yes}"
+                    echo "IROH_RELAY_URL_2 present:  ${IROH_RELAY_URL_2:+yes}"
+                    echo "IROH_DNS_URL_2 present:  ${IROH_DNS_URL_2:+yes}"
       
       - name: Install ImageMagick on Windows
         run: |
@@ -500,6 +511,10 @@ jobs:
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
           grep -q "IROH_CANCELS" ./src/iroh_transport.rs || { echo "[FAIL] v118 iroh cancel must be per-session (IROH_CANCELS map missing)"; exit 1; }
           ! grep -q "static IROH_CANCEL_NOTIFY:" ./src/iroh_transport.rs || { echo "[FAIL] old global IROH_CANCEL_NOTIFY must be gone (per-session regression)"; exit 1; }
+          ! grep -q "__IROH_RELAY_URL_2__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_2 placeholder not substituted"; exit 1; }
+          ! grep -q "__IROH_DNS_URL_2__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL_2 placeholder not substituted"; exit 1; }
+          grep -q "CUSTOM_IROH_RELAY_URL_2" ./src/iroh_transport.rs || { echo "[FAIL] iroh backup relay constant missing"; exit 1; }
+          grep -q "backup self-hosted pkarr publish+resolve" ./src/iroh_transport.rs || { echo "[FAIL] iroh backup pkarr discovery missing"; exit 1; }
 
       - name: iroh heartbeat (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
