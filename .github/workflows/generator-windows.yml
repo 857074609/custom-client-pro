@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: ac5012c086a4d1172e263594525e76718f51fee1
+          ref: 9803a9e73ae76467064d1b137a0ee98c6a793793
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -1618,14 +1618,15 @@ jobs:
             echo "[FAIL] v116 hwcodec cqp fork must NOT be in lock (reverted for V116; lands in V117)"
             exit 1
           fi
-      - name: Apply super-p2p observe patch (V186)
-        # Authenticated port-prediction stack, observe-only gray scale: public
-        # STUN NAT classification + HMAC probe against the advertised mapping,
-        # fire-and-forget on a detached thread. Logs only; transport selection
-        # is untouched. Default ON; dispatch extras enable_super_p2p=false
-        # bakes DEFAULT_ENABLED=false to opt a build out.
+      - name: Apply super-p2p observe patch (V186/V187)
+        # Authenticated port-prediction stack: public STUN NAT classification +
+        # HMAC probe against candidates; acceptor self-observes and reports its
+        # public mapping (V187a). fire-and-forget on a detached thread. Default
+        # ON, enforcement=observe (logs only); extras enable_super_p2p=false
+        # opts out, extras super_p2p_enforcement=on enables direct establish.
         env:
           SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').enable_super_p2p == 'false' && 'false' || 'true' }}
+          SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'observe' }}
         run: python3 patches/patch_super_p2p.py .
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
