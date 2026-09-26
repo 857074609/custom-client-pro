@@ -1,4 +1,4 @@
-
+﻿
 
 name: Custom Linux Client Generator (Flutter)
 run-name: Custom Linux Client Generator
@@ -90,7 +90,7 @@ env:
 
 jobs:
   generate-bridge:
-    # 本仓库 bridge.yml 接受 version 入参, 内部 checkout rustdesk/rustdesk
+    # 鏈粨搴?bridge.yml 鎺ュ彈 version 鍏ュ弬, 鍐呴儴 checkout rustdesk/rustdesk
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
@@ -222,7 +222,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 982c1d13866accee286b1ac30e5830d01db3ec67
+          ref: ac5012c086a4d1172e263594525e76718f51fee1
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -242,7 +242,7 @@ jobs:
             -d '{"uuid": "${{ inputs.uuid }}", "status": "\u73af\u5883\u51c6\u5907\u5c31\u7eea\uff0c\u5f00\u59cb\u5356\u529b\u5de5\u4f5c"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
-      # ---------- 自定义补丁链 (跨平台部分) ----------
+      # ---------- 鑷畾涔夎ˉ涓侀摼 (璺ㄥ钩鍙伴儴鍒? ----------
       - name: change appname to custom
         if: inputs.appname != 'rustdesk'
         env:
@@ -360,11 +360,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 未安装（便携态）也锁定安全/网络设置：注入了 UNLOCK_PIN 即恒锁，
-          # 需输 PIN 才能进设置（上游只看 mainIsInstalled，便携态裸奔）。
-          # UNLOCK_PIN 未配置时补丁自动退化为上游行为。
+          # 鏈畨瑁咃紙渚挎惡鎬侊級涔熼攣瀹氬畨鍏?缃戠粶璁剧疆锛氭敞鍏ヤ簡 UNLOCK_PIN 鍗虫亽閿侊紝
+          # 闇€杈?PIN 鎵嶈兘杩涜缃紙涓婃父鍙湅 mainIsInstalled锛屼究鎼烘€佽８濂旓級銆?
+          # UNLOCK_PIN 鏈厤缃椂琛ヤ竵鑷姩閫€鍖栦负涓婃父琛屼负銆?
           python3 patches/patch_lock_settings_always.py
-          grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 设置锁定补丁未生效"; exit 1; }
+          grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 璁剧疆閿佸畾琛ヤ竵鏈敓鏁?; exit 1; }
 
       - name: allow custom _.txt + remove Flutter "setup your own server" tip
         run: |
@@ -377,7 +377,7 @@ jobs:
         env:
           EXTRAS: '${{ inputs.extras }}'
         run: |
-          # 显示器切换按钮构建期默认值注入（见 generator-windows.yml 同名步骤说明）。
+          # 鏄剧ず鍣ㄥ垏鎹㈡寜閽瀯寤烘湡榛樿鍊兼敞鍏ワ紙瑙?generator-windows.yml 鍚屽悕姝ラ璇存槑锛夈€?
           python3 patches/patch_monitor_switch.py .
 
       - name: disable_e2ee
@@ -396,11 +396,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 内网 IP 直连看板：patch_direct_access.py 注入（direct-server 强制启用 +
-          # LAN IP 发现 + desktop_home_page 内网看板 + 双语 key）。
+          # 鍐呯綉 IP 鐩磋繛鐪嬫澘锛歱atch_direct_access.py 娉ㄥ叆锛坉irect-server 寮哄埗鍚敤 +
+          # LAN IP 鍙戠幇 + desktop_home_page 鍐呯綉鐪嬫澘 + 鍙岃 key锛夈€?
           python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
-          grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
-          echo "[OK] 内网 IP 直连看板注入完成"
+          grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缂哄皯 buildDirectAccessBoard"; exit 1; }
+          echo "[OK] 鍐呯綉 IP 鐩磋繛鐪嬫澘娉ㄥ叆瀹屾垚"
 
       - name: Report local IPv6 to API server (v70)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_udp == 'true'
@@ -408,51 +408,51 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v70: 把本机 lan-ipv6 上报到 API 服务器心跳，供设备菜单"IPv6 直连"使用。
-          # 必须在 patch_direct_access.py 之后运行（它写入 lan-ipv6 选项）。
+          # v70: 鎶婃湰鏈?lan-ipv6 涓婃姤鍒?API 鏈嶅姟鍣ㄥ績璺筹紝渚涜澶囪彍鍗?IPv6 鐩磋繛"浣跨敤銆?
+          # 蹇呴』鍦?patch_direct_access.py 涔嬪悗杩愯锛堝畠鍐欏叆 lan-ipv6 閫夐」锛夈€?
           python3 patches/patch_ipv6_heartbeat.py .
-          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
+          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缂哄皯 ipv6 蹇冭烦涓婃姤"; exit 1; }
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_e2ee == 'true'
         shell: bash
         run: |
-          # IP 直连端到端加密（含 IPv6）：服务端 secure=true + 客户端 secure_direct_connection。
+          # IP 鐩磋繛绔埌绔姞瀵嗭紙鍚?IPv6锛夛細鏈嶅姟绔?secure=true + 瀹㈡埛绔?secure_direct_connection銆?
           python3 patches/patch_direct_e2ee.py .
-          grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
-          grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
-          grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
+          grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缂哄皯 secure_direct_connection"; exit 1; }
+          grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缂哄皯 direct-e2ee 鏍囪 (send_long_term_pk)"; exit 1; }
+          grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缂哄皯 direct-e2ee 鏍囪 (send_long_term_pk)"; exit 1; }
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
         shell: bash
         run: |
-          # IP 直连 UDP(KCP) 传输：主控端 UDP 优先（2s 超时自动回退 TCP）；
-          # 被控端 direct_server 同端口 UDP 监听（KcpStream::accept -> create_tcp_connection 同一入口）。
+          # IP 鐩磋繛 UDP(KCP) 浼犺緭锛氫富鎺х UDP 浼樺厛锛?s 瓒呮椂鑷姩鍥為€€ TCP锛夛紱
+          # 琚帶绔?direct_server 鍚岀鍙?UDP 鐩戝惉锛圞cpStream::accept -> create_tcp_connection 鍚屼竴鍏ュ彛锛夈€?
           python3 patches/patch_direct_udp.py .
-          grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
-          grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
+          grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缂哄皯 direct_udp_server"; exit 1; }
+          grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缂哄皯 direct udp 鍒嗘敮"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
         if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
         shell: bash
         run: |
-          # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
-          # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
+          # 鍦ㄧ嚎璁惧鍚屾锛堝彲璁块棶鐨勮澶?tab锛変笌璁惧鑿滃崟"IP鐩磋繛"/"鍒犻櫎璁惧"
+          # 渚濊禆 allinone API v61 鏈嶅姟绔敼閫狅紙/api/peers status 璇箟 + last_online_ip/row_id锛?
           python3 patches/patch_online_devices.py .
-          grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
-          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
-          echo "[OK] IP 直连 E2EE 注入完成"
+          grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缂哄皯 startOnlinePoll"; exit 1; }
+          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缂哄皯 _directAction"; exit 1; }
+          echo "[OK] IP 鐩磋繛 E2EE 娉ㄥ叆瀹屾垚"
 
       - name: Move Terminal to standalone connection-page button (v70)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v79: 终端按键移回"更多"菜单（移除控制栏独立按钮）。校验 Terminal 入口仍在
-          # （位于 more 菜单，含 onConnect(isTerminal: true)）。
+          # v79: 缁堢鎸夐敭绉诲洖"鏇村"鑿滃崟锛堢Щ闄ゆ帶鍒舵爮鐙珛鎸夐挳锛夈€傛牎楠?Terminal 鍏ュ彛浠嶅湪
+          # 锛堜綅浜?more 鑿滃崟锛屽惈 onConnect(isTerminal: true)锛夈€?
           python3 patches/patch_connection_terminal.py .
-          grep -qF 'onConnect(isTerminal: true)' flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart 缺少 Terminal 入口"; exit 1; }
+          grep -qF 'onConnect(isTerminal: true)' flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart 缂哄皯 Terminal 鍏ュ彛"; exit 1; }
 
       - name: fix connection delay
         if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
@@ -557,7 +557,7 @@ jobs:
       - name: Disable rust bridge staticlib
         run: sed -i "s/\[\"cdylib\", \"staticlib\", \"rlib\"\]/\[\"cdylib\"\]/g" Cargo.toml
 
-      # ---------- 构建环境 (宿主侧) ----------
+      # ---------- 鏋勫缓鐜 (瀹夸富渚? ----------
       - name: Set Swap Space
         if: ${{ matrix.job.arch == 'x86_64' }}
         uses: pierotofy/set-swap-space@49819abfb41bd9b44fb781159c033dba90353a7c # v1.0
@@ -625,10 +625,10 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           sudo apt install -y libva-dev
-          # 降低并发: 减少同时发起的下载连接, 避免 vcpkg 下载源间歇性返回 503/connection died
+          # 闄嶄綆骞跺彂: 鍑忓皯鍚屾椂鍙戣捣鐨勪笅杞借繛鎺? 閬垮厤 vcpkg 涓嬭浇婧愰棿姝囨€ц繑鍥?503/connection died
           export VCPKG_MAX_CONCURRENCY=3
-          # 步骤级重试: vcpkg 自带 curl 仅重试 5 次仍可能撞上 503; 整步循环重跑会复用
-          # $VCPKG_ROOT/downloads 缓存与已编译端口, 等下载源恢复后再继续, 直到全过
+          # 姝ラ绾ч噸璇? vcpkg 鑷甫 curl 浠呴噸璇?5 娆′粛鍙兘鎾炰笂 503; 鏁存寰幆閲嶈窇浼氬鐢?
+          # $VCPKG_ROOT/downloads 缂撳瓨涓庡凡缂栬瘧绔彛, 绛変笅杞芥簮鎭㈠鍚庡啀缁х画, 鐩村埌鍏ㄨ繃
           attempt=0
           max_attempts=8
           until $VCPKG_ROOT/vcpkg install --triplet ${{ matrix.job.vcpkg-triplet }} --x-install-root="$VCPKG_ROOT/installed"; do
@@ -644,8 +644,8 @@ jobs:
           echo "vcpkg install succeeded on attempt $((attempt+1))"
         shell: bash
 
-      # ---------- ubuntu18.04 容器内构建 (deb + rpm + suse-rpm) ----------
-      # ---------- /opt/artifacts 持久化缓存 (挂进 arch 容器, 跨 run 复用) ----------
+      # ---------- ubuntu18.04 瀹瑰櫒鍐呮瀯寤?(deb + rpm + suse-rpm) ----------
+      # ---------- /opt/artifacts 鎸佷箙鍖栫紦瀛?(鎸傝繘 arch 瀹瑰櫒, 璺?run 澶嶇敤) ----------
       # The build runs inside the run-on-arch container, whose filesystem is thrown
       # away after every run. Everything it downloads therefore has to be re-fetched
       # each time (hundreds of crates under QEMU for aarch64/armv7). /opt/artifacts is
@@ -733,7 +733,7 @@ jobs:
             cargo build --locked --lib $JOBS --features hwcodec,flutter,unix-file-copy-paste --release
             rm -rf target/release/deps target/release/build
 
-            # Flutter toolchain (aarch64 用 flutter-elinux)
+            # Flutter toolchain (aarch64 鐢?flutter-elinux)
             pushd /workspace
             case ${{ matrix.job.arch }} in
               aarch64)
@@ -808,7 +808,7 @@ jobs:
             sudo chown -R "$(id -u):$(id -g)" /opt/artifacts/cargo || true
           fi
 
-      # ---------- archlinux (.pkg.tar.zst): 仅 x86_64 (rustdesk-org/arch-makepkg-action 在 Arch 容器内只能产 x86_64 包; aarch64 无法构建故跳过) ----------
+      # ---------- archlinux (.pkg.tar.zst): 浠?x86_64 (rustdesk-org/arch-makepkg-action 鍦?Arch 瀹瑰櫒鍐呭彧鑳戒骇 x86_64 鍖? aarch64 鏃犳硶鏋勫缓鏁呰烦杩? ----------
       - name: Patch archlinux PKGBUILD
         if: matrix.job.arch == 'x86_64'
         run: |
@@ -822,10 +822,10 @@ jobs:
         if: matrix.job.arch == 'x86_64'
         run: |
           shopt -s nullglob
-          # 排除 makepkg 镜像开启 debug 选项产出的 rustdesk-debug-* 包, 只取主包
+          # 鎺掗櫎 makepkg 闀滃儚寮€鍚?debug 閫夐」浜у嚭鐨?rustdesk-debug-* 鍖? 鍙彇涓诲寘
           files=(res/rustdesk-[0-9]*.pkg.tar.zst)
           if [ ${#files[@]} -eq 0 ]; then echo "::error::no archlinux package produced"; exit 1; fi
-          # arch-makepkg-action 以非 root uid 产出文件, 外层容器用户无权限写入仓库根目录, 故用 sudo cp (无 sudo 时回退到普通 cp)
+          # arch-makepkg-action 浠ラ潪 root uid 浜у嚭鏂囦欢, 澶栧眰瀹瑰櫒鐢ㄦ埛鏃犳潈闄愬啓鍏ヤ粨搴撴牴鐩綍, 鏁呯敤 sudo cp (鏃?sudo 鏃跺洖閫€鍒版櫘閫?cp)
           sudo cp "${files[0]}" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst" 2>/dev/null || cp "${files[0]}" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst"
           sudo chmod 644 "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst" 2>/dev/null || true
           sudo chown "$(id -u):$(id -g)" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ steps.conn.outputs.conn }}-${{ matrix.job.arch }}-${{ steps.tag.outputs.tag }}.pkg.tar.zst" 2>/dev/null || true
@@ -917,8 +917,8 @@ jobs:
           sudo pip3 install "setuptools_scm<10"
           sudo pip3 install git+https://github.com/rustdesk-org/appimage-builder.git
           pushd appimage
-          # appimage-builder 在最后一步下载 AppImage runtime-x86_64 时偶发 GitHub 远端断连
-          # (RemoteDisconnected), 属网络抖动而非构建错误。用重试循环吸收, 命中即停。
+          # appimage-builder 鍦ㄦ渶鍚庝竴姝ヤ笅杞?AppImage runtime-x86_64 鏃跺伓鍙?GitHub 杩滅鏂繛
+          # (RemoteDisconnected), 灞炵綉缁滄姈鍔ㄨ€岄潪鏋勫缓閿欒銆傜敤閲嶈瘯寰幆鍚告敹, 鍛戒腑鍗冲仠銆?
           for i in 1 2 3 4 5; do
             echo "::group::appimage-builder attempt $i"
             if sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml; then
@@ -929,7 +929,7 @@ jobs:
             echo "::endgroup::"
             sleep 20
           done
-          # appimage-builder 以 root 运行, 产物归 root; 必须在容器内 sudo 改名并 chown 给 runner 以便上传
+          # appimage-builder 浠?root 杩愯, 浜х墿褰?root; 蹇呴』鍦ㄥ鍣ㄥ唴 sudo 鏀瑰悕骞?chown 缁?runner 浠ヤ究涓婁紶
           sudo mv rustdesk-*.AppImage "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage"
           sudo chown "$(id -u):$(id -g)" "${{ inputs.filename }}-${{ env.VERSION }}${{ env.VER_SUFFIX }}-linux-${{ needs.build-rustdesk-linux.outputs.conn }}-${{ matrix.job.arch }}-${{ needs.build-rustdesk-linux.outputs.tag }}.AppImage"
           popd

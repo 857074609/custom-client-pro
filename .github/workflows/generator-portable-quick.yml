@@ -1,4 +1,4 @@
-name: Custom Windows Portable-Quick (No-Trace) Client Generator
+﻿name: Custom Windows Portable-Quick (No-Trace) Client Generator
 run-name: Custom Windows Portable-Quick (No-Trace) Client Generator
 on:
   workflow_dispatch:
@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 982c1d13866accee286b1ac30e5830d01db3ec67
+          ref: ac5012c086a4d1172e263594525e76718f51fee1
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -259,11 +259,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # buildCopyIdPasswordButton 基准文件里默认被提前 return 关闭：
+          # buildCopyIdPasswordButton 鍩哄噯鏂囦欢閲岄粯璁よ鎻愬墠 return 鍏抽棴锛?
           #   // COPY_BUTTON_CONTROL
           #   return const SizedBox.shrink();
-          # 删除该提前 return 使按钮逻辑生效；同时移除 isIncomingOnly 显示门槛，
-          # 让非 incoming-only 的 portable-quick 单面板也能显示复制按钮。
+          # 鍒犻櫎璇ユ彁鍓?return 浣挎寜閽€昏緫鐢熸晥锛涘悓鏃剁Щ闄?isIncomingOnly 鏄剧ず闂ㄦ锛?
+          # 璁╅潪 incoming-only 鐨?portable-quick 鍗曢潰鏉夸篃鑳芥樉绀哄鍒舵寜閽€?
           PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
           python3 - "$PAGE" <<'EOF'
           import sys, re
@@ -271,7 +271,7 @@ jobs:
           t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
           m = re.search(r"[ \t]*// COPY_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
           if not m:
-              print("[FAIL] 未找到 COPY_BUTTON_CONTROL 提前 return")
+              print("[FAIL] 鏈壘鍒?COPY_BUTTON_CONTROL 鎻愬墠 return")
               sys.exit(3)
           t = t[:m.start()] + t[m.end():]
           t2, n = re.subn(
@@ -279,17 +279,17 @@ jobs:
               "if (\n\\g<1>model.serverId",
               t, count=1)
           if n != 1:
-              print("[FAIL] 未找到复制按钮 isIncomingOnly 门槛")
+              print("[FAIL] 鏈壘鍒板鍒舵寜閽?isIncomingOnly 闂ㄦ")
               sys.exit(3)
           open(p, "w", encoding="utf-8").write(t2)
-          print("[OK] 复制按钮已启用（移除 COPY_BUTTON_CONTROL 提前 return + isIncomingOnly 门槛）")
+          print("[OK] 澶嶅埗鎸夐挳宸插惎鐢紙绉婚櫎 COPY_BUTTON_CONTROL 鎻愬墠 return + isIncomingOnly 闂ㄦ锛?)
           EOF
-          # [LnDesk v167] 断言锚定「独占一行的标记行」：文件说明注释里也含同名
-          # 标记词（SHARE 段落写着 "// step (mirrors COPY_BUTTON_CONTROL) ..."），
-          # 旧的 ! grep -q "COPY_BUTTON_CONTROL" 全文件搜索必然误判为未清理干净。
-          ! grep -q "^[[:space:]]*//[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
-          grep -q "buildCopyIdPasswordButton" "$PAGE" || { echo "[FAIL] 缺少 buildCopyIdPasswordButton"; exit 1; }
-          echo "[OK] 复制按钮启用完成"
+          # [LnDesk v167] 鏂█閿氬畾銆岀嫭鍗犱竴琛岀殑鏍囪琛屻€嶏細鏂囦欢璇存槑娉ㄩ噴閲屼篃鍚悓鍚?
+          # 鏍囪璇嶏紙SHARE 娈佃惤鍐欑潃 "// step (mirrors COPY_BUTTON_CONTROL) ..."锛夛紝
+          # 鏃х殑 ! grep -q "COPY_BUTTON_CONTROL" 鍏ㄦ枃浠舵悳绱㈠繀鐒惰鍒や负鏈竻鐞嗗共鍑€銆?
+          ! grep -q "^[[:space:]]*//[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 鎻愬墠 return 鏈Щ闄ゅ共鍑€锛堟爣璁拌浠嶅湪锛?; exit 1; }
+          grep -q "buildCopyIdPasswordButton" "$PAGE" || { echo "[FAIL] 缂哄皯 buildCopyIdPasswordButton"; exit 1; }
+          echo "[OK] 澶嶅埗鎸夐挳鍚敤瀹屾垚"
 
       - name: Enable share button
         if: inputs.ui_mode == 'true' && fromJson(inputs.extras).addshare == 'true'
@@ -297,12 +297,12 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v151] 分享按钮与复制按钮同极性（基准文件默认被提前 return 关闭）：
+          # [LnDesk v151] 鍒嗕韩鎸夐挳涓庡鍒舵寜閽悓鏋佹€э紙鍩哄噯鏂囦欢榛樿琚彁鍓?return 鍏抽棴锛夛細
           #   // SHARE_BUTTON_CONTROL
           #   return const SizedBox.shrink();
-          # 删除该提前 return 使分享按钮逻辑生效。分享与「退出按钮」共用同一个
-          # 槽位、二者互斥，故同步骤内解开 QUIT 提前 return 把退出按钮隐藏
-          # （addshare 恒蕴含 hideQuit，前端联动 + 后端守卫均已保证）。
+          # 鍒犻櫎璇ユ彁鍓?return 浣垮垎浜寜閽€昏緫鐢熸晥銆傚垎浜笌銆岄€€鍑烘寜閽€嶅叡鐢ㄥ悓涓€涓?
+          # 妲戒綅銆佷簩鑰呬簰鏂ワ紝鏁呭悓姝ラ鍐呰В寮€ QUIT 鎻愬墠 return 鎶婇€€鍑烘寜閽殣钘?
+          # 锛坅ddshare 鎭掕暣鍚?hideQuit锛屽墠绔仈鍔?+ 鍚庣瀹堝崼鍧囧凡淇濊瘉锛夈€?
           PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
           python3 - "$PAGE" <<'EOF'
           import sys, re
@@ -310,21 +310,21 @@ jobs:
           t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
           m = re.search(r"[ \t]*// SHARE_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
           if not m:
-              print("[FAIL] 未找到 SHARE_BUTTON_CONTROL 提前 return")
+              print("[FAIL] 鏈壘鍒?SHARE_BUTTON_CONTROL 鎻愬墠 return")
               sys.exit(3)
           t = t[:m.start()] + t[m.end():]
           t, n = re.subn(r"// QUIT:(return const SizedBox\.shrink\(\);)", r"\1", t)
           if n != 1:
-              print("[FAIL] 未找到 QUIT 提前 return")
+              print("[FAIL] 鏈壘鍒?QUIT 鎻愬墠 return")
               sys.exit(3)
           open(p, "w", encoding="utf-8").write(t)
-          print("[OK] 分享按钮已启用（移除 SHARE_BUTTON_CONTROL 提前 return + 隐藏退出按钮）")
+          print("[OK] 鍒嗕韩鎸夐挳宸插惎鐢紙绉婚櫎 SHARE_BUTTON_CONTROL 鎻愬墠 return + 闅愯棌閫€鍑烘寜閽級")
           EOF
-          # [LnDesk v167] 同 COPY：断言锚定标记行本身，避免被说明注释误伤。
-          ! grep -q "^[[:space:]]*//[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
-          grep -q "_buildShareButton" "$PAGE" || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
-          ! grep -q "// QUIT:return" "$PAGE" || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
-          echo "[OK] 分享按钮启用完成"
+          # [LnDesk v167] 鍚?COPY锛氭柇瑷€閿氬畾鏍囪琛屾湰韬紝閬垮厤琚鏄庢敞閲婅浼ゃ€?
+          ! grep -q "^[[:space:]]*//[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 鎻愬墠 return 鏈Щ闄ゅ共鍑€锛堟爣璁拌浠嶅湪锛?; exit 1; }
+          grep -q "_buildShareButton" "$PAGE" || { echo "[FAIL] 缂哄皯 _buildShareButton"; exit 1; }
+          ! grep -q "// QUIT:return" "$PAGE" || { echo "[FAIL] 閫€鍑烘寜閽湭闅愯棌锛堜笌鍒嗕韩鍚屾Ы锛?; exit 1; }
+          echo "[OK] 鍒嗕韩鎸夐挳鍚敤瀹屾垚"
 
       - name: Enable invite button
         if: inputs.ui_mode == 'true' && fromJson(inputs.extras).addinvite == 'true'
@@ -332,11 +332,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v160] 邀请按钮与复制/分享同极性（基准文件默认被提前 return 关闭）：
+          # [LnDesk v160] 閭€璇锋寜閽笌澶嶅埗/鍒嗕韩鍚屾瀬鎬э紙鍩哄噯鏂囦欢榛樿琚彁鍓?return 鍏抽棴锛夛細
           #   // INVITE_BUTTON_CONTROL
           #   return const SizedBox.shrink();
-          # 删除该提前 return 使邀请按钮逻辑生效（定制 UI 下由本步骤按复选框揭示；
-          # 上游版则由 patch_invite_button_uimode_false.py 注入，不在此路径）。
+          # 鍒犻櫎璇ユ彁鍓?return 浣块個璇锋寜閽€昏緫鐢熸晥锛堝畾鍒?UI 涓嬬敱鏈楠ゆ寜澶嶉€夋鎻ず锛?
+          # 涓婃父鐗堝垯鐢?patch_invite_button_uimode_false.py 娉ㄥ叆锛屼笉鍦ㄦ璺緞锛夈€?
           PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
           python3 - "$PAGE" <<'EOF'
           import sys, re
@@ -344,16 +344,16 @@ jobs:
           t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
           m = re.search(r"[ \t]*// INVITE_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
           if not m:
-              print("[FAIL] 未找到 INVITE_BUTTON_CONTROL 提前 return")
+              print("[FAIL] 鏈壘鍒?INVITE_BUTTON_CONTROL 鎻愬墠 return")
               sys.exit(3)
           t = t[:m.start()] + t[m.end():]
           open(p, "w", encoding="utf-8").write(t)
-          print("[OK] 邀请按钮已启用（移除 INVITE_BUTTON_CONTROL 提前 return）")
+          print("[OK] 閭€璇锋寜閽凡鍚敤锛堢Щ闄?INVITE_BUTTON_CONTROL 鎻愬墠 return锛?)
           EOF
-          # [LnDesk v167] 同 COPY：断言锚定标记行本身，避免被说明注释误伤。
-          ! grep -q "^[[:space:]]*//[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
-          grep -q "_buildInviteButton" "$PAGE" || { echo "[FAIL] 缺少 _buildInviteButton"; exit 1; }
-          echo "[OK] 邀请按钮启用完成"
+          # [LnDesk v167] 鍚?COPY锛氭柇瑷€閿氬畾鏍囪琛屾湰韬紝閬垮厤琚鏄庢敞閲婅浼ゃ€?
+          ! grep -q "^[[:space:]]*//[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 鎻愬墠 return 鏈Щ闄ゅ共鍑€锛堟爣璁拌浠嶅湪锛?; exit 1; }
+          grep -q "_buildInviteButton" "$PAGE" || { echo "[FAIL] 缂哄皯 _buildInviteButton"; exit 1; }
+          echo "[OK] 閭€璇锋寜閽惎鐢ㄥ畬鎴?
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
@@ -361,10 +361,10 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 内网 IP 直连看板（左面板显示 本机内网IP:直连端口 + 状态灯 + 复制按钮）
+          # 鍐呯綉 IP 鐩磋繛鐪嬫澘锛堝乏闈㈡澘鏄剧ず 鏈満鍐呯綉IP:鐩磋繛绔彛 + 鐘舵€佺伅 + 澶嶅埗鎸夐挳锛?
           python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
-          grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
-          echo "[OK] 内网 IP 直连看板注入完成"
+          grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缂哄皯 buildDirectAccessBoard"; exit 1; }
+          echo "[OK] 鍐呯綉 IP 鐩磋繛鐪嬫澘娉ㄥ叆瀹屾垚"
 
       - name: Report local IPv6 to API server (v70)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_udp == 'true'
@@ -372,10 +372,10 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v70: 把本机 lan-ipv6 上报到 API 服务器心跳，供设备菜单"IPv6 直连"使用。
-          # 必须在 patch_direct_access.py 之后运行（它写入 lan-ipv6 选项）。
+          # v70: 鎶婃湰鏈?lan-ipv6 涓婃姤鍒?API 鏈嶅姟鍣ㄥ績璺筹紝渚涜澶囪彍鍗?IPv6 鐩磋繛"浣跨敤銆?
+          # 蹇呴』鍦?patch_direct_access.py 涔嬪悗杩愯锛堝畠鍐欏叆 lan-ipv6 閫夐」锛夈€?
           python3 patches/patch_ipv6_heartbeat.py .
-          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
+          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缂哄皯 ipv6 蹇冭烦涓婃姤"; exit 1; }
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_e2ee == 'true'
@@ -383,33 +383,33 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # IP 直连端到端加密：失败即断开，不回退明文。
-          # 注意：本工作流【不调用】patch_common_client_disable_e2ee.py，全局 e2ee 保持开启。
+          # IP 鐩磋繛绔埌绔姞瀵嗭細澶辫触鍗虫柇寮€锛屼笉鍥為€€鏄庢枃銆?
+          # 娉ㄦ剰锛氭湰宸ヤ綔娴併€愪笉璋冪敤銆憄atch_common_client_disable_e2ee.py锛屽叏灞€ e2ee 淇濇寔寮€鍚€?
           python3 patches/patch_direct_e2ee.py .
-          grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
-          grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
-          grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
+          grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缂哄皯 secure_direct_connection"; exit 1; }
+          grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缂哄皯 direct-e2ee 鏍囪 (send_long_term_pk)"; exit 1; }
+          grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缂哄皯 direct-e2ee 鏍囪 (send_long_term_pk)"; exit 1; }
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
         shell: bash
         run: |
-          # IP 直连 UDP(KCP) 传输：主控端 UDP 优先（2s 超时自动回退 TCP）；
-          # 被控端 direct_server 同端口 UDP 监听（KcpStream::accept -> create_tcp_connection 同一入口）。
+          # IP 鐩磋繛 UDP(KCP) 浼犺緭锛氫富鎺х UDP 浼樺厛锛?s 瓒呮椂鑷姩鍥為€€ TCP锛夛紱
+          # 琚帶绔?direct_server 鍚岀鍙?UDP 鐩戝惉锛圞cpStream::accept -> create_tcp_connection 鍚屼竴鍏ュ彛锛夈€?
           python3 patches/patch_direct_udp.py .
-          grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
-          grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
+          grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缂哄皯 direct_udp_server"; exit 1; }
+          grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缂哄皯 direct udp 鍒嗘敮"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
         if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
         shell: bash
         run: |
-          # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
-          # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
+          # 鍦ㄧ嚎璁惧鍚屾锛堝彲璁块棶鐨勮澶?tab锛変笌璁惧鑿滃崟"IP鐩磋繛"/"鍒犻櫎璁惧"
+          # 渚濊禆 allinone API v61 鏈嶅姟绔敼閫狅紙/api/peers status 璇箟 + last_online_ip/row_id锛?
           python3 patches/patch_online_devices.py .
-          grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
-          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
-          echo "[OK] IP 直连 E2EE 注入完成"
+          grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缂哄皯 startOnlinePoll"; exit 1; }
+          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缂哄皯 _directAction"; exit 1; }
+          echo "[OK] IP 鐩磋繛 E2EE 娉ㄥ叆瀹屾垚"
 
 
 
@@ -540,11 +540,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机浏览器扫码获取本机信息」，
-          # 与启用二维码(enableQrCode) 配套。仅在定制 UI(ui_mode) + 被控(incoming) 生效。
+          # 琚帶绔椤碉細闅愯棌鏄庢枃 ID 闈㈡澘锛屽苟鎶?desk_tip 鏀逛负銆岃浣跨敤鎵嬫満娴忚鍣ㄦ壂鐮佽幏鍙栨湰鏈轰俊鎭€嶏紝
+          # 涓庡惎鐢ㄤ簩缁寸爜(enableQrCode) 閰嶅銆備粎鍦ㄥ畾鍒?UI(ui_mode) + 琚帶(incoming) 鐢熸晥銆?
           python3 patches/patch_hide_id_qr_tip.py .
           grep -q "//       buildIDBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] ID board was not hidden"; exit 1; }
-          grep -q "请使用手机浏览器扫码获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
+          grep -q "璇蜂娇鐢ㄦ墜鏈烘祻瑙堝櫒鎵爜鑾峰彇鏈満淇℃伅" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
           echo "[OK] v139 hide-ID + QR tip applied"
 
       - name: hide-password_uimode_true
@@ -569,11 +569,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 未安装（便携态）也锁定安全/网络设置：注入了 UNLOCK_PIN 即恒锁，
-          # 需输 PIN 才能进设置（上游只看 mainIsInstalled，便携态裸奔）。
-          # UNLOCK_PIN 未配置时补丁自动退化为上游行为。
+          # 鏈畨瑁咃紙渚挎惡鎬侊級涔熼攣瀹氬畨鍏?缃戠粶璁剧疆锛氭敞鍏ヤ簡 UNLOCK_PIN 鍗虫亽閿侊紝
+          # 闇€杈?PIN 鎵嶈兘杩涜缃紙涓婃父鍙湅 mainIsInstalled锛屼究鎼烘€佽８濂旓級銆?
+          # UNLOCK_PIN 鏈厤缃椂琛ヤ竵鑷姩閫€鍖栦负涓婃父琛屼负銆?
           python3 patches/patch_lock_settings_always.py
-          grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 设置锁定补丁未生效"; exit 1; }
+          grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 璁剧疆閿佸畾琛ヤ竵鏈敓鏁?; exit 1; }
 
       - name: allow custom_.txt
         shell: bash
@@ -588,34 +588,34 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v99 完全禁用 cm（Connection Manager）窗口（勾选"隐藏连接管理窗口"= supercm 时生效）：
-          # 所有 cm 拉起路径（core_main 的 --cm 分支、try_start_cm 的启动参数、sciter --cm 分支）
-          # 全部改走官方无头模式（--cm-no-ui 语义）——连接处理逻辑
-          # （密码/永久密码/OTP 授权）不受影响，但窗口/任务栏图标/控制面板
-          # 永不出现。无凭据连接无人确认 → 超时拒绝（安全默认）。
-          # 取代已删除的 Superhidecm 步骤（patch_hide_cm_1/2 与本补丁功能重复，
-          # 且 cm 窗口不存在后 hide_cm 运行时选项已无意义）。
-          # 锚点为上游 1.4.9 原始状态，不依赖任何其他补丁。
+          # v99 瀹屽叏绂佺敤 cm锛圕onnection Manager锛夌獥鍙ｏ紙鍕鹃€?闅愯棌杩炴帴绠＄悊绐楀彛"= supercm 鏃剁敓鏁堬級锛?
+          # 鎵€鏈?cm 鎷夎捣璺緞锛坈ore_main 鐨?--cm 鍒嗘敮銆乼ry_start_cm 鐨勫惎鍔ㄥ弬鏁般€乻citer --cm 鍒嗘敮锛?
+          # 鍏ㄩ儴鏀硅蛋瀹樻柟鏃犲ご妯″紡锛?-cm-no-ui 璇箟锛夆€斺€旇繛鎺ュ鐞嗛€昏緫
+          # 锛堝瘑鐮?姘镐箙瀵嗙爜/OTP 鎺堟潈锛変笉鍙楀奖鍝嶏紝浣嗙獥鍙?浠诲姟鏍忓浘鏍?鎺у埗闈㈡澘
+          # 姘镐笉鍑虹幇銆傛棤鍑嵁杩炴帴鏃犱汉纭 鈫?瓒呮椂鎷掔粷锛堝畨鍏ㄩ粯璁わ級銆?
+          # 鍙栦唬宸插垹闄ょ殑 Superhidecm 姝ラ锛坧atch_hide_cm_1/2 涓庢湰琛ヤ竵鍔熻兘閲嶅锛?
+          # 涓?cm 绐楀彛涓嶅瓨鍦ㄥ悗 hide_cm 杩愯鏃堕€夐」宸叉棤鎰忎箟锛夈€?
+          # 閿氱偣涓轰笂娓?1.4.9 鍘熷鐘舵€侊紝涓嶄緷璧栦换浣曞叾浠栬ˉ涓併€?
           python3 patches/patch_cm_disable.py .
-          grep -q "prod-line cm-disable" src/core_main.rs || { echo "[FAIL] core_main.rs 缺少 cm-disable 标记"; exit 1; }
-          grep -q 'vec!\["--cm-no-ui"\]; // \[prod-line cm-disable\]' src/server/connection.rs || { echo "[FAIL] connection.rs 未改为 --cm-no-ui"; exit 1; }
-          grep -q "prod-line cm-disable" src/ui.rs || { echo "[FAIL] ui.rs 缺少 cm-disable 标记"; exit 1; }
-          echo "[OK] v99 cm 窗口禁用注入完成"
+          grep -q "prod-line cm-disable" src/core_main.rs || { echo "[FAIL] core_main.rs 缂哄皯 cm-disable 鏍囪"; exit 1; }
+          grep -q 'vec!\["--cm-no-ui"\]; // \[prod-line cm-disable\]' src/server/connection.rs || { echo "[FAIL] connection.rs 鏈敼涓?--cm-no-ui"; exit 1; }
+          grep -q "prod-line cm-disable" src/ui.rs || { echo "[FAIL] ui.rs 缂哄皯 cm-disable 鏍囪"; exit 1; }
+          echo "[OK] v99 cm 绐楀彛绂佺敤娉ㄥ叆瀹屾垚"
 
       - name: Apply no-trace (portable zero-residue) patch
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 真·零残留：配置/日志重定向 %TEMP%/<app>-notrace-<pid>，退出自动清理；
-          # 自解压 packer 解压到 %TEMP% 并在子进程退出后删除解压目录。
-          # 仅本工作流使用，切勿注入安装版构建。
+          # 鐪熉烽浂娈嬬暀锛氶厤缃?鏃ュ織閲嶅畾鍚?%TEMP%/<app>-notrace-<pid>锛岄€€鍑鸿嚜鍔ㄦ竻鐞嗭紱
+          # 鑷В鍘?packer 瑙ｅ帇鍒?%TEMP% 骞跺湪瀛愯繘绋嬮€€鍑哄悗鍒犻櫎瑙ｅ帇鐩綍銆?
+          # 浠呮湰宸ヤ綔娴佷娇鐢紝鍒囧嬁娉ㄥ叆瀹夎鐗堟瀯寤恒€?
           python3 patches/patch_portable_notrace.py .
-          grep -q "fn no_trace_base()" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缺少 no_trace_base"; exit 1; }
-          grep -q "rustdesk_notrace_cleanup" src/flutter.rs || { echo "[FAIL] flutter.rs 缺少 rustdesk_notrace_cleanup"; exit 1; }
-          grep -q "std::atexit(rustdesk_notrace_cleanup)" flutter/windows/runner/main.cpp || { echo "[FAIL] main.cpp 缺少 atexit 注册"; exit 1; }
-          grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 未改解压目录"; exit 1; }
-          echo "[OK] no-trace 补丁注入完成"
+          grep -q "fn no_trace_base()" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缂哄皯 no_trace_base"; exit 1; }
+          grep -q "rustdesk_notrace_cleanup" src/flutter.rs || { echo "[FAIL] flutter.rs 缂哄皯 rustdesk_notrace_cleanup"; exit 1; }
+          grep -q "std::atexit(rustdesk_notrace_cleanup)" flutter/windows/runner/main.cpp || { echo "[FAIL] main.cpp 缂哄皯 atexit 娉ㄥ唽"; exit 1; }
+          grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 鏈敼瑙ｅ帇鐩綍"; exit 1; }
+          echo "[OK] no-trace 琛ヤ竵娉ㄥ叆瀹屾垚"
 
 
       - name: server_otp (v86)
@@ -880,9 +880,9 @@ jobs:
           echo "[OK] V105 login watchdog + stale-password self-heal"
       - name: Build rustdesk
         run: |
-          # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
-          # 恢复 --hwcodec --vram：portable 黑屏根因是 notrace 下 _hwcodec 落盘失败，已由
-          # patch_portable_notrace.py 的 SHARED 例外（patches f68ce3c）修复，故 hwcodec 可恢复。
+          # Windows: build RustDesk 鈥?瀵归綈瀹樻柟 build-for-windows 鍙傛暟锛?-portable --skip-portable-pack锛?
+          # 鎭㈠ --hwcodec --vram锛歱ortable 榛戝睆鏍瑰洜鏄?notrace 涓?_hwcodec 钀界洏澶辫触锛屽凡鐢?
+          # patch_portable_notrace.py 鐨?SHARED 渚嬪锛坧atches f68ce3c锛変慨澶嶏紝鏁?hwcodec 鍙仮澶嶃€?
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
 
@@ -1015,7 +1015,7 @@ jobs:
           echo "release_tag=portable-quick-${APP_TAG}-${SHORT_UUID}" >> "$GITHUB_OUTPUT"
           echo "BUILD_FILENAME=$NAME" >> "$GITHUB_ENV"
           echo "value=$NAME" >> "$GITHUB_OUTPUT"
-          echo "✅ Build filename set to: $NAME"
+          echo "鉁?Build filename set to: $NAME"
 
       - name: Create GitHub Release and Upload Assets
         if: success()
