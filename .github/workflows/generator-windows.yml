@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 394e6c6ec7a2f0040fc3795ae68afd04dddafba1
+          ref: 982c1d13866accee286b1ac30e5830d01db3ec67
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -1618,15 +1618,15 @@ jobs:
             echo "[FAIL] v116 hwcodec cqp fork must NOT be in lock (reverted for V116; lands in V117)"
             exit 1
           fi
-      - name: Apply soondesk-p2p observe patch (V186)
+      - name: Apply super-p2p observe patch (V186)
         # Authenticated port-prediction stack, observe-only gray scale: public
         # STUN NAT classification + HMAC probe against the advertised mapping,
         # fire-and-forget on a detached thread. Logs only; transport selection
-        # is untouched. Default off; dispatch extras enable_soondesk_p2p=true
-        # bakes DEFAULT_ENABLED=true for opted-in builds.
+        # is untouched. Default ON; dispatch extras enable_super_p2p=false
+        # bakes DEFAULT_ENABLED=false to opt a build out.
         env:
-          SOONDESK_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').enable_soondesk_p2p == 'true' && 'true' || 'false' }}
-        run: python3 patches/patch_soondesk_p2p.py .
+          SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').enable_super_p2p == 'false' && 'false' || 'true' }}
+        run: python3 patches/patch_super_p2p.py .
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
