@@ -187,10 +187,14 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: af9ecd0178e6e789d46751e8828ae494a70d9b39
+          ref: 0d3023a73c8704c4e443bc916563e8c486ea435a
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
+      - name: Apply clipboard session sync patch
+        run: python3 patches/patch_clipboard_session_sync.py .
+      - name: Apply audio playback refactor patch
+        run: python3 patches/patch_audio_playback_refactor.py .
       
       - name: Report Status
         continue-on-error: true

@@ -269,6 +269,10 @@ jobs:
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
+      - name: Apply clipboard session sync patch
+        run: python3 patches/patch_clipboard_session_sync.py .
+      - name: Apply audio playback refactor patch
+        run: python3 patches/patch_audio_playback_refactor.py .
 
       # Homebrew bottle download cache. A miss is harmless (brew just re-downloads);
       # a hit removes most of the brew install wall time for llvm/create-dmg/nasm/...
@@ -1186,6 +1190,10 @@ jobs:
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
+      - name: Apply clipboard session sync patch
+        run: python3 patches/patch_clipboard_session_sync.py .
+      - name: Apply audio playback refactor patch
+        run: python3 patches/patch_audio_playback_refactor.py .
 
       - name: Download STATUS_URL artifacts
         uses: actions/download-artifact@v4
