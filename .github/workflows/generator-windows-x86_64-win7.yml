@@ -1,4 +1,4 @@
-﻿name: Custom Windows_7 Client Generator
+name: Custom Windows_7 Client Generator
 run-name: Custom Windows_7 Client Generator
 on: 
   workflow_dispatch:
@@ -351,7 +351,7 @@ jobs:
           # (Share -> Invite -> Copy -- same order as the custom home page).
           python3 patches/patch_share_button_uimode_false.py .
           grep -qF "[LnDesk share button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream share button not injected"; exit 1; }
-          grep -qF '("Share", "鍒嗕韩")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Share key"; exit 1; }
+          grep -qF '("Share", "分享")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Share key"; exit 1; }
           echo "[OK] v152: upstream share button applied"
 
       - name: Enable invite button (upstream)
@@ -360,7 +360,7 @@ jobs:
         run: |
           python3 patches/patch_invite_button_uimode_false.py .
           grep -qF "[LnDesk invite button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream invite button not injected"; exit 1; }
-          grep -qF '("Invite", "閭€璇?)' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Invite key"; exit 1; }
+          grep -qF '("Invite", "邀请")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Invite key"; exit 1; }
           echo "[OK] v152: upstream invite button applied"
 
       - name: Add Copy key (upstream)
@@ -393,37 +393,37 @@ jobs:
         if: env.UI_VARIANT == 'control_custom'
         shell: bash
         run: |
-          # direction=both 涓撳睘 UI锛氫粎鍦ㄣ€岃繛鎺ョ被鍨?both銆嶄笖銆屽嬀閫夐殣钘忓乏渚ч潰鏉?hide_sensitive_ui)銆?
-          # 鍚屾椂婊¤冻鏃惰Е鍙戙€備笌涓婃柟銆孯eplace custom patch files銆嶅悓绫绘満鍒讹紙鐩存帴 cp 瑕嗙洊
-          # desktop_home_page.dart锛夛紝浠呰Е鍙戞潯浠朵笉鍚岋紙闇€ both + 闅愯棌宸︿晶闈㈡澘锛岃€岄潪 ui_mode=='true'锛夈€?
-          # desktop_home_page_both.dart 宸插湪 patches/ 涓儤鐒欏ソ锛堥殣钘忓乏闈㈡澘 + 涓婇儴宸﹀彸涓ゅ崱鐗囷細
-          # 宸?鏈満淇℃伅(ID/楠岃瘉鐮?缃戠粶淇℃伅)锛屽彸=鎺у埗杩滅▼妗岄潰锛涗笅閮?璁惧鍒楄〃+灏辩华鐘舵€侊級銆?
-          # 鏈満淇℃伅鍗＄墖鍐?ID 甯告樉锛岄獙璇佺爜/缃戠粶淇℃伅榛樿鎶樺彔锛岀偣銆屾樉绀恒€嶅睍寮€銆?
-          # 娉ㄦ剰锛歞irection in ("outgoing","both") 鏃?services.py 寮哄埗 ui_mode=False锛?
-          # 鏁呮湰姝ラ鐙珛浜庛€孯eplace custom patch files銆嶏紙鍏惰 ui_mode 闂ㄦ帶璺宠繃锛夎繍琛屻€?
-          # 缃戠粶淇℃伅鏄惁鏄剧ず瀹屽叏鍙栧喅浜庢槸鍚﹀嬀閫夈€屽唴缃?IP 鐩磋繛鐪嬫澘銆?ip_direct_board)锛?
-          # 鍕鹃€夊垯 patch_direct_access 鍐欏叆 lan-ip 渚涙湰妗嗚鍙栵紱鏈嬀閫夊垯鏈鏄剧ず涓虹┖銆?
-          # 娉ㄦ剰锛歶i_mode 琚?services.py 寮哄埗 False 鏃讹紝銆孯eplace custom patch files銆嶆楠よ璺宠繃锛?
-          # 涓嶄細 cp 涓嫳鏂囪瑷€鏂囦欢锛涙晠鏈楠ら』鑷 cp锛屽惁鍒?desktop_home_page_both.dart
-          # 鐢ㄥ埌鐨?translate("Local Info"/"IP Direct"/"Show Network Info"/"Double-click to copy" 绛?
-          # 鍦ㄤ腑鏂囩幆澧冧細鍥炴樉鑻辨枃 key銆俻atches/en.rs / cn.rs 宸插惈杩欎簺 key銆?
-          # UI_MODE_BOTH 甯冨眬渚濊禆 connection_page_both.dart 鎷嗗垎 ConnectionPage 鐨勯《閮ㄥ崱鐗?
-          # 涓庡簳閮ㄨ澶囧垪琛紝鍥犳闇€鍚屾 cp 瑕嗙洊 connection_page.dart銆?
+          # direction=both 专属 UI：仅在「连接类型=both」且「勾选隐藏左侧面板(hide_sensitive_ui)」
+          # 同时满足时触发。与上方「Replace custom patch files」同类机制（直接 cp 覆盖
+          # desktop_home_page.dart），仅触发条件不同（需 both + 隐藏左侧面板，而非 ui_mode=='true'）。
+          # desktop_home_page_both.dart 已在 patches/ 中烘焙好（隐藏左面板 + 上部左右两卡片：
+          # 左=本机信息(ID/验证码/网络信息)，右=控制远程桌面；下部=设备列表+就绪状态）。
+          # 本机信息卡片内 ID 常显，验证码/网络信息默认折叠，点「显示」展开。
+          # 注意：direction in ("outgoing","both") 时 services.py 强制 ui_mode=False，
+          # 故本步骤独立于「Replace custom patch files」（其被 ui_mode 门控跳过）运行。
+          # 网络信息是否显示完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)：
+          # 勾选则 patch_direct_access 写入 lan-ip 供本框读取；未勾选则本框显示为空。
+          # 注意：ui_mode 被 services.py 强制 False 时，「Replace custom patch files」步骤被跳过，
+          # 不会 cp 中英文语言文件；故本步骤须自行 cp，否则 desktop_home_page_both.dart
+          # 用到的 translate("Local Info"/"IP Direct"/"Show Network Info"/"Double-click to copy" 等)
+          # 在中文环境会回显英文 key。patches/en.rs / cn.rs 已含这些 key。
+          # UI_MODE_BOTH 布局依赖 connection_page_both.dart 拆分 ConnectionPage 的顶部卡片
+          # 与底部设备列表，因此需同步 cp 覆盖 connection_page.dart。
           mkdir -p flutter/lib/desktop/pages/
           cp -f patches/desktop_home_page_both.dart flutter/lib/desktop/pages/desktop_home_page.dart
-          # UI_MODE_BOTH 涓婁笅甯冨眬锛氬悓鏃舵浛鎹?connection_page.dart锛屾媶鍑洪《閮ㄥ崱鐗囦笌搴曢儴鍒楄〃
+          # UI_MODE_BOTH 上下布局：同时替换 connection_page.dart，拆出顶部卡片与底部列表
           cp -f patches/connection_page_both.dart flutter/lib/desktop/pages/connection_page.dart
-          # UI_MODE_BOTH 鎵佸钩鍖栵細璁惧鍗＄墖榛樿 1px 缁嗚竟妗?+ 閫忔槑鑳屾櫙锛屼笌绐楀彛鑳屾櫙褰㈡垚灞傛鎰?
+          # UI_MODE_BOTH 扁平化：设备卡片默认 1px 细边框 + 透明背景，与窗口背景形成层次感
           cp -f patches/peer_card_both.dart flutter/lib/common/widgets/peer_card.dart
           # [v120] Accessible devices tab: assert the address-book alias helper is present.
           grep -q "_accessibleDeviceTitle" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: accessible-device address-book alias helper (_accessibleDeviceTitle) missing"; exit 1; }
-          # UI_MODE_BOTH: "鏌ョ湅"鎸夐挳闇€杩滅▼妗岄潰绐楀彛鍒濆鍖栨椂寮哄埗缃负 view-only锛?
-          # 閫氳繃涓存椂鍏ㄥ眬 option 浼犻€掞紝閬垮厤杞鏃跺簭涓嶅彲闈犮€?
+          # UI_MODE_BOTH: "查看"按钮需远程桌面窗口初始化时强制置为 view-only，
+          # 通过临时全局 option 传递，避免轮询时序不可靠。
           cp -f patches/remote_page_both.dart flutter/lib/desktop/pages/remote_page.dart
           mkdir -p src/lang/
           cp -f patches/cn.rs  src/lang/cn.rs
           cp -f patches/en.rs src/lang/en.rs
-          # [v117 bug2] "鎺у埗" must force view_only=N. The persisted read-only state is
+          # [v117 bug2] "控制" must force view_only=N. The persisted read-only state is
           # PeerConfig.view_only (a TOP-LEVEL typed field), NOT PeerConfig.options
           # ["view_only"] -- mainSetPeerOption only writes the generic options table, so
           # writing it there is a silent no-op. The real reset has to happen inside the
@@ -436,7 +436,7 @@ jobs:
             echo "[FAIL] v117 control button still relies on the no-op options-table write"
             exit 1
           fi
-          echo "[OK] direction=both: 宸叉浛鎹?desktop_home_page.dart + connection_page.dart + peer_card.dart 骞惰鐩栦腑鑻辨枃璇█鏂囦欢"
+          echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
 
       - name: Apply main-interface security lock (home-lock)
         if: fromJson(inputs.extras).enableHomeLock == 'true' && env.UI_VARIANT == 'control_custom'
@@ -444,8 +444,8 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 涓荤晫闈㈠畨鍏ㄩ攣锛氭墦寮€闇€ PIN锛涙棤杩滅▼浼氳瘽涓旀湰鍦伴敭榧犵┖闂?3 鍒嗛挓鑷姩閿佸畾锛涘瘑鐮佸鐢?PIN銆?
-          # 浠?both/outgoing锛堜富鎺у瀷锛夌殑 windows/win7 鐢熸晥锛汸IN 鏈缃椂娉ㄥ叆鐨勯椄闂ㄨ嚜鍔ㄥけ鏁堛€?
+          # 主界面安全锁：打开需 PIN；无远程会话且本地键鼠空闲 3 分钟自动锁定；密码复用 PIN。
+          # 仅 both/outgoing（主控型）的 windows/win7 生效；PIN 未设置时注入的闸门自动失效。
           python3 patches/patch_home_lock.py .
           grep -q "prod-line home-lock" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] home-lock: gate was not injected"; exit 1; }
           grep -q "_HomeLockGate" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] home-lock: _HomeLockGate missing"; exit 1; }
@@ -456,17 +456,17 @@ jobs:
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
         env:
-          # Windows runner 榛樿 cp1252锛屼腑鏂?print 浼?UnicodeEncodeError锛?
-          # 寮哄埗 UTF-8锛堣剼鏈唴涔熷凡 reconfigure锛屽弻淇濋櫓锛夈€?
+          # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内也已 reconfigure，双保险）。
           PYTHONIOENCODING: utf-8
         run: |
-          # 灞忓箷澧欏姛鑳斤紙澶氳澶囩嫭绔嬬獥鍙ｏ級+ 涓嫳鏂囧璇█銆愬悓鏃躲€戞敞鍏ワ細
-          # patch_screen_wall.py 瀵逛笂娓?1.4.9 婧愮爜鍋氶敋鐐规敞鍏ワ紙鏂板
-          # screen_wall_page.dart / mini_remote_view.dart + 淇敼 8 涓棦鏈夋枃浠讹級锛?
-          # 骞跺湪 src/lang/en.rs / src/lang/cn.rs 灏鹃儴鎻掑叆灞忓箷澧?UI 缈昏瘧 key
-          # 锛圫creen Wall 绛?23 缁勶紝宸插瓨鍦ㄨ嚜鍔ㄨ烦杩囷級鈥斺€斿嬀閫?寮€鍚睆骞曞"鏃讹紝
-          # 瀹㈡埛绔腑鏂囩幆澧冩樉绀?灞忓箷澧?銆佽嫳鏂囩幆澧冩樉绀?"Screen Wall"銆?
-          # 浠讳竴閿氱偣缂哄け/姝т箟鍗虫姤閿欓€€鍑猴紝鏋勫缓鏄惧紡澶辫触銆?
+          # 屏幕墙功能（多设备独立窗口）+ 中英文多语言【同时】注入：
+          # patch_screen_wall.py 对上游 1.4.9 源码做锚点注入（新增
+          # screen_wall_page.dart / mini_remote_view.dart + 修改 8 个既有文件），
+          # 并在 src/lang/en.rs / src/lang/cn.rs 尾部插入屏幕墙 UI 翻译 key
+          # （Screen Wall 等 23 组，已存在自动跳过）——勾选"开启屏幕墙"时，
+          # 客户端中文环境显示"屏幕墙"、英文环境显示 "Screen Wall"。
+          # 任一锚点缺失/歧义即报错退出，构建显式失败。
           python3 patches/patch_screen_wall.py .
 
           # [screen_wall v137] The injected _peerBrief() calls bind.mainGetPeerOptionSync,
@@ -477,34 +477,34 @@ jobs:
           grep -q "models/platform_model.dart" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart: missing platform_model import (bind undefined)"; exit 1; }
           echo "[OK] screen wall v137 verified (platform_model import present)"
 
-          # 娉ㄥ叆鍚庨獙璇佸璇█ key 宸插氨浣嶏紙en.rs/cn.rs 蹇呴』鍚?Screen Wall锛?
+          # 注入后验证多语言 key 已就位（en.rs/cn.rs 必须含 Screen Wall）
           for f in src/lang/en.rs src/lang/cn.rs; do
-            grep -q '"Screen Wall"' "$f" || { echo "[FAIL] $f 缂哄皯 Screen Wall 缈昏瘧 key"; exit 1; }
+            grep -q '"Screen Wall"' "$f" || { echo "[FAIL] $f 缺少 Screen Wall 翻译 key"; exit 1; }
           done
-          echo "[OK] 灞忓箷澧欏姛鑳?+ 澶氳瑷€锛坋n/cn锛夋敞鍏ュ畬鎴?
+          echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
-          # [v119] 涓庝富绾垮伐浣滄祦淇濇寔涓€鑷达細灞忓箷澧欎細璇濅笉鑷姩杩涘叆闅愮妯″紡
-          # 锛堟彙鎵嬫湡璞佸厤锛岄浂闂粦锛? 灏忓伐鍏锋爮銆屾ā寮?2銆嶅浘鏍囥€?
-          # v119 鍙敼 client.rs / flutter_ffi.rs / io_loop.rs / model.dart锛?
-          # 涓嶄緷璧?v107 閾撅紙鏈伐浣滄祦涓嶈窇 v107锛夛紝鍙洿鎺ヨ繍琛屻€?
+          # [v119] 与主线工作流保持一致：屏幕墙会话不自动进入隐私模式
+          # （握手期豁免，零闪黑）+ 小工具栏「模式 2」图标。
+          # v119 只改 client.rs / flutter_ffi.rs / io_loop.rs / model.dart，
+          # 不依赖 v107 链（本工作流不跑 v107），可直接运行。
           python3 patches/patch_screen_wall_v119.py .
-          grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缂哄皯 v119 is_screen_wall 瀛楁"; exit 1; }
-          grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缂哄皯 v119 闅愮妯″紡璞佸厤"; exit 1; }
-          grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缂哄皯 v120 闅愮/zoom 鍥炬爣闂撮殧鍔犲ぇ"; exit 1; }
-          # [v120] 灞忓箷澧欏伐鍏锋爮淇濈暀闅愮妯″紡鎵嬪姩寮€鍏筹紙榛樿鍏炽€佸彲鎵嬪姩寮€锛夛細icon 浠嶈皟鐢?
-          # sessionTogglePrivacyMode锛涗笌 v119 鎻℃墜鏈熻烦杩囪嚜鍔ㄨ繘闅愮锛坕o_loop.rs锛夐厤鍚?= 榛樿鍏?+ 鍥炬爣鍙墜鍔ㄥ紑銆?
-          grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缂哄皯 v120 闅愮妯″紡鎵嬪姩寮€鍏?; exit 1; }
-          grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缂哄皯 v120 view-style 鍒囨崲"; exit 1; }
-          # 棣栧抚寮哄埗鍏抽棴闅愮妯″紡锛堟竻鎺変富绐楀彛娈嬬暀鐨勫叏灞€ PrivacyModeState 鍗曚緥锛岄伩鍏嶅浘鏍囬敊鏄俱€屽凡寮€闅愮銆嶏級銆?
-          grep -q "MiniRemoteView force privacy-off error" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缂哄皯 v120 灞忓箷澧欓甯у己鍒跺叧闂殣绉佹ā寮?; exit 1; }
-          # 鍥炬爣蹇呴』鏀圭敤鏈牸绉佹湁 _privacyOn锛屼笉寰楀啀璇诲叏灞€ PrivacyModeState 鍗曚緥
-          # 锛堟寜 peer id 鍏变韩锛屼細琚富鐣岄潰鍚岃澶囦細璇濇薄鏌?鈫?鍋囨€с€屽凡寮€闅愮銆嶏級銆?
-          grep -q "_privacyOn" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缂哄皯 v120 灞忓箷澧欓殣绉佸浘鏍囩鏈夌姸鎬?; exit 1; }
-          # 鍙嶅悜鏂█锛氬浘鏍囦笉寰楀啀璇?PrivacyModeState.find(widget.id)锛堜富鐣岄潰姹℃煋婧愶級銆?
+          grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
+          grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
+          grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
+          # [v120] 屏幕墙工具栏保留隐私模式手动开关（默认关、可手动开）：icon 仍调用
+          # sessionTogglePrivacyMode；与 v119 握手期跳过自动进隐私（io_loop.rs）配合 = 默认关 + 图标可手动开。
+          grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式手动开关"; exit 1; }
+          grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 view-style 切换"; exit 1; }
+          # 首帧强制关闭隐私模式（清掉主窗口残留的全局 PrivacyModeState 单例，避免图标错显「已开隐私」）。
+          grep -q "MiniRemoteView force privacy-off error" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙首帧强制关闭隐私模式"; exit 1; }
+          # 图标必须改用本格私有 _privacyOn，不得再读全局 PrivacyModeState 单例
+          # （按 peer id 共享，会被主界面同设备会话污染 → 假性「已开隐私」）。
+          grep -q "_privacyOn" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙隐私图标私有状态"; exit 1; }
+          # 反向断言：图标不得再读 PrivacyModeState.find(widget.id)（主界面污染源）。
           if grep -q "PrivacyModeState.find(widget.id)" flutter/lib/desktop/widgets/mini_remote_view.dart; then
-            echo "[FAIL] mini_remote_view.dart 闅愮鍥炬爣浠嶈鍏ㄥ眬 PrivacyModeState 鍗曚緥"; exit 1;
+            echo "[FAIL] mini_remote_view.dart 隐私图标仍读全局 PrivacyModeState 单例"; exit 1;
           fi
-          echo "[OK] 灞忓箷澧?v119锛堥殣绉佹ā寮忚眮鍏嶏級+ v120锛堥殣绉佸紑鍏充繚鐣?+ 鍥炬爣闂撮殧 + view-style 鍒囨崲 + 棣栧抚寮哄埗鍏抽殣绉?+ 鍥炬爣绉佹湁鐘舵€侊級娉ㄥ叆瀹屾垚"
+          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换 + 首帧强制关隐私 + 图标私有状态）注入完成"
 
           # [screen_wall v121] Assert the v121 screen-wall enhancements really landed in
           # the tree. windows / win7 / quick pin the patches checkout to a concrete sha
@@ -537,29 +537,29 @@ jobs:
         if: fromJson(inputs.extras).ip_direct_board == 'true' && (env.UI_VARIANT != 'upstream' || env.CLIENT_TYPE == 'incoming')
         shell: bash
         env:
-          # Windows runner 榛樿 cp1252锛屼腑鏂?print 浼?UnicodeEncodeError锛?
-          # 寮哄埗 UTF-8锛堣剼鏈唴涔熷凡 reconfigure锛屽弻淇濋櫓锛夈€?
+          # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内也已 reconfigure，双保险）。
           PYTHONIOENCODING: utf-8
         run: |
-          # 鍐呯綉 IP 鐩磋繛鐪嬫澘锛堝乏闈㈡澘銆屼复鏃跺瘑鐮併€嶄笅鏂规樉绀?鏈満鍐呯綉IP:鐩磋繛绔彛 + 鐘舵€佺伅 + 澶嶅埗鎸夐挳锛夛細
-          # patch_direct_access.py 瀵逛笂娓?1.4.9 婧愮爜鍋氶敋鐐规敞鍏ワ紙鏂板 src/direct_access.rs锛?
-          # 澧炲己 rendezvous_mediator::direct_server 鐘舵€佸啓鍏ャ€乫lutter_ffi::main_check_connect_status
-          # 寮哄埗鍚敤 direct-server + LAN IP 鍙戠幇銆乨esktop_home_page 鍐呯綉鐪嬫澘 + 鍙岃 key锛夈€?
-          # 浠讳竴閿氱偣缂哄け/姝т箟鍗虫姤閿欓€€鍑猴紝鏋勫缓鏄惧紡澶辫触銆?
-          # 鏄惁杩愯瀹屽叏鍙栧喅浜庢槸鍚﹀嬀閫夈€屽唴缃?IP 鐩磋繛鐪嬫澘銆?ip_direct_board)锛屼笌 direction 鏃犲叧銆?
-          # 褰?direction=both 涓斿悓鏃跺嬀閫夋湰椤规椂锛歞esktop_home_page 姝ゆ椂宸叉槸 desktop_home_page_both.dart锛?
-          # 鑴氭湰妫€娴嬪埌 // UI_MODE_BOTH 鏍囪鍚庝粎璺?Rust 渚э紙鍐欏叆 lan-ip / lan-ipv6 / direct-access-port
-          # 閫夐」渚涗笂閮ㄦ湰鏈轰俊鎭崱鐗囪鍙栵級锛屽苟鑷姩璺宠繃 Dart 渚ф敞鍏ワ紙閬垮厤閲嶅 buildDirectAccessBoard锛夈€?
+          # 内网 IP 直连看板（左面板「临时密码」下方显示 本机内网IP:直连端口 + 状态灯 + 复制按钮）：
+          # patch_direct_access.py 对上游 1.4.9 源码做锚点注入（新增 src/direct_access.rs，
+          # 增强 rendezvous_mediator::direct_server 状态写入、flutter_ffi::main_check_connect_status
+          # 强制启用 direct-server + LAN IP 发现、desktop_home_page 内网看板 + 双语 key）。
+          # 任一锚点缺失/歧义即报错退出，构建显式失败。
+          # 是否运行完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)，与 direction 无关。
+          # 当 direction=both 且同时勾选本项时：desktop_home_page 此时已是 desktop_home_page_both.dart，
+          # 脚本检测到 // UI_MODE_BOTH 标记后仅跑 Rust 侧（写入 lan-ip / lan-ipv6 / direct-access-port
+          # 选项供上部本机信息卡片读取），并自动跳过 Dart 侧注入（避免重复 buildDirectAccessBoard）。
           python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
-          # 涓嶄緷璧?env.CLIENT_TYPE锛堝叾灏氭湭璁剧疆锛夛紝鐩存帴妫€娴嬪綋鍓?desktop_home_page.dart 鏄惁涓?
-          # desktop_home_page_both.dart 鍙樹綋锛堥《閮ㄥ惈 // UI_MODE_BOTH 鏍囪锛夈€俠oth 鍙樹綋宸插湪鏈満
-          # 淇℃伅鍗＄墖鑷覆鏌撶綉缁滀俊鎭紝鏃犻渶鍐嶆敞鍏?buildDirectAccessBoard銆?
+          # 不依赖 env.CLIENT_TYPE（其尚未设置），直接检测当前 desktop_home_page.dart 是否为
+          # desktop_home_page_both.dart 变体（顶部含 // UI_MODE_BOTH 标记）。both 变体已在本机
+          # 信息卡片自渲染网络信息，无需再注入 buildDirectAccessBoard。
           if grep -q "// UI_MODE_BOTH" flutter/lib/desktop/pages/desktop_home_page.dart; then
-            echo "[OK] desktop_home_page_both.dart: 璺宠繃 buildDirectAccessBoard 鏍￠獙锛堢綉缁滀俊鎭凡鍦ㄤ笂閮ㄦ湰鏈轰俊鎭崱鐗囪嚜娓叉煋锛?
+            echo "[OK] desktop_home_page_both.dart: 跳过 buildDirectAccessBoard 校验（网络信息已在上部本机信息卡片自渲染）"
           else
-            grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缂哄皯 buildDirectAccessBoard"; exit 1; }
+            grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           fi
-          echo "[OK] 鍐呯綉 IP 鐩磋繛娉ㄥ叆瀹屾垚"
+          echo "[OK] 内网 IP 直连注入完成"
 
       - name: Report local IPv6 to API server (v70)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_udp == 'true'
@@ -567,48 +567,48 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v70: 鎶婃湰鏈?lan-ipv6 涓婃姤鍒?API 鏈嶅姟鍣ㄥ績璺筹紝渚涜澶囪彍鍗?IPv6 鐩磋繛"浣跨敤銆?
-          # 蹇呴』鍦?patch_direct_access.py 涔嬪悗杩愯锛堝畠鍐欏叆 lan-ipv6 閫夐」锛夈€?
+          # v70: 把本机 lan-ipv6 上报到 API 服务器心跳，供设备菜单"IPv6 直连"使用。
+          # 必须在 patch_direct_access.py 之后运行（它写入 lan-ipv6 选项）。
           python3 patches/patch_ipv6_heartbeat.py .
-          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缂哄皯 ipv6 蹇冭烦涓婃姤"; exit 1; }
+          grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_e2ee == 'true'
         shell: bash
         env:
-          # Windows runner 榛樿 cp1252锛岃剼鏈唴涓枃 print 浼?UnicodeEncodeError锛?
-          # 寮哄埗 UTF-8锛堣剼鏈唴宸?reconfigure锛屽弻淇濋櫓锛夈€?
+          # Windows runner 默认 cp1252，脚本内中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内已 reconfigure，双保险）。
           PYTHONIOENCODING: utf-8
         run: |
-          # IP 鐩磋繛绔埌绔姞瀵嗭細鏈嶅姟绔?direct_server 鏀逛互 secure=true 鎺ュ彈锛堝鐢ㄤ笂娓?
-          # create_tcp_connection 鐨?SignedId+PublicKey+set_key 鎻℃墜锛夛紱瀹㈡埛绔柊澧?
-          # secure_direct_connection 骞跺湪 is_ip_str锛堝惈 IPv6锛?is_domain_port_str
-          # 鐩磋繛鍒嗘敮璋冪敤銆傚け璐ュ嵆鏂紑锛屼笉鍥為€€鏄庢枃銆?
+          # IP 直连端到端加密：服务端 direct_server 改以 secure=true 接受（复用上游
+          # create_tcp_connection 的 SignedId+PublicKey+set_key 握手）；客户端新增
+          # secure_direct_connection 并在 is_ip_str（含 IPv6）/is_domain_port_str
+          # 直连分支调用。失败即断开，不回退明文。
           python3 patches/patch_direct_e2ee.py .
-          grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缂哄皯 secure_direct_connection"; exit 1; }
-          grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缂哄皯 direct-e2ee 鏍囪 (send_long_term_pk)"; exit 1; }
-          grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缂哄皯 direct-e2ee 鏍囪 (send_long_term_pk)"; exit 1; }
+          grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
+          grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
+          grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
         shell: bash
         run: |
-          # IP 鐩磋繛 UDP(KCP) 浼犺緭锛氫富鎺х UDP 浼樺厛锛?s 瓒呮椂鑷姩鍥為€€ TCP锛夛紱
-          # 琚帶绔?direct_server 鍚岀鍙?UDP 鐩戝惉锛圞cpStream::accept -> create_tcp_connection 鍚屼竴鍏ュ彛锛夈€?
+          # IP 直连 UDP(KCP) 传输：主控端 UDP 优先（2s 超时自动回退 TCP）；
+          # 被控端 direct_server 同端口 UDP 监听（KcpStream::accept -> create_tcp_connection 同一入口）。
           python3 patches/patch_direct_udp.py .
-          grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缂哄皯 direct_udp_server"; exit 1; }
-          grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缂哄皯 direct udp 鍒嗘敮"; exit 1; }
+          grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
+          grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
         if: fromJson(inputs.extras).api_device_sync == 'true'
         shell: bash
         run: |
-          # 鍦ㄧ嚎璁惧鍚屾锛堝彲璁块棶鐨勮澶?tab锛変笌璁惧鑿滃崟"IP鐩磋繛"/"鍒犻櫎璁惧"
-          # 渚濊禆 allinone API v61 鏈嶅姟绔敼閫狅紙/api/peers status 璇箟 + last_online_ip/row_id锛?
+          # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
+          # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
           python3 patches/patch_online_devices.py .
-          grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缂哄皯 startOnlinePoll"; exit 1; }
-          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缂哄皯 _directAction"; exit 1; }
-          echo "[OK] IP 鐩磋繛 E2EE 娉ㄥ叆瀹屾垚"
+          grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
+          grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
+          echo "[OK] IP 直连 E2EE 注入完成"
 
       - name: Move Terminal to standalone connection-page button (v70)
         shell: bash
@@ -616,7 +616,7 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           # v70: promote the Terminal entry from the connection-page "More" menu to a standalone
-          # icon button below the ID input, named "缁堢".
+          # icon button below the ID input, named "终端".
           python3 patches/patch_connection_terminal.py .
           grep -qF 'onConnect(isTerminal: true)' flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart missing Terminal entry"; exit 1; }
 
@@ -702,7 +702,7 @@ jobs:
           sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./flutter/lib/desktop/pages/desktop_setting_page.dart
           sed -i -e 's|PURSLANE|${{ fromJson(inputs.extras).compname }}|' ./res/msi/preprocess.py
           sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./res/msi/preprocess.py
-          sed -i -e 's|"Copyright 漏 2025 Purslane Ltd. All rights reserved."|"Copyright 漏 2025 ${{ fromJson(inputs.extras).compname }}. All rights reserved."|' ./flutter/windows/runner/Runner.rc
+          sed -i -e 's|"Copyright © 2025 Purslane Ltd. All rights reserved."|"Copyright © 2025 ${{ fromJson(inputs.extras).compname }}. All rights reserved."|' ./flutter/windows/runner/Runner.rc
           sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./flutter/windows/runner/Runner.rc
           sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./Cargo.toml
           sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./libs/portable/Cargo.toml
@@ -771,12 +771,12 @@ jobs:
           python3 patches/fix__updateWindowSize.py
 
       - name: Apply both-mode home window size floor
-        # direction=both 涓荤晫闈㈤《閮ㄤ负宸﹀彸骞舵帓涓ゅ紶鍗＄墖锛屽彸鍗?5 涓搷浣滄寜閽?
-        # 锛堥個璇?鏌ョ湅/鎽勫儚澶?鎺у埗/涓嬫媺锛夐渶瑕佺害 1000px 绐楀彛瀹藉害鎵嶈兘鎺掑湪涓€琛岋紱
-        # 涓婃父榛樿 800x600 浼氭妸瀹冩尋鎴愪袱琛屻€傝琛ヤ竵鍙湪杩愯鏃跺懡涓?
-        # both 妯″紡鏃舵斁澶х獥鍙ｅ苟灞呬腑锛堜笉鍙敤 isCustomClient 鍋氶棬锛氬畾鍒舵瀯寤洪噷
-        # disabled_custom_client.py 璁╁畠鎭掍负 false锛夛紝
-        # incoming / outgoing 涓嶅彈褰卞搷銆?
+        # direction=both 主界面顶部为左右并排两张卡片，右卡 5 个操作按钮
+        # （邀请/查看/摄像头/控制/下拉）需要约 1000px 窗口宽度才能排在一行；
+        # 上游默认 800x600 会把它挤成两行。该补丁只在运行时命中
+        # both 模式时放大窗口并居中（不可用 isCustomClient 做门：定制构建里
+        # disabled_custom_client.py 让它恒为 false），
+        # incoming / outgoing 不受影响。
         shell: bash
         run: |
           python3 patches/patch_home_window_size.py
@@ -795,9 +795,9 @@ jobs:
         #  sed -i '/fontSize:/ { N; s/18,/16,/; }' ./flutter/lib/common.dart
             
       - name: Apply domestic STUN fallback (multi-level)
-        # 鍥藉唴浼樺厛 + 鍥藉鍏滃簳鐨?STUN 娉ㄥ叆鍒板鎴风锛圢AT 鎺㈡祴 common.rs + WebRTC ICE webrtc.rs 涓ゆ潯璺緞锛夛紝
-        # 淇鍥藉唴缃戠粶涓嬮粯璁ゅ浗澶?STUN 鎱?琚瀵艰嚧 P2P 鎵撴礊澶辫触銆佸彧鑳借蛋涓户鎴栬繛鎺ュけ璐ョ殑闂銆?
-        # 蹇呴』瀵规墍鏈夋瀯寤虹被鍨嬬敓鏁堬紙鍘熷厛鍙湪 direction=both && hide_sensitive_ui 鏃惰繍琛岋紝鏅€氭瀯寤轰粛鏄浗澶?STUN锛夈€?
+        # 国内优先 + 国外兜底的 STUN 注入到客户端（NAT 探测 common.rs + WebRTC ICE webrtc.rs 两条路径），
+        # 修复国内网络下默认国外 STUN 慢/被墙导致 P2P 打洞失败、只能走中继或连接失败的问题。
+        # 必须对所有构建类型生效（原先只在 direction=both && hide_sensitive_ui 时运行，普通构建仍是国外 STUN）。
         shell: bash
         run: |
           python3 patches/hand_stun.py
@@ -872,11 +872,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 鏈畨瑁咃紙渚挎惡鎬侊級涔熼攣瀹氬畨鍏?缃戠粶璁剧疆锛氭敞鍏ヤ簡 UNLOCK_PIN 鍗虫亽閿侊紝
-          # 闇€杈?PIN 鎵嶈兘杩涜缃紙涓婃父鍙湅 mainIsInstalled锛屼究鎼烘€佽８濂旓級銆?
-          # UNLOCK_PIN 鏈厤缃椂琛ヤ竵鑷姩閫€鍖栦负涓婃父琛屼负銆?
+          # 未安装（便携态）也锁定安全/网络设置：注入了 UNLOCK_PIN 即恒锁，
+          # 需输 PIN 才能进设置（上游只看 mainIsInstalled，便携态裸奔）。
+          # UNLOCK_PIN 未配置时补丁自动退化为上游行为。
           python3 patches/patch_lock_settings_always.py
-          grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 璁剧疆閿佸畾琛ヤ竵鏈敓鏁?; exit 1; }
+          grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 设置锁定补丁未生效"; exit 1; }
                       
       - name: allow custom_.txt
         shell: bash
@@ -890,10 +890,10 @@ jobs:
         env:
           EXTRAS: '${{ inputs.extras }}'
         run: |
-          # 鏄剧ず鍣ㄥ垏鎹㈡寜閽瀯寤烘湡榛樿鍊兼敞鍏ワ細瀹樻柟 1.4.9 宸插師鐢熷疄鐜?
-          # 涓诲伐鍏锋爮/鏈€灏忓寲宸ュ叿鏍忔樉绀哄櫒鍒囨崲鎸夐挳锛坈onsts.dart 甯搁噺 + desktop_setting_page
-          # 宓屽 UI + remote_toolbar 鎸夐挳锛夛紝鏈剼鏈彧鏀?option2bool 瀵逛袱涓?key 鐨勭┖鍊奸粯璁わ紝
-          # 鐢ㄦ埛杩愯鏃?Settings 鍕鹃€変粛鍙鐩栥€傞厤缃粠 inputs.extras JSON 瑙ｆ瀽銆?
+          # 显示器切换按钮构建期默认值注入：官方 1.4.9 已原生实现
+          # 主工具栏/最小化工具栏显示器切换按钮（consts.dart 常量 + desktop_setting_page
+          # 嵌套 UI + remote_toolbar 按钮），本脚本只改 option2bool 对两个 key 的空值默认，
+          # 用户运行时 Settings 勾选仍可覆盖。配置从 inputs.extras JSON 解析。
           python3 patches/patch_monitor_switch.py .
 
       - name: Apply silent-install & cert patches (#0011)
@@ -1146,7 +1146,7 @@ jobs:
             s/iVBORw0KGgo[A-Za-z0-9+\/=]{100,}/$b64/g;
           ' "$b64" ./src/ui.rs
 
-# === 鐢ㄦ埛闄勫姞鍔熻兘锛圕ustom Enhancements锛?==
+# === 用户附加功能（Custom Enhancements）===
       
       - name: fix connection delay  
         if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
@@ -1163,11 +1163,11 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 琚帶绔椤碉細闅愯棌鏄庢枃 ID 闈㈡澘锛屽苟鎶?desk_tip 鏀逛负銆岃浣跨敤鎵嬫満娴忚鍣ㄦ壂鐮佽幏鍙栨湰鏈轰俊鎭€嶏紝
-          # 涓庡惎鐢ㄤ簩缁寸爜(enableQrCode) 閰嶅銆備粎鍦ㄥ畾鍒?UI(ui_mode) + 琚帶(incoming) 鐢熸晥銆?
+          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机浏览器扫码获取本机信息」，
+          # 与启用二维码(enableQrCode) 配套。仅在定制 UI(ui_mode) + 被控(incoming) 生效。
           python3 patches/patch_hide_id_qr_tip.py .
           grep -q "//       buildIDBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] ID board was not hidden"; exit 1; }
-          grep -q "璇蜂娇鐢ㄦ墜鏈烘祻瑙堝櫒鎵爜鑾峰彇鏈満淇℃伅" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
+          grep -q "请使用手机浏览器扫码获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
           echo "[OK] v139 hide-ID + QR tip applied"
 
       - name: hide-password_uimode_true
@@ -1273,12 +1273,12 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # v99 涓?generator-windows.yml 瀵归綈锛氫笉鍐嶇敤 patch_hide_cm_1/2锛堜粎寮哄埗
-          # hide_cm 杩愯鏃堕€夐」锛夛紝鏀逛负瀹屽叏绂佺敤 cm锛圕onnection Manager锛夌獥鍙ｂ€斺€?
-          # 鎵€鏈?cm 鎷夎捣璺緞锛坈ore_main 鐨?--cm 鍒嗘敮銆乼ry_start_cm 鍚姩鍙傛暟銆?
-          # sciter --cm 鍒嗘敮锛夋敼璧板畼鏂规棤澶存ā寮忥紙--cm-no-ui 璇箟锛夈€傝繛鎺ュ鐞嗛€昏緫
-          # 锛堝瘑鐮?姘镐箙瀵嗙爜/OTP 鎺堟潈锛変笉鍙楀奖鍝嶏紝绐楀彛/浠诲姟鏍忓浘鏍?鎺у埗闈㈡澘姘镐笉鍑虹幇銆?
-          # 鏃犲嚟鎹繛鎺ユ棤浜虹‘璁?鈫?瓒呮椂鎷掔粷锛堝畨鍏ㄩ粯璁わ級銆傞敋鐐逛负涓婃父 1.4.9 鍘熷鐘舵€併€?
+          # v99 与 generator-windows.yml 对齐：不再用 patch_hide_cm_1/2（仅强制
+          # hide_cm 运行时选项），改为完全禁用 cm（Connection Manager）窗口——
+          # 所有 cm 拉起路径（core_main 的 --cm 分支、try_start_cm 启动参数、
+          # sciter --cm 分支）改走官方无头模式（--cm-no-ui 语义）。连接处理逻辑
+          # （密码/永久密码/OTP 授权）不受影响，窗口/任务栏图标/控制面板永不出现。
+          # 无凭据连接无人确认 → 超时拒绝（安全默认）。锚点为上游 1.4.9 原始状态。
           python3 patches/patch_cm_disable.py .
           grep -q "prod-line cm-disable" src/core_main.rs || { echo "[FAIL] core_main.rs missing cm-disable marker"; exit 1; }
           grep -q 'vec!\["--cm-no-ui"\]; // \[prod-line cm-disable\]' src/server/connection.rs || { echo "[FAIL] connection.rs not switched to --cm-no-ui"; exit 1; }
@@ -1443,7 +1443,7 @@ jobs:
           python3 patches/patch_remote_tab_iroh_badge.py .
       - name: Build rustdesk
         run: |
-          # Windows: build RustDesk 鈥?瀵归綈瀹樻柟 build-for-windows 鍙傛暟锛?-portable --skip-portable-pack锛?
+          # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
  
@@ -1541,7 +1541,7 @@ jobs:
         shell: bash
         run: |
           cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
-          echo "鉁?public cert staged into ./rustdesk/ (imported at install time)"
+          echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
 
       - name: Build self-extracted executable
         shell: bash
@@ -1564,7 +1564,7 @@ jobs:
       - name: Build msi
 
         if: env.UPLOAD_ARTIFACT == 'true'
-        # MSI 鏄檮甯︿骇鐗╋紙鍒嗗彂涓诲姏鏄?-install.exe锛夛細MSI 缂栬瘧澶辫触浠呭憡璀﹁烦杩囷紝涓嶉樆鏂伐浣滄祦
+        # MSI 是附带产物（分发主力是 -install.exe）：MSI 编译失败仅告警跳过，不阻断工作流
         continue-on-error: true
         run: |
           $myappname = "${{ inputs.appname }}" -replace '\s','_'
@@ -1648,26 +1648,26 @@ jobs:
         run: |
           VER="${{ env.VERSION }}"
           W="${{ env.RUSTDESK_BUILD_NUMBER }}"
-          # 濮嬬粓甯︾4娈垫瀯寤哄彿锛圵锛屽嵆浣?0 -> .0锛夛細淇濊瘉鏋勫缓鏂囦欢鍚嶄笌涓嬭浇閾炬帴涓€鑷达紝涓斿缁堟樉绀?娈电増鏈彿
+          # 始终带第4段构建号（W，即使 0 -> .0）：保证构建文件名与下载链接一致，且始终显示4段版本号
           VER_SUFFIX=".${W:-0}"
           NAME="${{ inputs.filename }}-${VER}${VER_SUFFIX}-win-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}"
           echo "BUILD_FILENAME=$NAME" >> "$GITHUB_ENV"
           echo "value=$NAME" >> "$GITHUB_OUTPUT"
-          echo "鉁?Build filename set to: $NAME"
+          echo "✅ Build filename set to: $NAME"
       
       - name: Rename EXE
         shell: bash
         run: |
           mv "./SignOutput/rustdesk.exe" "./SignOutput/${BUILD_FILENAME}-install.exe"
-          echo "鉁?EXE renamed to ${BUILD_FILENAME}-install.exe (double-click = silent install)"
+          echo "✅ EXE renamed to ${BUILD_FILENAME}-install.exe (double-click = silent install)"
       
       - name: Rename MSI (optional)
         shell: bash
         run: |
           test -f "./SignOutput/rustdesk.msi" && \
             mv "./SignOutput/rustdesk.msi" "./SignOutput/${BUILD_FILENAME}.msi" && \
-            echo "鉁?MSI renamed to ${BUILD_FILENAME}.msi" || \
-            echo "鈿狅笍 MSI not found, skipping rename."
+            echo "✅ MSI renamed to ${BUILD_FILENAME}.msi" || \
+            echo "⚠️ MSI not found, skipping rename."
 
       - name: Create GitHub Release and Upload Assets
         if: success()
