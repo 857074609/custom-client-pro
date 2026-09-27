@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: patch_super_p2p.py commit=49bcf68cf5 hashMatch=True 49bcf68cf54cce6d759eba7ef3b3575b83e28615
+          ref: 49bcf68cf54cce6d759eba7ef3b3575b83e28615
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
