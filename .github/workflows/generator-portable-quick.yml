@@ -164,6 +164,8 @@ jobs:
         run: python3 patches/patch_activate_os_fix.py .
       - name: Apply connection text patch
         run: python3 patches/patch_connection_text.py .
+      - name: Apply quality floating ball patch (V191)
+        run: python3 patches/patch_quality_float_ball.py .
       - name: Apply clipboard session sync patch
         run: python3 patches/patch_clipboard_session_sync.py .
       - name: Apply audio playback refactor patch
