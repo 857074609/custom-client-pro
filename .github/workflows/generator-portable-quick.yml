@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 48f232c2a6f5b32e2c98900c8ef0fbd5984cd3bb
+          ref: df0aa43348d85464cff6ec9e10c2c3f97b5bde7d
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -166,6 +166,9 @@ jobs:
         run: python3 patches/patch_connection_text.py .
       - name: Apply quality floating ball patch (V191)
         run: python3 patches/patch_quality_float_ball.py .
+      - name: Fix quality floating ball invisibility (V191b)
+        run: python3 patches/patch_quality_float_ball_fix.py .
+
       - name: Apply clipboard session sync patch
         run: python3 patches/patch_clipboard_session_sync.py .
       - name: Apply audio playback refactor patch
