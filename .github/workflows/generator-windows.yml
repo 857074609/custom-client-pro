@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: df0aa43348d85464cff6ec9e10c2c3f97b5bde7d
+          ref: e7a7db82d51783ccc760726192eff891d87773f6
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -1637,6 +1637,13 @@ jobs:
           SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'observe' }}
           SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
         run: python3 patches/patch_super_p2p.py .
+      - name: Remove native test_nat_type (V200) - replaced by super_p2p reflector/STUN self-report
+        # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
+        # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
+        # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
+        # super_p2p patch (which adds the module). Only wired here because
+        # super_p2p is currently applied only in this windows workflow.
+        run: python3 patches/patch_remove_test_nat_type.py .
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
