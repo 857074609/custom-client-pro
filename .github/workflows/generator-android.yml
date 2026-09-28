@@ -314,12 +314,6 @@ jobs:
         run: python3 patches/patch_activate_os_fix.py .
       - name: Apply connection text patch
         run: python3 patches/patch_connection_text.py .
-      - name: Apply quality floating ball patch (V191)
-        run: python3 patches/patch_quality_float_ball.py .
-      - name: Fix quality floating ball invisibility (V191b)
-        run: python3 patches/patch_quality_float_ball_fix.py .
-      - name: Quality monitor defaults ON (V202)
-        run: python3 patches/patch_quality_monitor_default_on.py .
 
       - name: Apply clipboard session sync patch
         run: python3 patches/patch_clipboard_session_sync.py .
