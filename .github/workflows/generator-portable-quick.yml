@@ -485,7 +485,6 @@ jobs:
         shell: bash
         run: |
           python3 patches/hand_stun.py
-          python3 patches/patch_privacy_real_monitor_off.py .
 
       - name: Set server
         shell: bash
