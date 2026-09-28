@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 79b8539cf606935a035b03eedffc1170d83a8b6a
+          ref: c714d56bfc76ec2b6a1aec434c4a4ba9bba5691b
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -805,6 +805,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/hand_stun.py
+          python3 patches/patch_privacy_real_monitor_off.py .
 
       - name: Set server
         shell: bash
