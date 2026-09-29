@@ -1493,8 +1493,8 @@ jobs:
           ! grep -q "DnsDiscovery::new" ./src/iroh_transport.rs || { echo "[FAIL] stale DnsDiscovery still present"; exit 1; }
           grep -qF 'iroh-quinn = { git = "https://github.com/857074609/iroh-quinn"' ./Cargo.toml || { echo "[FAIL] iroh-quinn [patch] source missing"; exit 1; }
           ! grep -q "__IROH_N0_FALLBACK__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_N0_FALLBACK placeholder not substituted"; exit 1; }
-          test $(grep -c "discovery_n0" ./src/iroh_transport.rs) -eq 2 || { echo "[FAIL] discovery_n0 count != 2 (compat+default; n0 fallback now uses N0FallbackPublisher)"; exit 1; }
-          grep -q "N0FallbackPublisher::new" ./src/iroh_transport.rs || { echo "[FAIL] v115 n0 fallback publisher missing"; exit 1; }
+          test $(grep -c "discovery_n0" ./src/iroh_transport.rs) -eq 2 || { echo "[FAIL] discovery_n0 count != 2 (compat+default; n0 fallback now uses PkarrDirectPreservingPublisher)"; exit 1; }
+          grep -q "use_n0_fallback" ./src/iroh_transport.rs || { echo "[FAIL] v115 n0 fallback logic missing"; exit 1; }
           grep -q "PkarrResolver::n0_dns()" ./src/iroh_transport.rs || { echo "[FAIL] v115 n0 HTTPS resolve leg missing"; exit 1; }
           ! grep -q "__IROH_DNS_URL__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL placeholder not substituted"; exit 1; }
           ! grep -q "__IROH_RELAY_URL_2__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_2 placeholder not substituted"; exit 1; }
