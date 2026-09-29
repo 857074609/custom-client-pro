@@ -307,7 +307,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: d11c24f913119c432f8d3651eee682d8e952d8f2
+          ref: 18be4f59f2f7fd4e2467df31ee0f50536677335f
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -580,6 +580,12 @@ jobs:
         shell: bash
         run: |
           python3 patches/disabled_custom_client.py
+
+      - name: Fix bool2option write-empty trap (custom build 9-switch fix)
+        shell: bash
+        run: |
+          python3 patches/patch_bool2option.py .
+          grep -qF "[PATCH-bool2option-YN]" flutter/lib/common.dart || { echo "[FAIL] bool2option Y/N fix not applied"; exit 1; }
 
       - name: Apply mobile (Android) update patch — removes Dart isCustomClient guard + Rust guard + platform append + version extract
         shell: bash
