@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c4e926057fffeff4bd5a618368b73951af3c4a69
+          ref: d5104ccf03b4f5007fec0be0b1a212457b0a5754
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -1302,6 +1302,11 @@ jobs:
           # privacy mode 2 (virtual display) is turned on. No-op on hardware
           # whose driver does not implement the brightness IOCTLs.
           python3 patches/patch_privacy_physical_backlight_off.py
+          # V214: independent "Turn off monitor" switch in the session
+          # toolbar. Detaches the physical panel from the desktop so the
+          # backlight really goes off. Must run after V213: it injects into
+          # the same win_input.rs and anchors on the test module below it.
+          python3 patches/patch_turn_off_monitor.py
 
       - name: hide_chat_voice
         if: fromJson(inputs.extras).hide_chat_voice  == 'true'
