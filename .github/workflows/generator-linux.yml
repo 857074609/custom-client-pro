@@ -222,7 +222,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: a3cf30c35e39fec38ebe5109b702fd3003d58400
+          ref: c4e926057fffeff4bd5a618368b73951af3c4a69
           clean: false
 
       - name: Apply activate_os no-right-click patch
