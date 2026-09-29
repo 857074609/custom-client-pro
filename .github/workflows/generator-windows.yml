@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d5104ccf03b4f5007fec0be0b1a212457b0a5754
+          ref: 05cefc2a9effa5530a5a6c4494e3cb7cf77b3488
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -1302,10 +1302,20 @@ jobs:
           # privacy mode 2 (virtual display) is turned on. No-op on hardware
           # whose driver does not implement the brightness IOCTLs.
           python3 patches/patch_privacy_physical_backlight_off.py
+
+      - name: TurnOffMonitor
+        shell: bash
+        run: |
           # V214: independent "Turn off monitor" switch in the session
           # toolbar. Detaches the physical panel from the desktop so the
-          # backlight really goes off. Must run after V213: it injects into
-          # the same win_input.rs and anchors on the test module below it.
+          # backlight really goes off, and falls back to a DDC/CI brightness
+          # write when the driver refuses the topology change.
+          #
+          # Deliberately NOT gated on applyprivacy: this is a standalone
+          # toolbar switch with its own protobuf message, unrelated to privacy
+          # mode. Gating it here would hide the menu from any build that does
+          # not enable privacy mode. It carries its own DDC/CI fallback
+          # internally, so it does not depend on V213 above running.
           python3 patches/patch_turn_off_monitor.py
 
       - name: hide_chat_voice
