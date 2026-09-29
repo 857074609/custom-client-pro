@@ -1298,6 +1298,10 @@ jobs:
           #python3 patches/apply_privacy1.py &&  python3 patches/apply_privacy2.py
            python3 patches/patch_privacy_block_input.py
            python3 patches/patch_win7_privacy_degrade.py
+          # V213: switch the physical panel backlight off over DDC/CI when
+          # privacy mode 2 (virtual display) is turned on. No-op on hardware
+          # whose driver does not implement the brightness IOCTLs.
+          python3 patches/patch_privacy_physical_backlight_off.py
 
       - name: hide_chat_voice
         if: fromJson(inputs.extras).hide_chat_voice  == 'true'
