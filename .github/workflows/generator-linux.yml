@@ -589,6 +589,7 @@ jobs:
           grep -q "CUSTOM_IROH_RELAY_URL_3" ./src/iroh_transport.rs || { echo "[FAIL] iroh third backup relay constant missing"; exit 1; }
 
       - name: iroh direct prewarm (v215)
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           # [v215] After a long idle (>6.5s) iroh stops trusting the peer's
