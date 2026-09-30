@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 03e7d501ea76cf9d6bd68d541315514a234ccaba
+          ref: 7faae0aa5e45a3f38af62790ed11985c86169848
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -178,9 +178,13 @@ jobs:
           #   'lib/common/invite.dart': The system cannot find the file specified.
           # 本步骤只安装 Dart 模块 + local_notifier 依赖，**不改 main.dart**，
           # 因此 startInviteWatcher() 永不触发；邀请功能仍由 addinvite 复选框独占控制。
-          python3 patches/patch_invite_module.py .
+          APPNAME="${{ inputs.appname }}"
+          if [ -z "$APPNAME" ] || [ "$APPNAME" = "rustdesk" ]; then APPNAME="RustDesk"; fi
+          python3 patches/patch_invite_module.py . "$APPNAME"
           test -f flutter/lib/common/invite.dart || { echo "[FAIL] invite.dart not installed"; exit 1; }
-          echo "[OK] invite Dart module installed (watcher not started)"
+          test -f flutter/lib/common/brand.dart  || { echo "[FAIL] brand.dart not installed"; exit 1; }
+          grep -q "kBrandAppName" flutter/lib/common/invite.dart || { echo "[FAIL] invite.dart lost the kBrandAppName reference"; exit 1; }
+          echo "[OK] invite Dart module + brand.dart installed (watcher not started)"
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
