@@ -756,7 +756,11 @@ jobs:
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
-        if: fromJson(inputs.extras).api_device_sync == 'true'
+        # [V217-fix] 与 generator-windows.yml 对齐：补上 ip_direct_menu 分支。
+        # 原条件只有 api_device_sync，导致前端单独勾选「IP直连菜单」
+        # (ip_direct_menu) 时该步骤被跳过，patch_online_devices.py 不执行，
+        # 设备菜单里的「IP直连」/「删除设备」入口不会注入 —— 复选框形同虚设。
+        if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
         shell: bash
         run: |
           # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
