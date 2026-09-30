@@ -597,11 +597,11 @@ jobs:
           # 任一锚点缺失/歧义即报错退出，构建显式失败。
           python3 patches/patch_screen_wall.py .
 
-          # [screen_wall v137] The injected _peerBrief() calls bind.mainGetPeerOptionSync,
-          # and `bind` only exists once models/platform_model.dart is imported. The
-          # windows chain gets that import from patch_screen_wall_v107.py, which this
-          # workflow never runs; without the import the flutter build dies with
-          # "Undefined name 'bind'" (multi_window_manager.dart:453). Assert it here.
+          # [screen_wall v137] _peerBrief() uses bind.mainGetPeerOptionSync; `bind`
+          # comes from models/platform_model.dart. Base patch now injects the import
+          # itself so chains without v107 still compile (win7 runs v107 too since V218); v107 skips its own B1
+          # when it is already there. Guard it so a missing import fails here and not
+          # halfway through `flutter build windows` ("Undefined name 'bind'").
           grep -q "models/platform_model.dart" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart: missing platform_model import (bind undefined)"; exit 1; }
           echo "[OK] screen wall v137 verified (platform_model import present)"
 
@@ -611,17 +611,22 @@ jobs:
           done
           echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
-          # [V217] 屏幕墙 v107 整合链（自 generator-windows.yml 对齐）。
+      - name: Screen wall v107 consolidated chain (multi-instance + preview + add-to-wall + idle exemption)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
           # patch_screen_wall_v107.py 整合原 v103/v104/v108/v109 四个补丁（锚点与
-          # 执行顺序逐字保留；v104 为空操作占位已被 base 吸收）：
+          # 执行顺序逐字保留；v104 为空操作占位已被 base 吸收，见
+          # Docs/rustdesk-1.4.9/v108/修改方案.md）：
           # - 多实例：最多 4 个屏幕墙窗口（4 墙 × 4 设备 = 16 路），级联错位、
           #   强制深色 + 黑底；第 5 次点击提示"最多打开 4 个屏幕墙"；
           # - 入口预览选择：无指定 wallId 时弹 Dialog 列出已保存屏幕墙（可选新建）；
-          # - 设备卡片菜单「Add to Screen Wall」：自动依次填充，满了切下一块。
-          # 必须在上面的 "Apply screen wall patch + i18n"（base）之后运行
-          # （锚点匹配其产物），且在 v119 之前。
+          # - 设备卡片菜单「Add to Screen Wall」：自动依次填充，满了切下一块；
+          # - 屏幕墙为「监控型」会话，服务端豁免「长时间不活动自动断开」。
+          # 必须在 "Apply screen wall patch + i18n"（base）之后运行（锚点匹配其产物）。
           # 脚本自带幂等守卫：最终 marker 全部存在时 [SKIP] 退出 0。
-          # 已离线干跑验证（base -> v107 -> v119 严格按序）全部 exit 0，9 条断言全绿。
           python3 patches/patch_screen_wall_v107.py .
           grep -q "Screen Wall Max 4 Windows" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart 缺少 v103 多实例入口"; exit 1; }
           grep -q "Device Already Added" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v103 去重提示"; exit 1; }
@@ -638,18 +643,15 @@ jobs:
           if grep -q "SW__" flutter/lib/utils/multi_window_manager.dart; then echo "[FAIL] multi_window_manager.dart 仍包含 v109 哨兵剥离"; exit 1; fi
           if grep -q "is_screen_wall\|SW__" src/server/connection.rs; then echo "[FAIL] connection.rs 仍残留 v109 is_screen_wall / SW__ 死代码"; exit 1; fi
           echo "[OK] 屏幕墙 v107 整合链（多实例/预览/添加入口）注入完成"
-
-          # [v119] 与主线工作流保持一致：屏幕墙会话不自动进入隐私模式
-          # （握手期豁免，零闪黑）+ 小工具栏「模式 2」图标。
-          # v119 只改 client.rs / flutter_ffi.rs / io_loop.rs / model.dart，
-          # 独立于 v107 链，但按主线顺序在其之后运行。
+          # [v119] 屏幕墙会话不自动进入隐私模式（握手期豁免，零闪黑）
           python3 patches/patch_screen_wall_v119.py .
           grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
           grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
-          grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
+          grep -q "bool? isScreenWall," flutter/lib/models/model.dart || { echo "[FAIL] model.dart 缺少 v119 isScreenWall 参数"; exit 1; }
           # [v120] 屏幕墙工具栏保留隐私模式手动开关（默认关、可手动开）：icon 仍调用
           # sessionTogglePrivacyMode；与 v119 握手期跳过自动进隐私（io_loop.rs）配合 = 默认关 + 图标可手动开。
           grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式手动开关"; exit 1; }
+          grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
           grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 view-style 切换"; exit 1; }
           # 首帧强制关闭隐私模式（清掉主窗口残留的全局 PrivacyModeState 单例，避免图标错显「已开隐私」）。
           grep -q "MiniRemoteView force privacy-off error" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙首帧强制关闭隐私模式"; exit 1; }
@@ -1252,6 +1254,12 @@ jobs:
           grep -q "main_write_log" ./src/flutter_ffi.rs || { echo "[FAIL] v150: dart log bridge missing"; exit 1; }
           echo "[OK] v150: invite watch wired"
 
+      - name: winp dxgi fix (v116)
+        shell: bash
+        run: |
+          python3 patches/patch_winp_dxgi.py .
+          test $(grep -c "prod-line v116" ./libs/scrap/src/common/dxgi.rs) -ge 4 || { echo "[FAIL] v116 winp dxgi markers missing"; exit 1; }
+
       - name: lan quality (v116)
         shell: bash
         run: |
@@ -1801,6 +1809,47 @@ jobs:
       # 在编译前 fail fast，并给出带文件名/行号的可读错误。
       # 已离线验证：hbb_common 在打完全部网络补丁后可编译通过（rustc 语法级）。
 
+      - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
+        # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
+        # 「启用P2P增强」(super_p2p_enforcement) 一个复选框。
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
+        # Authenticated port-prediction stack: public STUN NAT classification +
+        # HMAC probe against candidates; acceptor self-observes and reports its
+        # public mapping (V187a). fire-and-forget on a detached thread.
+        #
+        # [V217] 单一开关收敛：原先由两个键控制 ——
+        #   enable_super_p2p（总开关）与 super_p2p_enforcement（强度）。
+        #   但 enable_super_p2p 在前端 forms.py / services.py / generator.html
+        #   三处均无定义（死键），表达式恒解析为 'true'，导致 super-p2p 在所有
+        #   构建中强制启用、用户无法关闭。现统一由 super_p2p_enforcement 驱动：
+        #     勾选（'on'）      -> DEFAULT_ENABLED=true  + ENFORCEMENT="on"
+        #                             探测验证通过即切 UDP 直连（全功能）
+        #     取消勾选（'observe'）-> DEFAULT_ENABLED=false + ENFORCEMENT="observe_only"
+        #                             enabled() 返回 false，observe 任务在入口直接
+        #                             return，零探测开销（完全停用）
+        # 运行时仍可用本地选项 enable-super-p2p 覆盖烘焙默认值（空=用默认）。
+        #
+        # 门控说明：用 `!= 'observe'` 而非 `== 'on'`，键缺失时 fromJson 返回 null
+        # 条件成立，保持「默认启用」的向后兼容行为（旧版 generator 不下发该键
+        # 也不会关掉功能）。取消勾选时 super-p2p 与 V200 一起跳过，Rust 侧保留
+        # 上游原生 test_nat_type，不存在调用已移除模块的编译风险。
+        #
+        # 表达式说明：SUPER_P2P_DEFAULT 需要把 'observe' 显式映射成 'false'
+        #（补丁内部只在 env 恰为 "false" 时才改写 DEFAULT_ENABLED），故用
+        # `== 'observe' && 'false' || 'true'` 而非直接透传该键。
+        env:
+          SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement == 'observe' && 'false' || 'true' }}
+          SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'on' }}
+          SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
+        shell: bash
+        run: |
+          python3 patches/patch_super_p2p.py .
+          # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
+          # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
+          # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
+          # super_p2p command above (which adds the module). Only wired here
+          # because super_p2p is currently applied only in this windows workflow.
+          python3 patches/patch_remove_test_nat_type.py .
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
