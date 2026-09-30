@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: a927a80dae084913f71238921c3bf4de5747548a
+          ref: 05a43ec2d7a779ba9a7673e8ab26ce3b196931f8
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
@@ -1369,7 +1369,32 @@ jobs:
         shell: bash
         run: |
           python3 patches/disable_install.py
-      
+
+      - name: Disable_desktop_icon
+        if: fromJson(inputs.extras).disable_desktop_icon == 'true'
+        shell: bash
+        run: |
+          # V216: never create Desktop / Start Menu / Startup-folder shortcuts.
+          #
+          # The primary fix lives in windows.rs::get_silent_install_options(),
+          # which upstream hard-codes to "desktopicon startmenu [printer]".
+          # Neutralizing only the copy blocks inside install_me() is NOT enough:
+          # the installer runs --silent-install (patch #0011) and that options
+          # string arrives straight from get_silent_install_options().
+          python3 patches/disable_desktop_icon.py .
+          # Gate: both silent-install return branches must no longer carry the
+          # shortcut flags, otherwise a silent install recreates the icons.
+          grep -q 'silent install: no shortcut at all' src/platform/windows.rs \
+            || { echo "[FAIL] v216: get_silent_install_options not stripped"; exit 1; }
+          # Gate: install_service() has its own Startup-folder shortcut block
+          # that never passes through install_me().
+          grep -q 'install_service: no Startup tray shortcut' src/platform/windows.rs \
+            || { echo "[FAIL] v216: install_service Startup shortcut not neutralized"; exit 1; }
+          # Gate: the interactive wizard checkboxes must be gone.
+          grep -q "// Option(desktopicon, label: 'Create desktop icon')" \
+            flutter/lib/desktop/pages/install_page.dart \
+            || { echo "[FAIL] v216: install_page desktopicon option not hidden"; exit 1; }
+
       - name: Hide_general_server and tray_stop_service.py
         if: fromJson(inputs.extras).hideService_Start_Stop == 'true'
         shell: bash
