@@ -465,6 +465,7 @@ jobs:
           rm ./flutter/temp_dependency.txt
 
       - name: Apply patch for auto silent update
+        if: ${{ fromJson(inputs.extras).auto_silent_update == 'true' && (env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') }}
         run: |
           python3 patches/patch_auto_silent_update.py
 
