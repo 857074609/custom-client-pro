@@ -496,6 +496,7 @@ jobs:
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
 
       - name: Apply domestic STUN fallback (multi-level)
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
         shell: bash
         run: |
           python3 patches/hand_stun.py
@@ -913,6 +914,167 @@ jobs:
           grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
           grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
           echo "[OK] V105 login watchdog + stale-password self-heal"
+      # ---- V219: high-priority patches aligned with generator-windows.yml ----
+      - name: Inject TCP keepalive + DNS cache (v98)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v98 网络加固（移植自 HopToDesk 官方 1.46.40）：
+          # 1) patch_tcp_keepalive.py：所有出站纯 TCP 连接（rendezvous/hbbs_http/直连/中继）
+          #    与 direct_server 入站连接启用内核级 keepalive（30s 空闲/10s 间隔），
+          #    解决 NAT 网关静默丢空闲会话导致的"假在线"。
+          # 2) patch_dns_cache.py：hbbs 域名解析结果缓存 300s + 多地址轮询回退，
+          #    全部失败时自动清缓存强制重解析。
+          # 二者均锚定上游 1.4.9 原始状态，必须先于其他补丁运行；锚点缺失即构建失败。
+          python3 patches/patch_tcp_keepalive.py .
+          grep -q "pub fn set_tcp_keepalive" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 set_tcp_keepalive"; exit 1; }
+          grep -q "prod-line keepalive" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs 缺少 keepalive 标记"; exit 1; }
+          python3 patches/patch_dns_cache.py .
+          grep -q "pub async fn resolve_cached" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 resolve_cached"; exit 1; }
+          grep -q "prod-line dns-cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 dns-cache 标记"; exit 1; }
+          echo "[OK] v98 TCP keepalive + DNS cache 注入完成"
+
+      - name: Inject happy-eyeballs concurrent connect (V101)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V101: FramedStream::new RFC 6555 并发连接竞速。
+          # 修复双栈域名(A+AAAA)下顺序迭代、每个地址死等 CONNECT_TIMEOUT(18s) 的卡顿：
+          # 解析出的所有地址并发 connect（250ms 探测），先通者胜、其余取消；
+          # 全失败时回退传统顺序连接（保留单地址慢路径语义）。
+          # 锚定上游 1.4.9 原始状态，标记缺失即构建失败。
+          # 注意：当前 connect_tcp_local 仍逐个传单 IP 给 FramedStream::new，
+          # 故 race 退化为单次 connect（V102 会把 race 上提到 connect_tcp_local 层）。
+          python3 patches/patch_FramedStream_happy_eyeballs.py .
+          grep -q "race_connect_all" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing race_connect_all"; exit 1; }
+          grep -q "prod-line v101 happy-eyeballs" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing v101 marker"; exit 1; }
+          echo "[OK] V101 happy-eyeballs concurrent connect injected"
+
+      - name: Inject happy-eyeballs lift + DNS timeout + split metrics (V102)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V102: lift happy-eyeballs race to connect_tcp_local (V101's inner race
+          # degenerates when fed a single IP) + cap DNS lookups with a 5s timeout
+          # (a dead resolver could otherwise stall connect past CONNECT_TIMEOUT) +
+          # log DNS-resolve time and connect-race time separately for diagnosis.
+          # Requires V101 already injected (FramedStream::new present). Anchors are
+          # unique single-occurrence strings; marker missing -> build fails.
+          python3 patches/patch_V102_happy_eyeballs_lift.py .
+          grep -q "prod-line v102 happy-eyeballs-lift" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v102 marker"; exit 1; }
+          grep -q "DNS_LOOKUP_TIMEOUT_SEC" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DNS_LOOKUP_TIMEOUT_SEC"; exit 1; }
+          # [LnDesk dns-flush] A DDNS host that moved to a new IP stays pinned inside
+          # the OS resolver cache (Windows Dnscache honours the A-record TTL), so the
+          # client keeps dialling the dead address and never reconnects. Verify the
+          # flush hook actually shipped -- at patch time, not 40 minutes into the build.
+          grep -q "pub fn flush_os_dns_cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing flush_os_dns_cache"; exit 1; }
+          grep -q "DnsFlushResolverCache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DnsFlushResolverCache FFI"; exit 1; }
+          grep -qF "[dns-flush] OS resolver cache flushed" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing the dns-flush log marker"; exit 1; }
+          grep -q "flush_os_dns_cache();" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs: the dns-flush hook is defined but never called"; exit 1; }
+          echo "[OK] V102 happy-eyeballs lift + DNS timeout injected"
+          echo "[OK] dns-flush hook verified (OS resolver cache cleared once all addrs fail)"
+
+      - name: winp dxgi fix (v116)
+        shell: bash
+        run: |
+          python3 patches/patch_winp_dxgi.py .
+          test $(grep -c "prod-line v116" ./libs/scrap/src/common/dxgi.rs) -ge 4 || { echo "[FAIL] v116 winp dxgi markers missing"; exit 1; }
+
+      - name: lan quality (v116)
+        shell: bash
+        run: |
+          python3 patches/patch_lan_quality.py .
+          grep -q "LAN_ULTRA_IMAGE_QUALITY" ./src/client.rs || { echo "[FAIL] v116 lan quality missing in client.rs"; exit 1; }
+          grep -q "kOptionImageSharpening" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening slider missing in custom-quality dialog"; exit 1; }
+          grep -q "saveSharpening" ./flutter/lib/common/widgets/dialog.dart || { echo "[FAIL] v116 sharpening persistence missing in custom-quality dialog"; exit 1; }
+          if grep -q "imageSharpeningDialog" ./flutter/lib/common/widgets/toolbar.dart; then echo "[FAIL] v116 sharpening must not sit in the action menu"; exit 1; fi
+          grep -q "apply_image_sharpening" ./src/client.rs || { echo "[FAIL] v116 sharpening filter missing in client.rs"; exit 1; }
+          # [v118] The sharpening knob must use the same row layout as the
+          # bitrate / FPS rows (slider3/value1/label2) and the grey tip
+          # paragraph must be gone. The layout token is the only searchable
+          # proof that the row was restyled instead of left full-width.
+          grep -q "slider3/value1/label2" ./flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] v118: sharpening row layout not restyled"; exit 1; }
+          if grep -q "Image sharpening tip" ./flutter/lib/common/widgets/dialog.dart; then echo "[FAIL] v118: sharpening tip paragraph must be removed"; exit 1; fi
+
+      - name: Rendezvous family-match DNS probe (v100, IPv6 preferred, default-on)
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe' || fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          # Default-on client-side DNS probe: when enable-dual-stack-lookup is
+          # set (or absent, because the "enable-" prefix defaults to enabled) AND
+          # the local host has a usable IPv6 stack, resolve AAAA first (500ms
+          # ceiling) before falling back to the legacy IPv4 happy-eyeballs path.
+          # Set enable-dual-stack-lookup=N to disable.
+          python3 patches/patch_rendezvous_family_match.py .
+          grep -qF "prod-line v100 family-match" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v100 family-match probe"; exit 1; }
+          echo "[OK] V100 rendezvous family-match (IPv6 preferred, default-on DNS probe)"
+
+      - name: Rendezvous family-match settings toggle (v100 UI)
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe' || fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
+          # Adds a Settings > Network switch ("DNS resolve by address family
+          # (IPv6 preferred)") that writes the local config key
+          # enable-dual-stack-lookup, which the Rust probe above reads. The
+          # "enable-" prefix makes it default-on.
+          python3 patches/patch_family_match_setting.py .
+          grep -qF "prod-line v100 family-match-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing v100 family-match toggle"; exit 1; }
+          # [v175] switchWidget() funnels the title and the tooltip through
+          # listTile() -> translate(), so the row stays English unless cn.rs
+          # carries both strings byte-for-byte. Asserted only when the
+          # customized cn.rs is in play: the upstream-only variant compiles the
+          # stock upstream file and must not be forced to use ours.
+          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
+            grep -qF '("DNS resolve by address family (IPv6 preferred)"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match toggle title"; exit 1; }
+            grep -qF '("Enable IPv6-first DNS resolution for P2P connections.' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match tooltip"; exit 1; }
+          fi
+          echo "[OK] V100 rendezvous family-match UI toggle"
+
+      - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
+        # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
+        # 「启用P2P增强」(super_p2p_enforcement) 一个复选框。
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
+        # Authenticated port-prediction stack: public STUN NAT classification +
+        # HMAC probe against candidates; acceptor self-observes and reports its
+        # public mapping (V187a). fire-and-forget on a detached thread.
+        #
+        # [V217] 单一开关收敛：原先由两个键控制 ——
+        #   enable_super_p2p（总开关）与 super_p2p_enforcement（强度）。
+        #   但 enable_super_p2p 在前端 forms.py / services.py / generator.html
+        #   三处均无定义（死键），表达式恒解析为 'true'，导致 super-p2p 在所有
+        #   构建中强制启用、用户无法关闭。现统一由 super_p2p_enforcement 驱动：
+        #     勾选（'on'）      -> DEFAULT_ENABLED=true  + ENFORCEMENT="on"
+        #                             探测验证通过即切 UDP 直连（全功能）
+        #     取消勾选（'observe'）-> DEFAULT_ENABLED=false + ENFORCEMENT="observe_only"
+        #                             enabled() 返回 false，observe 任务在入口直接
+        #                             return，零探测开销（完全停用）
+        # 运行时仍可用本地选项 enable-super-p2p 覆盖烘焙默认值（空=用默认）。
+        #
+        # 门控说明：用 `!= 'observe'` 而非 `== 'on'`，键缺失时 fromJson 返回 null
+        # 条件成立，保持「默认启用」的向后兼容行为（旧版 generator 不下发该键
+        # 也不会关掉功能）。取消勾选时 super-p2p 与 V200 一起跳过，Rust 侧保留
+        # 上游原生 test_nat_type，不存在调用已移除模块的编译风险。
+        #
+        # 表达式说明：SUPER_P2P_DEFAULT 需要把 'observe' 显式映射成 'false'
+        #（补丁内部只在 env 恰为 "false" 时才改写 DEFAULT_ENABLED），故用
+        # `== 'observe' && 'false' || 'true'` 而非直接透传该键。
+        env:
+          SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement == 'observe' && 'false' || 'true' }}
+          SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'on' }}
+          SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
+        shell: bash
+        run: |
+          python3 patches/patch_super_p2p.py .
+          # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
+          # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
+          # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
+          # super_p2p command above (which adds the module). Only wired here
+          # because super_p2p is currently applied only in this windows workflow.
+          python3 patches/patch_remove_test_nat_type.py .
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）

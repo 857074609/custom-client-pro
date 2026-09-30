@@ -433,6 +433,7 @@ jobs:
           python3 patches/patch_auto_silent_update.py
 
       - name: Apply domestic STUN fallback (multi-level)
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
         shell: bash
         run: |
           python3 patches/hand_stun.py

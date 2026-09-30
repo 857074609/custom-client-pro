@@ -997,6 +997,7 @@ jobs:
         #  sed -i '/fontSize:/ { N; s/18,/16,/; }' ./flutter/lib/common.dart
             
       - name: Apply domestic STUN fallback (multi-level)
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
         # 国内优先 + 国外兜底的 STUN 注入到客户端（NAT 探测 common.rs + WebRTC ICE webrtc.rs 两条路径），
         # 修复国内网络下默认国外 STUN 慢/被墙导致 P2P 打洞失败、只能走中继或连接失败的问题。
         # 必须对所有构建类型生效（原先只在 direction=both && hide_sensitive_ui 时运行，普通构建仍是国外 STUN）。
@@ -1908,6 +1909,7 @@ jobs:
           python3 patches/patch_remote_tab_iroh_badge.py .
 
       - name: Drag local files into remote session (V104)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1938,6 +1940,7 @@ jobs:
           echo "[OK] V104 remote-session drop-file transfer (visible FT window + silent upload)"
 
       - name: Controlled-side desktop redirection-aware drop target (V107 desktop-redirect)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
         shell: bash
         run: |
           # [V107-desktop-redirect] Feature ABANDONED (eighth round): the user
@@ -1951,6 +1954,7 @@ jobs:
           echo "[OK] V107 desktop-redirect patch (intentionally no-op — feature abandoned)"
 
       - name: Auto-overwrite for headless file transfer (V104-fix)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
         shell: bash
         run: |
           # Headless drag-drop transfers must NOT show the overwrite confirmation
@@ -1964,6 +1968,7 @@ jobs:
           echo "[OK] V104-fix headless auto-overwrite + consistent destination"
 
       - name: Headless file transfer without peer confirmation (V105 headless-drop)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
         shell: bash
         run: |
           # Unattended drag-drop: the control side opens a brand-new FILE TRANSFER
@@ -1987,6 +1992,7 @@ jobs:
           echo "[OK] V105 headless file transfer (no peer confirmation)"
 
       - name: Drop-initiated FT window shrinks to mini transfer card (V107-mini)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
         shell: bash
         run: |
           # V107-mini: the drag-drop FT window is resized to a 240x480
@@ -2020,6 +2026,7 @@ jobs:
           echo "[OK] V105 login watchdog + stale-password self-heal"
 
       - name: Rendezvous family-match DNS probe (v100, IPv6 preferred, default-on)
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe' || fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           # Default-on client-side DNS probe: when enable-dual-stack-lookup is
@@ -2032,6 +2039,7 @@ jobs:
           echo "[OK] V100 rendezvous family-match (IPv6 preferred, default-on DNS probe)"
 
       - name: Rendezvous family-match settings toggle (v100 UI)
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe' || fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
           # Adds a Settings > Network switch ("DNS resolve by address family
