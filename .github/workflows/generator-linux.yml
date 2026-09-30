@@ -419,6 +419,7 @@ jobs:
           python3 patches/patch_monitor_switch.py .
 
       - name: disable_e2ee
+        if: fromJson(inputs.extras).disable_e2ee == 'true'
         shell: bash
         run: python3 patches/patch_common_client_disable_e2ee.py
 
