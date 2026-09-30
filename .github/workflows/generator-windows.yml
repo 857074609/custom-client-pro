@@ -187,7 +187,21 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 6df72af504a05a0ad259e2fdbd13779e553c9f06
+          ref: 03e7d501ea76cf9d6bd68d541315514a234ccaba
+
+      - name: Install invite Dart module (build contract, no watcher)
+        shell: bash
+        run: |
+          # [v216-fix] desktop_home_page_new.dart / connection_page_both.dart 都会 import
+          # 'package:flutter_hbb/common/invite.dart'，而该模块原先只由 patch_invite.py(v143)
+          # 在「启用邀请」勾选时才安装 → 取消勾选时 flutter_assemble 必失败：
+          #   connection_page.dart(10,8): error GFAA2A68C: Error when reading
+          #   'lib/common/invite.dart': The system cannot find the file specified.
+          # 本步骤只安装 Dart 模块 + local_notifier 依赖，**不改 main.dart**，
+          # 因此 startInviteWatcher() 永不触发；邀请功能仍由 addinvite 复选框独占控制。
+          python3 patches/patch_invite_module.py .
+          test -f flutter/lib/common/invite.dart || { echo "[FAIL] invite.dart not installed"; exit 1; }
+          echo "[OK] invite Dart module installed (watcher not started)"
 
       - name: Apply activate_os no-right-click patch
         run: python3 patches/patch_activate_os_fix.py .
