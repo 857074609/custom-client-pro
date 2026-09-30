@@ -1424,7 +1424,17 @@ jobs:
            grep -q '"Restart service"' ./src/lang/cn.rs || { echo "[FAIL] restart_srver: cn.rs lacks the Restart service key (button will show English)"; exit 1; }
            echo "[OK] cn.rs carries the localized Restart service key"
 
+      - name: input hover fix (v177)
+        shell: bash
+        run: |
+          # [v177] Stop a spurious right-click being sent to the controlled side
+          # right after connect in control mode (some platforms report a non-zero
+          # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
+          # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
+          python3 patches/patch_input_hover_fix.py .
+
       - name: server_otp (v86)
+        if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
@@ -1439,10 +1449,6 @@ jobs:
           # http_service.dart exposes post/get/put/delete and re-exports Response,
           # so _requestOtp() compiles unchanged. Gate here, not 40 min into the build.
           python3 patches/patch_linux_otp_http_alias.py .
-          # [v177] Stop a spurious right-click being sent to the controlled side
-          # right after connect in control mode (some platforms report a non-zero
-          # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
-          python3 patches/patch_input_hover_fix.py .
           if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
              && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v131: peer_card.dart still binds two libraries to 'http' (ambiguous)"; exit 1

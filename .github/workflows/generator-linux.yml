@@ -509,12 +509,20 @@ jobs:
         shell: bash
         run: python3 patches/hide_rustdesk_branding.py
 
+      - name: input hover fix (v177)
+        shell: bash
+        run: |
+          # [v177] Stop a spurious right-click being sent to the controlled side
+          # right after connect in control mode (some platforms report a non-zero
+          # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
+          # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
+          python3 patches/patch_input_hover_fix.py .
+
       - name: server_otp (v86)
+        if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
         shell: bash
         run: |
           python3 patches/patch_server_otp.py .
-          # [v177] Stop a spurious right-click in control mode on first hover.
-          python3 patches/patch_input_hover_fix.py .
           # [v120] OTP auto-retry. patch_server_otp.py injects the armOtpRetry()
           # CALLS into peer_card.dart and leaves the "[LNDESK_OTP_AUTORETRY_HOOK]"
           # markers that this line consumes; patch_otp_autoretry.py DEFINES
