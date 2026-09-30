@@ -1522,10 +1522,12 @@ jobs:
           grep -q "TIME_OTP_POLL" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll constant missing in sync.rs"; exit 1; }
           grep -q "from_millis(500)" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll interval is not 500ms"; exit 1; }
           grep -n "TIME_OTP_POLL" ./src/hbbs_http/sync.rs
-      - name: invite remote assistance (v143)
+      - name: Invite feature (v143 remote assistance + v150 watch)
         if: fromJson(inputs.extras).addinvite == 'true'
         shell: bash
         run: |
+          # [V218] 合并 addinvite 控制的 2 个邀请步骤（v143 邀请 + v150 托盘监听）。
+          # 两者条件完全相同、相邻、各跑各的 patch 脚本，合并无行为变化。
           python3 patches/patch_invite.py .
           # patch_invite.py installs the Dart module unconditionally but SKIPS a
           # Rust/Dart anchor that is absent (tolerant), so assert the pieces that
@@ -1541,10 +1543,9 @@ jobs:
           grep -q "_showSystemNotification" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: system toast helper missing"; exit 1; }
           grep -q "local_notifier" ./flutter/pubspec.yaml || { echo "[FAIL] v148: local_notifier dependency missing"; exit 1; }
           echo "[OK] v143: invite module wired"
-      - name: invite watch (v150)
-        if: fromJson(inputs.extras).addinvite == 'true'
-        shell: bash
-        run: |
+          # ----------------------------------------------------------------------
+          # v150 invite watch（原独立步骤，条件与 v143 完全相同，合并到此）
+          # ----------------------------------------------------------------------
           python3 patches/patch_invite_watch.py .          # [LnDesk v150] brand name for the toast, injected from the
           # workflow input (RustDesk default for stock builds).
           APPNAME="${{ inputs.appname }}"
@@ -1577,10 +1578,21 @@ jobs:
           grep -q "kBrandAppName" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: brand name not used by the toast"; exit 1; }
           grep -q "main_write_log" ./src/flutter_ffi.rs || { echo "[FAIL] v150: dart log bridge missing"; exit 1; }
           echo "[OK] v150: invite watch wired"
-      - name: iroh transport (v88)
+
+      - name: iroh P2P transport suite (v88 transport + v215 prewarm + v88 heartbeat + v88 menu)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
+          # [V218] 合并 enable_iroh_direct 控制的 4 个 iroh 步骤。
+          # 四者条件完全相同、均为 bash run、各改各文件互不依赖；
+          # 夹在其间的 v116 quality 步骤与 iroh 无任何关联，保持原位不动。
+          #
+          # 执行顺序保持原样：transport -> prewarm -> heartbeat -> menu。
+          #
+          # auto iroh (v149) 故意不并入本步：patch_auto_iroh.py 的注入锚点是
+          # patch_family_match_setting.py 写下的
+          #   // [prod-line v100 family-match-ui] default-on IPv6 DNS probe toggle
+          # 锚点缺失时 apply_one 直接失败，故它必须排在那一步之后。
           python3 patches/patch_iroh_transport.py .
           grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
           grep -q "iroh_public_key_for_ui" ./src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs missing iroh node id bridge (IP Direct panel would show no iroh row)"; exit 1; }
@@ -1613,11 +1625,9 @@ jobs:
           ! grep -q "__IROH_RELAY_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_3 placeholder not substituted"; exit 1; }
           ! grep -q "__IROH_DNS_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL_3 placeholder not substituted"; exit 1; }
           grep -q "CUSTOM_IROH_RELAY_URL_3" ./src/iroh_transport.rs || { echo "[FAIL] iroh third backup relay constant missing"; exit 1; }
-
-      - name: iroh direct prewarm (v215)
-        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
-        shell: bash
-        run: |
+          # ----------------------------------------------------------------------
+          # v215 prewarm
+          # ----------------------------------------------------------------------
           # [v215] After a long idle (>6.5s) iroh stops trusting the peer's
           # validated direct address (TRUST_UDP_ADDR_DURATION, best_addr.rs:10),
           # so the first dial degrades to MIXED and the relay usually wins the
@@ -1630,6 +1640,44 @@ jobs:
           grep -q 'futures-util' ./Cargo.toml || { echo "[FAIL] v215 needs futures-util for StreamExt"; exit 1; }
           grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
           ! grep -q "default_relay_map" ./src/iroh_transport.rs || { echo "[FAIL] n0 relay merge still present"; exit 1; }
+          # ----------------------------------------------------------------------
+          # v88 heartbeat
+          # ----------------------------------------------------------------------
+          python3 patches/patch_iroh_heartbeat.py .
+          grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
+          # ----------------------------------------------------------------------
+          # v88 menu
+          # ----------------------------------------------------------------------
+          python3 patches/patch_iroh_menu.py .
+          if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
+            grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
+          fi
+          # [v119] Iroh Direct is OTP-only and must NOT touch the locally saved
+          # password: no destructive mainForgetPassword (v117-revert behaviour)
+          # and no saved-password-first reversal either. The Rust fallback that
+          # read PeerConfig::load(...).password on the iroh path is removed too
+          # (see patch_iroh_transport.py).
+          #
+          # Scope note (a whole-file grep is a false positive here):
+          #   * upstream peer_card.dart legitimately calls mainForgetPassword in
+          #     its own "forget password" menu entries, so only the
+          #     _irohDirectConnect body may be checked.
+          #   * upstream src/client.rs legitimately calls PeerConfig::load in
+          #     load_config(), so the patches-only marker
+          #     iroh_node_id_to_rustdesk_password is the needle.
+          grep -q "\[v119\] Passwordless iroh path" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v119: iroh OTP-only path not injected"; exit 1; }
+          if awk '/Future<void> _irohDirectConnect\(/{f=1} f{print} f&&/^  }$/{exit}' ./flutter/lib/common/widgets/peer_card.dart | grep -q "mainForgetPassword"; then
+            echo "[FAIL] v119: _irohDirectConnect still deletes the saved password"
+            exit 1
+          fi
+          if grep -q "iroh_node_id_to_rustdesk_password" src/client.rs; then
+            echo "[FAIL] v119: iroh saved-password fallback must be removed from client.rs"
+            exit 1
+          fi
+          if grep -q "Saved password FIRST" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v117-revert: iroh saved-password-first must be removed"
+            exit 1
+          fi
 
       - name: winp dxgi fix (v116)
         shell: bash
@@ -1669,47 +1717,6 @@ jobs:
           ! grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116-fix4 qp_for_ratio must NOT survive (dead code removed)"; exit 1; }
           ! grep -q "patch/0030-nvenc" ./res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v116-fix4 portfile not reverted"; exit 1; }
 
-      - name: iroh heartbeat (v88)
-        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
-        shell: bash
-        run: |
-          python3 patches/patch_iroh_heartbeat.py .
-          grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
-
-      - name: iroh menu (v88)
-        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
-        shell: bash
-        run: |
-          python3 patches/patch_iroh_menu.py .
-          if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
-            grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
-          fi
-          # [v119] Iroh Direct is OTP-only and must NOT touch the locally saved
-          # password: no destructive mainForgetPassword (v117-revert behaviour)
-          # and no saved-password-first reversal either. The Rust fallback that
-          # read PeerConfig::load(...).password on the iroh path is removed too
-          # (see patch_iroh_transport.py).
-          #
-          # Scope note (a whole-file grep is a false positive here):
-          #   * upstream peer_card.dart legitimately calls mainForgetPassword in
-          #     its own "forget password" menu entries, so only the
-          #     _irohDirectConnect body may be checked.
-          #   * upstream src/client.rs legitimately calls PeerConfig::load in
-          #     load_config(), so the patches-only marker
-          #     iroh_node_id_to_rustdesk_password is the needle.
-          grep -q "\[v119\] Passwordless iroh path" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v119: iroh OTP-only path not injected"; exit 1; }
-          if awk '/Future<void> _irohDirectConnect\(/{f=1} f{print} f&&/^  }$/{exit}' ./flutter/lib/common/widgets/peer_card.dart | grep -q "mainForgetPassword"; then
-            echo "[FAIL] v119: _irohDirectConnect still deletes the saved password"
-            exit 1
-          fi
-          if grep -q "iroh_node_id_to_rustdesk_password" src/client.rs; then
-            echo "[FAIL] v119: iroh saved-password fallback must be removed from client.rs"
-            exit 1
-          fi
-          if grep -q "Saved password FIRST" ./flutter/lib/common/widgets/peer_card.dart; then
-            echo "[FAIL] v117-revert: iroh saved-password-first must be removed"
-            exit 1
-          fi
       - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
         run: |
@@ -1750,7 +1757,10 @@ jobs:
             echo "[FAIL] v116 hwcodec cqp fork must NOT be in lock (reverted for V116; lands in V117)"
             exit 1
           fi
-      - name: Apply super-p2p observe patch (V186/V187)
+      - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
+        # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
+        # 「启用P2P增强」(super_p2p_enforcement) 一个复选框。
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
         # Authenticated port-prediction stack: public STUN NAT classification +
         # HMAC probe against candidates; acceptor self-observes and reports its
         # public mapping (V187a). fire-and-forget on a detached thread.
@@ -1767,23 +1777,27 @@ jobs:
         #                             return，零探测开销（完全停用）
         # 运行时仍可用本地选项 enable-super-p2p 覆盖烘焙默认值（空=用默认）。
         #
+        # 门控说明：用 `!= 'observe'` 而非 `== 'on'`，键缺失时 fromJson 返回 null
+        # 条件成立，保持「默认启用」的向后兼容行为（旧版 generator 不下发该键
+        # 也不会关掉功能）。取消勾选时 super-p2p 与 V200 一起跳过，Rust 侧保留
+        # 上游原生 test_nat_type，不存在调用已移除模块的编译风险。
+        #
         # 表达式说明：SUPER_P2P_DEFAULT 需要把 'observe' 显式映射成 'false'
         #（补丁内部只在 env 恰为 "false" 时才改写 DEFAULT_ENABLED），故用
         # `== 'observe' && 'false' || 'true'` 而非直接透传该键。
-        # 键缺失时 fromJson 返回 null，两个条件均为 false，回退 'on'/'true'，
-        # 保持「默认启用」的向后兼容行为（旧版 generator 不下发该键也不会关掉功能）。
         env:
           SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement == 'observe' && 'false' || 'true' }}
           SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'on' }}
           SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
-        run: python3 patches/patch_super_p2p.py .
-      - name: Remove native test_nat_type (V200) - replaced by super_p2p reflector/STUN self-report
-        # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
-        # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
-        # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
-        # super_p2p patch (which adds the module). Only wired here because
-        # super_p2p is currently applied only in this windows workflow.
-        run: python3 patches/patch_remove_test_nat_type.py .
+        shell: bash
+        run: |
+          python3 patches/patch_super_p2p.py .
+          # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
+          # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
+          # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
+          # super_p2p command above (which adds the module). Only wired here
+          # because super_p2p is currently applied only in this windows workflow.
+          python3 patches/patch_remove_test_nat_type.py .
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
