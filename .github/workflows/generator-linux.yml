@@ -168,7 +168,7 @@ jobs:
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','irohRelayUrl2','irohRelayUrl3','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','irohRelayUrl2','irohRelayUrl3','irohDnsUrl','irohDnsUrl2',''irohDnsUrl3','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
@@ -177,7 +177,14 @@ jobs:
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
               _relay = data.get('irohRelayUrl','') or ''
               _host = _relay.split('//')[-1].split(':')[0] if _relay else ''
-              _dnsu = ((('https' if _relay.startswith(('wss://', 'https://')) else 'http') + '://' + _host + ':3341/pkarr')) if _relay else ''
+              # [v215] irohDnsUrl overrides the derived pkarr URL. Relay(3340) and
+              # pkarr(3341) can speak different protocols on the same host -- e.g.
+              # 3340 plain http while 3341 is https with a real certificate. Scheme
+              # inheritance from the relay URL is then wrong, so an explicit
+              # irohDnsUrl wins; leaving it empty keeps the old derivation.
+              _dnsu = (data.get('irohDnsUrl','') or '').strip() if _relay else ''
+              if _relay and not _dnsu:
+                  _dnsu = (('https' if _relay.startswith(('wss://', 'https://')) else 'http') + '://' + _host + ':3341/pkarr')
               if _dnsu:
                   print('::add-mask::' + _dnsu)
               if _host:
@@ -186,7 +193,9 @@ jobs:
               e.write(f\"IROH_DNS_URL={_dnsu}\n\")
               _relay2 = data.get('irohRelayUrl2','') or ''
               _host2 = _relay2.split('//')[-1].split(':')[0] if _relay2 else ''
-              _dnsu2 = ((('https' if _relay2.startswith(('wss://', 'https://')) else 'http') + '://' + _host2 + ':3341/pkarr')) if _relay2 else ''
+              _dnsu2 = (data.get('irohDnsUrl2','') or '').strip() if _relay2 else ''
+              if _relay2 and not _dnsu2:
+                  _dnsu2 = (('https' if _relay2.startswith(('wss://', 'https://')) else 'http') + '://' + _host2 + ':3341/pkarr')
               if _dnsu2:
                   print('::add-mask::' + _dnsu2)
               if _host2:
@@ -195,7 +204,9 @@ jobs:
               e.write(f\"IROH_DNS_URL_2={_dnsu2}\n\")
               _relay3 = data.get('irohRelayUrl3','') or ''
               _host3 = _relay3.split('//')[-1].split(':')[0] if _relay3 else ''
-              _dnsu3 = ((('https' if _relay3.startswith(('wss://', 'https://')) else 'http') + '://' + _host3 + ':3341/pkarr')) if _relay3 else ''
+              _dnsu3 = (data.get('irohDnsUrl3','') or '').strip() if _relay3 else ''
+              if _relay3 and not _dnsu3:
+                  _dnsu3 = (('https' if _relay3.startswith(('wss://', 'https://')) else 'http') + '://' + _host3 + ':3341/pkarr')
               if _dnsu3:
                   print('::add-mask::' + _dnsu3)
               if _host3:
