@@ -520,6 +520,20 @@ jobs:
           grep -q "CUSTOM_IROH_RELAY_URL_2" ./src/iroh_transport.rs || { echo "[FAIL] iroh backup relay constant missing"; exit 1; }
           grep -q "backup self-hosted pkarr publish+resolve" ./src/iroh_transport.rs || { echo "[FAIL] iroh backup pkarr discovery missing"; exit 1; }
 
+      - name: iroh direct prewarm (v215)
+        shell: bash
+        run: |
+          # [v215] After a long idle (>6.5s) iroh stops trusting the peer's
+          # validated direct address (TRUST_UDP_ADDR_DURATION, best_addr.rs:10),
+          # so the first dial degrades to MIXED and the relay usually wins the
+          # race. This resolves the peer through the configured discovery
+          # services and injects the direct addresses BEFORE the dial, widening
+          # the candidate set. Non-blocking: the dial starts immediately, so
+          # this can only add candidates, never delay the connection.
+          python3 patches/patch_iroh_direct_prewarm.py .
+          grep -q "v215_prewarm_direct" ./src/iroh_transport.rs || { echo "[FAIL] v215 prewarm helper missing"; exit 1; }
+          grep -q 'futures-util' ./Cargo.toml || { echo "[FAIL] v215 needs futures-util for StreamExt"; exit 1; }
+
       - name: iroh heartbeat (v88)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
