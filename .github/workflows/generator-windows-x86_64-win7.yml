@@ -472,6 +472,113 @@ jobs:
           grep -q "_HomeLockGate" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] home-lock: _HomeLockGate missing"; exit 1; }
           echo "[OK] home-lock applied"
 
+      # === [V217] 网络加固（自 generator-windows.yml 对齐）===
+      # 以下三步此前仅存在于 generator-windows.yml，win7 工作流完全缺失，
+      # 导致 win7 产物缺少 TCP keepalive / DNS 缓存 / happy-eyeballs 并发连接能力：
+      #   - NAT 网关静默丢弃空闲会话 -> 表现为「假在线」，重连才恢复；
+      #   - 双栈域名(A+AAAA)顺序迭代，每个地址死等 CONNECT_TIMEOUT(18s)；
+      #   - DDNS 主机换 IP 后被 OS DNS 缓存钉死在旧地址，客户端持续拨空。
+      # 三者均锚定上游 1.4.9 原始状态，必须先于其他补丁运行；锚点缺失即构建失败。
+      # 已离线干跑验证（纯净 1.4.9 + 完整 hbb_common）全部 exit 0，断言全绿。
+
+      - name: Inject TCP keepalive + DNS cache (v98)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v98 网络加固（移植自 HopToDesk 官方 1.46.40）：
+          # 1) patch_tcp_keepalive.py：所有出站纯 TCP 连接（rendezvous/hbbs_http/直连/中继）
+          #    与 direct_server 入站连接启用内核级 keepalive（30s 空闲/10s 间隔），
+          #    解决 NAT 网关静默丢空闲会话导致的"假在线"。
+          # 2) patch_dns_cache.py：hbbs 域名解析结果缓存 300s + 多地址轮询回退，
+          #    全部失败时自动清缓存强制重解析。
+          # 二者均锚定上游 1.4.9 原始状态，必须先于其他补丁运行；锚点缺失即构建失败。
+          python3 patches/patch_tcp_keepalive.py .
+          grep -q "pub fn set_tcp_keepalive" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 set_tcp_keepalive"; exit 1; }
+          grep -q "prod-line keepalive" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs 缺少 keepalive 标记"; exit 1; }
+          python3 patches/patch_dns_cache.py .
+          grep -q "pub async fn resolve_cached" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 resolve_cached"; exit 1; }
+          grep -q "prod-line dns-cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 dns-cache 标记"; exit 1; }
+          echo "[OK] v98 TCP keepalive + DNS cache 注入完成"
+
+      - name: Inject happy-eyeballs concurrent connect (V101)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V101: FramedStream::new RFC 6555 并发连接竞速。
+          # 修复双栈域名(A+AAAA)下顺序迭代、每个地址死等 CONNECT_TIMEOUT(18s) 的卡顿：
+          # 解析出的所有地址并发 connect（250ms 探测），先通者胜、其余取消；
+          # 全失败时回退传统顺序连接（保留单地址慢路径语义）。
+          # 锚定上游 1.4.9 原始状态，标记缺失即构建失败。
+          # 注意：当前 connect_tcp_local 仍逐个传单 IP 给 FramedStream::new，
+          # 故 race 退化为单次 connect（V102 会把 race 上提到 connect_tcp_local 层）。
+          python3 patches/patch_FramedStream_happy_eyeballs.py .
+          grep -q "race_connect_all" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing race_connect_all"; exit 1; }
+          grep -q "prod-line v101 happy-eyeballs" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing v101 marker"; exit 1; }
+          echo "[OK] V101 happy-eyeballs concurrent connect injected"
+
+      - name: Inject happy-eyeballs lift + DNS timeout + split metrics (V102)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V102: lift happy-eyeballs race to connect_tcp_local (V101's inner race
+          # degenerates when fed a single IP) + cap DNS lookups with a 5s timeout
+          # (a dead resolver could otherwise stall connect past CONNECT_TIMEOUT) +
+          # log DNS-resolve time and connect-race time separately for diagnosis.
+          # Requires V101 already injected (FramedStream::new present). Anchors are
+          # unique single-occurrence strings; marker missing -> build fails.
+          python3 patches/patch_V102_happy_eyeballs_lift.py .
+          grep -q "prod-line v102 happy-eyeballs-lift" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v102 marker"; exit 1; }
+          grep -q "DNS_LOOKUP_TIMEOUT_SEC" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DNS_LOOKUP_TIMEOUT_SEC"; exit 1; }
+          # [LnDesk dns-flush] A DDNS host that moved to a new IP stays pinned inside
+          # the OS resolver cache (Windows Dnscache honours the A-record TTL), so the
+          # client keeps dialling the dead address and never reconnects. Verify the
+          # flush hook actually shipped -- at patch time, not 40 minutes into the build.
+          grep -q "pub fn flush_os_dns_cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing flush_os_dns_cache"; exit 1; }
+          grep -q "DnsFlushResolverCache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DnsFlushResolverCache FFI"; exit 1; }
+          grep -qF "[dns-flush] OS resolver cache flushed" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing the dns-flush log marker"; exit 1; }
+          grep -q "flush_os_dns_cache();" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs: the dns-flush hook is defined but never called"; exit 1; }
+          echo "[OK] V102 happy-eyeballs lift + DNS timeout injected"
+          echo "[OK] dns-flush hook verified (OS resolver cache cleared once all addrs fail)"
+
+      - name: Rendezvous family-match DNS probe (v100, IPv6 preferred, default-on)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Default-on client-side DNS probe: when enable-dual-stack-lookup is
+          # set (or absent, because the "enable-" prefix defaults to enabled) AND
+          # the local host has a usable IPv6 stack, resolve AAAA first (500ms
+          # ceiling) before falling back to the legacy IPv4 happy-eyeballs path.
+          # Set enable-dual-stack-lookup=N to disable.
+          # 锚定上游 1.4.9 原始 socket_client.rs，须在 v98/V102 之后运行。
+          python3 patches/patch_rendezvous_family_match.py .
+          grep -qF "prod-line v100 family-match" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v100 family-match probe"; exit 1; }
+          echo "[OK] V100 rendezvous family-match (IPv6 preferred, default-on DNS probe)"
+
+      - name: Rendezvous family-match settings toggle (v100 UI)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Adds a Settings > Network switch ("DNS resolve by address family
+          # (IPv6 preferred)") that writes the local config key
+          # enable-dual-stack-lookup, which the Rust probe above reads. The
+          # "enable-" prefix makes it default-on.
+          python3 patches/patch_family_match_setting.py .
+          grep -qF "prod-line v100 family-match-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing v100 family-match toggle"; exit 1; }
+          # [v175] switchWidget() funnels the title and the tooltip through
+          # listTile() -> translate(), so the row stays English unless cn.rs
+          # carries both strings byte-for-byte. Asserted only when the
+          # customized cn.rs is in play: the upstream-only variant compiles the
+          # stock upstream file and must not be forced to use ours.
+          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
+            grep -qF '("DNS resolve by address family (IPv6 preferred)"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match toggle title"; exit 1; }
+            grep -qF '("Enable IPv6-first DNS resolution for P2P connections.' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match tooltip"; exit 1; }
+          fi
+          echo "[OK] V100 rendezvous family-match settings toggle"
 
       - name: Apply screen wall patch + i18n
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
@@ -504,10 +611,38 @@ jobs:
           done
           echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
+          # [V217] 屏幕墙 v107 整合链（自 generator-windows.yml 对齐）。
+          # patch_screen_wall_v107.py 整合原 v103/v104/v108/v109 四个补丁（锚点与
+          # 执行顺序逐字保留；v104 为空操作占位已被 base 吸收）：
+          # - 多实例：最多 4 个屏幕墙窗口（4 墙 × 4 设备 = 16 路），级联错位、
+          #   强制深色 + 黑底；第 5 次点击提示"最多打开 4 个屏幕墙"；
+          # - 入口预览选择：无指定 wallId 时弹 Dialog 列出已保存屏幕墙（可选新建）；
+          # - 设备卡片菜单「Add to Screen Wall」：自动依次填充，满了切下一块。
+          # 必须在上面的 "Apply screen wall patch + i18n"（base）之后运行
+          # （锚点匹配其产物），且在 v119 之前。
+          # 脚本自带幂等守卫：最终 marker 全部存在时 [SKIP] 退出 0。
+          # 已离线干跑验证（base -> v107 -> v119 严格按序）全部 exit 0，9 条断言全绿。
+          python3 patches/patch_screen_wall_v107.py .
+          grep -q "Screen Wall Max 4 Windows" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart 缺少 v103 多实例入口"; exit 1; }
+          grep -q "Device Already Added" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v103 去重提示"; exit 1; }
+          grep -q "ThemeData.dark" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少强制深色主题"; exit 1; }
+          grep -q "_screenWallWindows.length >= 4" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 4 实例上限"; exit 1; }
+          grep -q "kScreenWallWalls" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v107 多墙持久化键"; exit 1; }
+          grep -q "addPeerToScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 添加到屏幕墙入口"; exit 1; }
+          grep -q "_pickScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 预览选择 Dialog"; exit 1; }
+          grep -q "Add to Screen Wall" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 v108 菜单项"; exit 1; }
+          grep -q "String? wallId" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 wallId 参数"; exit 1; }
+          # 反向断言：v109 的 SW__ 密码哨兵已整条下线（Dart 不再加前缀，
+          # Rust 侧 is_screen_wall 也随 V119 死代码清理移除），任何一侧残留都判失败。
+          if grep -q "SW__" flutter/lib/desktop/widgets/mini_remote_view.dart; then echo "[FAIL] mini_remote_view.dart 仍包含 v109 密码哨兵前缀"; exit 1; fi
+          if grep -q "SW__" flutter/lib/utils/multi_window_manager.dart; then echo "[FAIL] multi_window_manager.dart 仍包含 v109 哨兵剥离"; exit 1; fi
+          if grep -q "is_screen_wall\|SW__" src/server/connection.rs; then echo "[FAIL] connection.rs 仍残留 v109 is_screen_wall / SW__ 死代码"; exit 1; fi
+          echo "[OK] 屏幕墙 v107 整合链（多实例/预览/添加入口）注入完成"
+
           # [v119] 与主线工作流保持一致：屏幕墙会话不自动进入隐私模式
           # （握手期豁免，零闪黑）+ 小工具栏「模式 2」图标。
           # v119 只改 client.rs / flutter_ffi.rs / io_loop.rs / model.dart，
-          # 不依赖 v107 链（本工作流不跑 v107），可直接运行。
+          # 独立于 v107 链，但按主线顺序在其之后运行。
           python3 patches/patch_screen_wall_v119.py .
           grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
           grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
@@ -1496,6 +1631,224 @@ jobs:
           python3 patches/patch_peer_card_alias.py .
           python3 patches/patch_desktop_toolbar_toggles.py .
           python3 patches/patch_remote_tab_iroh_badge.py .
+
+      # === [V217] 以下步骤自 generator-windows.yml 对齐，此前 win7 工作流完全缺失 ===
+
+      - name: Drag local files into remote session (V104)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V104: 主控机文件直接拖入已连接的远程会话即传输到远端当前目录。
+          # 远程会话 body 挂 DropTarget（desktop_drop 已是正式依赖），拖入后经现有
+          # kWindowConnect IPC 把路径交给主窗口，主窗口打开该文件传输会话（FT 窗口
+          # 保持可见，用其原生缩小版进度卡），由文件传输页复用「发送」按钮链路
+          # 自动上传（静默，无授权弹窗）。
+          # 必须放在所有 *_both / _new / _old 布局文件 cp 覆盖之后，否则注入被覆盖。
+          # 已离线干跑验证（纯净 1.4.9）exit 0，8 条断言全绿；重复运行幂等 [SKIP]。
+          python3 patches/patch_remote_drop_file.py .
+          grep -q "_onDropFilesToRemote" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing drop handler"; exit 1; }
+          # Fallback entry: UIPI blocks drag-drop into elevated (admin) windows, so the
+          # "Send File" button is the path that always works. Do not drop this.
+          grep -q "_buildSendFileButton" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing send-file fallback button"; exit 1; }
+          grep -q "sendLocalPathsToRemote" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing auto-send"; exit 1; }
+          # Files must be forwarded through IPC all the way to the FT sub-window's
+          # own isolate map (Dart isolates do NOT share static globals).
+          grep -qF "params['files'] = files" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart missing files forwarding"; exit 1; }
+          grep -q "pendingFiles" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing pendingFiles field"; exit 1; }
+          grep -q "pendingFiles" flutter/lib/desktop/pages/file_manager_tab_page.dart || { echo "[FAIL] file_manager_tab_page.dart missing pendingFiles forwarding"; exit 1; }
+          # FT window is opened visible (native progress card) by the drop handler; the
+          # injected [V104-drop] marker confirms the drop -> FT-window wiring landed.
+          grep -q "\[V104-drop\]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart missing drop -> FT window wiring"; exit 1; }
+          # Sub-window plugin registration is what actually makes DropTarget work
+          # inside the remote session window (a separate FlutterEngine).
+          grep -q "DesktopDropPluginRegisterWithRegistrar" flutter/windows/runner/flutter_window.cpp || { echo "[FAIL] flutter_window.cpp missing desktop_drop sub-window registration"; exit 1; }
+          echo "[OK] V104 remote-session drop-file transfer (visible FT window + silent upload)"
+
+      - name: Controlled-side desktop redirection-aware drop target (V107 desktop-redirect)
+        shell: bash
+        run: |
+          # [V107-desktop-redirect] Feature ABANDONED (eighth round): the user
+          # dropped desktop-redirection to cut code bloat. patch_desktop_redirect.py
+          # is now an intentional no-op (it only prints SKIP and exits 0); it does
+          # NOT inject any marker into connection.rs / flutter_ffi.rs. The old
+          # ReadDir marker resolution + SYSTEM-impersonation logic was all removed.
+          # Keep the call so the file is still exercised, but DO NOT assert the
+          # removed markers here or the gate fails every build.
+          python3 patches/patch_desktop_redirect.py .
+          echo "[OK] V107 desktop-redirect patch (intentionally no-op — feature abandoned)"
+
+      - name: Auto-overwrite for headless file transfer (V104-fix)
+        shell: bash
+        run: |
+          # Headless drag-drop transfers must NOT show the overwrite confirmation
+          # dialog (the FT window is hidden, user cannot click it). This patch
+          # auto-overwrites when isHeadlessTransfer=true, while keeping the dialog
+          # for manual (non-drop) transfers from the FT window UI.
+          # Must run AFTER patch_remote_drop_file.py (anchors on its output).
+          python3 patches/patch_file_transfer_auto.py .
+          grep -q "isHeadlessTransfer" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing headless flag"; exit 1; }
+          grep -q "V104-fix-auto: headless" flutter/lib/models/file_model.dart || { echo "[FAIL] file_model.dart missing auto-overwrite logic"; exit 1; }
+          echo "[OK] V104-fix headless auto-overwrite + consistent destination"
+
+      - name: Headless file transfer without peer confirmation (V105 headless-drop)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Unattended drag-drop: the control side opens a brand-new FILE TRANSFER
+          # connection per drop and does NOT carry a password, so the peer fell
+          # into the empty-password branch of handle_login_request() and raised
+          # the Connection Manager dialog - which nobody can click on an
+          # unattended host, so the transfer never started.
+          # This patch (a) remembers peers that authenticated recently and
+          # auto-approves their file-transfer sessions inside the grace window
+          # (default 30 min, headless-ft-grace-minutes=0 disables), and (b) forces
+          # msg.enable_file_transfer=Yes on the control side, which previously
+          # depended on the "enable-file-copy-paste" toggle (off by default) and
+          # otherwise left the peer's file channel gated off.
+          # Scope: file-transfer sessions only. Desktop remote sessions still
+          # require the normal password / click approval.
+          # Must run AFTER patch_file_transfer_auto.py (independent anchors, but
+          # keep the drop-file patch group together).
+          python3 patches/patch_headless_ft_auth.py .
+          grep -qF "V105 headless drop-file: auto-approving" src/server/connection.rs || { echo "[FAIL] connection.rs missing headless FT auto-approve"; exit 1; }
+          grep -qF "V105 headless drop-file: force-enable" src/client.rs || { echo "[FAIL] client.rs missing forced file-transfer option"; exit 1; }
+          echo "[OK] V105 headless file transfer (no peer confirmation)"
+
+      - name: Drop-initiated FT window shrinks to mini transfer card (V107-mini)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V107-mini: the drag-drop FT window is resized to a 240x480
+          # progress-only card (native per-file progress, native cancel) and
+          # auto-closes when all jobs finish. The full manager is one click away.
+          # Must run AFTER patch_remote_drop_file.py + patch_file_transfer_auto.py
+          # (re-anchors the _enterMiniTransferMode() call on the [V104-drop] block
+          # those patches inject). Patch asserts its own anchors; we gate the
+          # two structural markers that prove the mini window landed.
+          python3 patches/patch_drop_progress_v2.py .
+          grep -qF "_enterMiniTransferMode" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer mode entry"; exit 1; }
+          grep -qF "_buildMiniTransferView" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer view"; exit 1; }
+          echo "[OK] V107 mini transfer window (240x480 native progress card)"
+
+      - name: Login timeout watchdog + stale saved-password self-heal (V105)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 1) A stale saved password on a direct connect used to hang at
+          #    "Connecting..." forever (peer never answers, no prompt, no picture).
+          #    This patch (a) clears the persisted copy when the failed attempt
+          #    carried exactly that saved password, so the next attempt prompts,
+          #    and (b) arms a 20s watchdog that swaps the endless spinner for a
+          #    visible login-error dialog when no first image ever arrives.
+          # 2) Runs AFTER the drop/transfer patches (independent anchors).
+          # 3) 本工作流不启用 iroh，脚本会自动走 no-iroh self-heal 变体
+          #    （离线干跑已确认输出 "[INFO] iroh transport ABSENT -> using no-iroh self-heal variant"）。
+          python3 patches/patch_login_timeout.py .
+          grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
+          grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
+          echo "[OK] V105 login watchdog + stale-password self-heal"
+
+      - name: Settings page survives theme-change rebuilds (V104)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Changing the theme calls Get.changeThemeMode which rebuilds the whole
+          # app. The desktop settings page must keep its selected tab and not leak
+          # its GetX singleton (wrong-type dispose was resetting it). See patch.
+          python3 patches/patch_settings_theme.py .
+          grep -q "settings page resilient to theme-change" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing theme-rebuild resilience"; exit 1; }
+          echo "[OK] settings page immune to theme-change rebuilds"
+
+      - name: Disable_desktop_icon
+        if: fromJson(inputs.extras).disable_desktop_icon == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V216: never create Desktop / Start Menu / Startup-folder shortcuts.
+          #
+          # The primary fix lives in windows.rs::get_silent_install_options(),
+          # which upstream hard-codes to "desktopicon startmenu [printer]".
+          # Neutralizing only the copy blocks inside install_me() is NOT enough:
+          # the installer runs --silent-install (patch #0011) and that options
+          # string arrives straight from get_silent_install_options().
+          python3 patches/disable_desktop_icon.py .
+          # Gate: both silent-install return branches must no longer carry the
+          # shortcut flags, otherwise a silent install recreates the icons.
+          grep -q 'silent install: no shortcut at all' src/platform/windows.rs \
+            || { echo "[FAIL] v216: get_silent_install_options not stripped"; exit 1; }
+          # Gate: install_service() has its own Startup-folder shortcut block
+          # that never passes through install_me().
+          grep -q 'install_service: no Startup tray shortcut' src/platform/windows.rs \
+            || { echo "[FAIL] v216: install_service Startup shortcut not neutralized"; exit 1; }
+          # Gate: the interactive wizard checkboxes must be gone.
+          grep -q "// Option(desktopicon, label: 'Create desktop icon')" \
+            flutter/lib/desktop/pages/install_page.dart \
+            || { echo "[FAIL] v216: install_page desktopicon option not hidden"; exit 1; }
+          echo "[OK] v216 desktop / start-menu / startup shortcuts disabled"
+
+      # === [V217] 质量门禁：把「20 分钟后才炸」提前到「3 分钟内失败」 ===
+      # win7 此前没有任何 Dart/Rust 静态门禁，所有补丁错误都要等 build.py 真正
+      # 编译（vcpkg + flutter engine + 全量构建 ≈ 20 分钟）才暴露。以下两道门禁
+      # 在编译前 fail fast，并给出带文件名/行号的可读错误。
+      # 已离线验证：hbb_common 在打完全部网络补丁后可编译通过（rustc 语法级）。
+
+      - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
+        # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
+        # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
+        # hbb_common crate. A typo there only surfaces at `cargo build` time,
+        # which is reached only after vcpkg install + flutter engine + full build
+        # (~20 min wasted on a guaranteed-fail). Compile-check hbb_common right
+        # after the lock is fetched so a bad patch fails the run within minutes,
+        # with a readable error, instead of deep in the build step.
+        shell: bash
+        run: |
+          echo ">> cargo check -p hbb_common (gate: catch patch compile errors early)"
+          cargo check -p hbb_common --message-format short
+
+      - name: Relax upstream lint noise for analyze gate
+        shell: bash
+        run: |
+          # [LnDesk v160] Upstream rustdesk ships many cosmetic lint issues
+          # (constant_identifier_names / camel_case_types / unnecessary_import /
+          # unused_import / unnecessary_this / unused_element) in web-platform
+          # files we never patch (lib/web/**, lib/models/web_model.dart,
+          # lib/utils/multi_window_manager.dart). They are infos/warnings, but
+          # to keep the analyze gate focused on REAL compile errors only, drop a
+          # scoped analysis_options that silences exactly those rules while
+          # inheriting the repo's own settings. Compile errors (undefined names,
+          # type mismatches) are NOT in this set and remain fatal.
+          cat > flutter/analysis_options.yaml <<'YAML'
+          include: ../analysis_options.yaml
+          linter:
+            rules:
+              constant_identifier_names: false
+              camel_case_types: false
+              unnecessary_import: false
+              unused_import: false
+              unnecessary_this: false
+              unused_element: false
+          YAML
+          echo "[OK] suppressed upstream cosmetic lint rules for analyze gate"
+
+      - name: Gate - flutter analyze (fail fast on Dart compile errors)
+        shell: bash
+        run: |
+          # Catch Dart semantic/compile errors (e.g. non-constant expression,
+          # int passed where double is required) HERE with file:line, instead of
+          # burying them inside MSB8066 during 'flutter build'.
+          # Only ERRORS are fatal: upstream carries many lint infos/warnings
+          # that must not block the build. 'lib' only (test/ often noisy).
+          # [LnDesk v160] cosmetic rules already silenced via flutter/analysis_options.yaml.
+          cd ./flutter
+          flutter pub get
+          flutter analyze lib --no-fatal-infos --no-fatal-warnings
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
