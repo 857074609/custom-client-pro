@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 855a5f1b4c8cb41c8cc4774a14028a28c8b07d38
+          ref: baa3ec17fdb275cee3583e904be1e3e9439a9b9d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1753,12 +1753,28 @@ jobs:
       - name: Apply super-p2p observe patch (V186/V187)
         # Authenticated port-prediction stack: public STUN NAT classification +
         # HMAC probe against candidates; acceptor self-observes and reports its
-        # public mapping (V187a). fire-and-forget on a detached thread. Default
-        # ON, enforcement=observe (logs only); extras enable_super_p2p=false
-        # opts out, extras super_p2p_enforcement=on enables direct establish.
+        # public mapping (V187a). fire-and-forget on a detached thread.
+        #
+        # [V217] 单一开关收敛：原先由两个键控制 ——
+        #   enable_super_p2p（总开关）与 super_p2p_enforcement（强度）。
+        #   但 enable_super_p2p 在前端 forms.py / services.py / generator.html
+        #   三处均无定义（死键），表达式恒解析为 'true'，导致 super-p2p 在所有
+        #   构建中强制启用、用户无法关闭。现统一由 super_p2p_enforcement 驱动：
+        #     勾选（'on'）      -> DEFAULT_ENABLED=true  + ENFORCEMENT="on"
+        #                             探测验证通过即切 UDP 直连（全功能）
+        #     取消勾选（'observe'）-> DEFAULT_ENABLED=false + ENFORCEMENT="observe_only"
+        #                             enabled() 返回 false，observe 任务在入口直接
+        #                             return，零探测开销（完全停用）
+        # 运行时仍可用本地选项 enable-super-p2p 覆盖烘焙默认值（空=用默认）。
+        #
+        # 表达式说明：SUPER_P2P_DEFAULT 需要把 'observe' 显式映射成 'false'
+        #（补丁内部只在 env 恰为 "false" 时才改写 DEFAULT_ENABLED），故用
+        # `== 'observe' && 'false' || 'true'` 而非直接透传该键。
+        # 键缺失时 fromJson 返回 null，两个条件均为 false，回退 'on'/'true'，
+        # 保持「默认启用」的向后兼容行为（旧版 generator 不下发该键也不会关掉功能）。
         env:
-          SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').enable_super_p2p == 'false' && 'false' || 'true' }}
-          SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'observe' }}
+          SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement == 'observe' && 'false' || 'true' }}
+          SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'on' }}
           SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
         run: python3 patches/patch_super_p2p.py .
       - name: Remove native test_nat_type (V200) - replaced by super_p2p reflector/STUN self-report
