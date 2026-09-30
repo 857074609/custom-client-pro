@@ -1034,6 +1034,7 @@ jobs:
           grep -q "from_millis(500)" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll interval is not 500ms"; exit 1; }
           grep -n "TIME_OTP_POLL" ./src/hbbs_http/sync.rs
       - name: invite remote assistance (v143)
+        if: fromJson(inputs.extras).addinvite == 'true'
         shell: bash
         run: |
           python3 patches/patch_invite.py .
@@ -1052,6 +1053,7 @@ jobs:
           grep -q "local_notifier" ./flutter/pubspec.yaml || { echo "[FAIL] v148: local_notifier dependency missing"; exit 1; }
           echo "[OK] v143: invite module wired"
       - name: invite watch (v150)
+        if: fromJson(inputs.extras).addinvite == 'true'
         shell: bash
         run: |
           python3 patches/patch_invite_watch.py .          # [LnDesk v150] brand name for the toast, injected from the

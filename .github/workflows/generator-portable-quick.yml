@@ -657,6 +657,7 @@ jobs:
           grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
           grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
       - name: invite remote assistance (v143)
+        if: fromJson(inputs.extras).addinvite == 'true'
         shell: bash
         run: |
           python3 patches/patch_invite.py .
@@ -675,6 +676,7 @@ jobs:
           grep -q "local_notifier" ./flutter/pubspec.yaml || { echo "[FAIL] v148: local_notifier dependency missing"; exit 1; }
           echo "[OK] v143: invite module wired"
       - name: invite watch (v150)
+        if: fromJson(inputs.extras).addinvite == 'true'
         shell: bash
         run: |
           python3 patches/patch_invite_watch.py .          # [LnDesk v150] brand name for the toast, injected from the
