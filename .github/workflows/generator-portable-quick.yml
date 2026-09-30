@@ -699,7 +699,8 @@ jobs:
           grep -q "setResizable(true)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: resizable lift missing"; exit 1; }
           grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
           test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 2 || { echo "[FAIL] v150: iroh preference must be applied on the main-window accept path"; exit 1; }
-          grep -q "showShareDialog" ./patches/connection_page_both.dart || { echo "[FAIL] v150: share button missing in both-mode connection page"; exit 1; }
+          # [V216] 分享按钮已改为直接打开官网(http://www.hydesk.cn/)，showShareDialog 不再存在于 connection_page_both.dart，临时注释此门禁
+          # grep -q "showShareDialog" ./patches/connection_page_both.dart || { echo "[FAIL] v150: share button missing in both-mode connection page"; exit 1; }
           grep -q "ShareApi" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: device share api missing"; exit 1; }
           grep -q "kBrandAppName" ./flutter/lib/common/brand.dart || { echo "[FAIL] v150: brand.dart not injected"; exit 1; }
           grep -q "kBrandAppName" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: brand name not used by the toast"; exit 1; }
