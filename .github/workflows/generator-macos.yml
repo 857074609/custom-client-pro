@@ -189,7 +189,7 @@ jobs:
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
               _relay = data.get('irohRelayUrl','') or ''
               _host = _relay.split('//')[-1].split(':')[0] if _relay else ''
-              _dnsu = ('https://' + _host + ':3341/pkarr') if _relay else ''
+              _dnsu = ((('https' if _relay.startswith(('wss://', 'https://')) else 'http') + '://' + _host + ':3341/pkarr')) if _relay else ''
               if _dnsu:
                   print('::add-mask::' + _dnsu)
               if _host:
@@ -198,7 +198,7 @@ jobs:
               e.write(f\"IROH_DNS_URL={_dnsu}\n\")
               _relay2 = data.get('irohRelayUrl2','') or ''
               _host2 = _relay2.split('//')[-1].split(':')[0] if _relay2 else ''
-              _dnsu2 = ('https://' + _host2 + ':3341/pkarr') if _relay2 else ''
+              _dnsu2 = ((('https' if _relay2.startswith(('wss://', 'https://')) else 'http') + '://' + _host2 + ':3341/pkarr')) if _relay2 else ''
               if _dnsu2:
                   print('::add-mask::' + _dnsu2)
               if _host2:
@@ -207,7 +207,7 @@ jobs:
               e.write(f\"IROH_DNS_URL_2={_dnsu2}\n\")
               _relay3 = data.get('irohRelayUrl3','') or ''
               _host3 = _relay3.split('//')[-1].split(':')[0] if _relay3 else ''
-              _dnsu3 = ('https://' + _host3 + ':3341/pkarr') if _relay3 else ''
+              _dnsu3 = ((('https' if _relay3.startswith(('wss://', 'https://')) else 'http') + '://' + _host3 + ':3341/pkarr')) if _relay3 else ''
               if _dnsu3:
                   print('::add-mask::' + _dnsu3)
               if _host3:
