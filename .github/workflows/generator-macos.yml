@@ -163,6 +163,19 @@ jobs:
               from cryptography.fernet import Fernet
           except Exception:
               Fernet = None
+          import ipaddress
+          def derive_dns_url(host):
+              # [v216] A relay (3340) and its pkarr server (3341) on the same host
+              # can speak different protocols. In this deployment every named host
+              # serves 3341 over TLS with a provisioned certificate, while a bare
+              # IP cannot present one, so it stays plaintext. Deriving from the
+              # relay scheme got this wrong whenever 3340 is plain http but 3341
+              # is https.
+              try:
+                  ipaddress.ip_address(host)
+              except ValueError:
+                  return 'https://' + host + ':3341/pkarr'
+              return 'http://' + host + ':3341/pkarr'
           data = {}
           SI = os.environ.get('SERVERINFO','')
           if SI and SI != 'placeholder' and Fernet is not None:
@@ -196,7 +209,7 @@ jobs:
               # irohDnsUrl wins; leaving it empty keeps the old derivation.
               _dnsu = (data.get('irohDnsUrl','') or '').strip() if _relay else ''
               if _relay and not _dnsu:
-                  _dnsu = (('https' if _relay.startswith(('wss://', 'https://')) else 'http') + '://' + _host + ':3341/pkarr')
+                  _dnsu = derive_dns_url(_host)
               if _dnsu:
                   print('::add-mask::' + _dnsu)
               if _host:
@@ -207,7 +220,7 @@ jobs:
               _host2 = _relay2.split('//')[-1].split(':')[0] if _relay2 else ''
               _dnsu2 = (data.get('irohDnsUrl2','') or '').strip() if _relay2 else ''
               if _relay2 and not _dnsu2:
-                  _dnsu2 = (('https' if _relay2.startswith(('wss://', 'https://')) else 'http') + '://' + _host2 + ':3341/pkarr')
+                  _dnsu2 = derive_dns_url(_host2)
               if _dnsu2:
                   print('::add-mask::' + _dnsu2)
               if _host2:
@@ -218,7 +231,7 @@ jobs:
               _host3 = _relay3.split('//')[-1].split(':')[0] if _relay3 else ''
               _dnsu3 = (data.get('irohDnsUrl3','') or '').strip() if _relay3 else ''
               if _relay3 and not _dnsu3:
-                  _dnsu3 = (('https' if _relay3.startswith(('wss://', 'https://')) else 'http') + '://' + _host3 + ':3341/pkarr')
+                  _dnsu3 = derive_dns_url(_host3)
               if _dnsu3:
                   print('::add-mask::' + _dnsu3)
               if _host3:
