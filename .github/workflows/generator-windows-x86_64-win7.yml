@@ -1505,6 +1505,10 @@ jobs:
           python3 patches/patch_privacy_physical_backlight_off.py
 
       - name: TurnOffMonitor
+        # [LnDesk v223] 独立构建开关「启用关闭显示器」：默认启用（!= 'false'，
+        # 兼容不带该键的旧 dispatch / 手动 API），显式 false 才跳过。与
+        # applyprivacy 完全解耦。
+        if: fromJson(inputs.extras).turn_off_monitor != 'false'
         shell: bash
         run: |
           # V214: independent "Turn off monitor" switch in the session
@@ -1514,9 +1518,8 @@ jobs:
           #
           # Deliberately NOT gated on applyprivacy: this is a standalone
           # toolbar switch with its own protobuf message, unrelated to privacy
-          # mode. Gating it here would hide the menu from any build that does
-          # not enable privacy mode. It carries its own DDC/CI fallback
-          # internally, so it does not depend on V213 above running.
+          # mode. It carries its own DDC/CI fallback internally, so it does
+          # not depend on V213 above running.
           python3 patches/patch_turn_off_monitor.py
 
       - name: hide_chat_voice

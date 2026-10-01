@@ -1372,6 +1372,10 @@ jobs:
           python3 patches/patch_privacy_physical_backlight_off.py
 
       - name: TurnOffMonitor
+        # [LnDesk v223] 独立构建开关「启用关闭显示器」：默认启用（!= 'false'，
+        # 兼容不带该键的旧 dispatch / 手动 API），显式 false 才跳过。与
+        # applyprivacy 完全解耦——本步骤自带工具栏、proto 与被控端执行链。
+        if: fromJson(inputs.extras).turn_off_monitor != 'false'
         shell: bash
         run: |
           # V214: independent "Turn off monitor" switch in the session
