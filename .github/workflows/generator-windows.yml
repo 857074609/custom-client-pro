@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d67098180d769451deb6fd079119413a53a07817
+          ref: 2563ccad2a1b0f5c49e8a6c64015c7f9547e12ec
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1594,7 +1594,7 @@ jobs:
           # patch_family_match_setting.py 写下的
           #   // [prod-line v100 family-match-ui] default-on IPv6 DNS probe toggle
           # 锚点缺失时 apply_one 直接失败，故它必须排在那一步之后。
-          python3 patches/patch_iroh_transport.py .
+          python3 patches/iroh/iroh_transport.py .
           grep -q "pub struct IrohEndpoint" ./src/iroh_transport.rs || { echo "[FAIL] iroh_transport.rs missing"; exit 1; }
           grep -q "iroh_public_key_for_ui" ./src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs missing iroh node id bridge (IP Direct panel would show no iroh row)"; exit 1; }
           grep -q 'iroh = "0.35"' ./Cargo.toml || { echo "[FAIL] Cargo.toml missing iroh dep"; exit 1; }
@@ -1636,20 +1636,41 @@ jobs:
           # services and injects the direct addresses BEFORE the dial, widening
           # the candidate set. Non-blocking: the dial starts immediately, so
           # this can only add candidates, never delay the connection.
-          python3 patches/patch_iroh_direct_prewarm.py .
+          python3 patches/iroh/iroh_direct_prewarm.py .
           grep -q "v215_prewarm_direct" ./src/iroh_transport.rs || { echo "[FAIL] v215 prewarm helper missing"; exit 1; }
           grep -q 'futures-util' ./Cargo.toml || { echo "[FAIL] v215 needs futures-util for StreamExt"; exit 1; }
+          # ------------------------------------------------------------------
+          # v221: two-phase pre-warm (awaited head + detached tail)
+          # ------------------------------------------------------------------
+          # The pre-warm is only useful if it runs BEFORE the first QUIC flight.
+          # `add_node_addr` fills the candidate pool but never sets `best_addr`
+          # (iroh node_state.rs:663), and only a returned DISCO pong promotes one
+          # (node_state.rs:976) -- while `best_addr == Empty` makes send_addr()
+          # return Unconfirmed -> Mixed, i.e. direct merely RACES the relay
+          # (udp_paths.rs:105). A detached pre-warm therefore cannot produce a
+          # pure-direct dial. Hence the call must be AWAITED.
+          grep -q "pub async fn v215_prewarm_direct" ./src/iroh_transport.rs || { echo "[FAIL] v221 v215_prewarm_direct must be async (detached pre-warm is a known regression)"; exit 1; }
+          ! grep -q "pub fn v215_prewarm_direct" ./src/iroh_transport.rs || { echo "[FAIL] v221 old non-async v215_prewarm_direct still present"; exit 1; }
+          grep -qF "v215_prewarm_direct(ep.endpoint.clone(), node_id, peer_node_id).await;" ./src/iroh_transport.rs || { echo "[FAIL] v221 prewarm call site is not awaited"; exit 1; }
+          grep -q "const V221_PREWARM_HEAD_MS" ./src/iroh_transport.rs || { echo "[FAIL] v221 blocking head window missing"; exit 1; }
+          grep -q "fn v215_inject_item" ./src/iroh_transport.rs || { echo "[FAIL] v221 shared injection helper missing"; exit 1; }
+          grep -q "fn v215_prewarm_tail" ./src/iroh_transport.rs || { echo "[FAIL] v221 detached tail consumer missing"; exit 1; }
+          # v221: path-type observability. Without these the log never says
+          # whether a session was direct / mixed / relay, so the direct rate is
+          # unmeasurable and every future tuning decision is guesswork.
+          grep -q "connected to {} via {}" ./src/iroh_transport.rs || { echo "[FAIL] v221 connect-time conn_type log missing"; exit 1; }
+          grep -q "v221] idle-gap" ./src/iroh_transport.rs || { echo "[FAIL] v221 idle-gap diagnosis missing"; exit 1; }
           grep -q "relay map: self-hosted only" ./src/iroh_transport.rs || { echo "[FAIL] iroh relay map not self-hosted-only"; exit 1; }
           ! grep -q "default_relay_map" ./src/iroh_transport.rs || { echo "[FAIL] n0 relay merge still present"; exit 1; }
           # ----------------------------------------------------------------------
           # v88 heartbeat
           # ----------------------------------------------------------------------
-          python3 patches/patch_iroh_heartbeat.py .
+          python3 patches/iroh/iroh_heartbeat.py .
           grep -q 'v\["iroh_id"\]' ./src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs missing iroh_id report"; exit 1; }
           # ----------------------------------------------------------------------
           # v88 menu
           # ----------------------------------------------------------------------
-          python3 patches/patch_iroh_menu.py .
+          python3 patches/iroh/iroh_menu.py .
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
@@ -1906,7 +1927,7 @@ jobs:
           python3 patches/patch_add_to_ab_rename.py .
           python3 patches/patch_peer_card_alias.py .
           python3 patches/patch_desktop_toolbar_toggles.py .
-          python3 patches/patch_remote_tab_iroh_badge.py .
+          python3 patches/iroh/iroh_badge.py .
 
       - name: Drag local files into remote session (V104)
         if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
@@ -2063,7 +2084,7 @@ jobs:
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
         shell: bash
         run: |
-          python3 patches/patch_auto_iroh.py .
+          python3 patches/iroh/iroh_auto.py .
           grep -q "auto_iroh_node_id" ./src/iroh_transport.rs || { echo "[FAIL] v149: auto_iroh_node_id helper missing"; exit 1; }
           grep -q "auto-iroh-node-id" ./src/client.rs || { echo "[FAIL] v149: auto-iroh routing missing in client.rs"; exit 1; }
           grep -q "auto-iroh-node-id" ./flutter/lib/common.dart || { echo "[FAIL] v149: peerIrohId lookup hook missing in common.dart"; exit 1; }
