@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2563ccad2a1b0f5c49e8a6c64015c7f9547e12ec
+          ref: 5b4c8b804d0db3cc7dbb2c9313ea57f0b00f15b8
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -966,6 +966,20 @@ jobs:
         if: ${{ fromJson(inputs.extras).auto_silent_update == 'true' && (env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') }}
         run: |
           python3 patches/patch_auto_silent_update.py
+
+      - name: Auto open main window after silent install (v222)
+        if: fromJson(inputs.extras).auto_open_ui == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 安装包双击 = libs/portable 包装器以内层 --silent-install 安装
+          # （patch_silent_install.py #0011），该路径装完默认不拉 UI。
+          # 本补丁在 core_main.rs 的 --silent-install 分支安装成功后拉起
+          # 安装目录主程序；交互式安装 / 静默更新(update_me) / 卸载均不经过
+          # 此分支，行为不变。win10+ 与 win7 工作流均含本步骤。
+          python3 patches/patch_auto_open_ui.py .
+          grep -q "fn auto_open_main_window_after_install" src/core_main.rs || { echo "[FAIL] core_main.rs missing auto-open hook"; exit 1; }
 
       - name: Apply patches for fix__updateWindowSize
         if: ${{(env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') && inputs.ui_mode == 'false' }}
