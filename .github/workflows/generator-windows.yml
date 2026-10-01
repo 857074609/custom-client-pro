@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 5dbe3e5f999ce2252f0b92b89c70dfda7b36d83b
+          ref: 5721ba845b9444f564d00d640f6f51ea1e463165
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -822,7 +822,7 @@ jobs:
           if grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart; then
             echo "[FAIL] v225: screen-wall entry icon call still active"; exit 1
           fi
-          grep -q "color: color, size: 16" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 16"; exit 1; }
+          grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
           grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
           echo "[OK] v225: tab bar chip style applied, screen-wall icon hidden"
       - name: both-mode gear icon + compliance notice (v225)
