@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 962080543e63026bff5e67811a4cd0741c690ec0
+          ref: 801a8c4551957f0d8f9a184c9b01e60619f5c61d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -651,6 +651,13 @@ jobs:
           done
           echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
 
+          # [v224] both 模式右卡「屏幕墙」按钮：connection_page_both.dart 里只留了
+          # 标记位，这里才注入真按钮。放在本步骤内是为了与 inputs.screen_wall 同步
+          # 门控——未勾选时 newScreenWallWindow 根本不存在，硬编码进模板会编译失败。
+          python3 patches/patch_both_screen_wall_button.py .
+          grep -qF "[LnDesk v224 screen-wall-btn-import]" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v224: screen wall button import not injected"; exit 1; }
+          echo "[OK] v224: both 右卡屏幕墙按钮已注入"
+
       - name: Screen wall v107 consolidated chain (multi-instance + preview + add-to-wall + idle exemption)
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
@@ -730,6 +737,75 @@ jobs:
           grep -q "_ffi.ffiModel.viewOnly" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution button lacks the view-only guard"; exit 1; }
           grep -q "Unsupported resolution" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution precheck missing"; exit 1; }
           echo "[OK] screen wall v132 verified (Escape passthrough + resolution guard)"
+
+      - name: Force light-mode background to pure white (v224)
+        # 值驱动补丁：extras.light_background_white != 'false' 时生效（默认开）。
+        # 不用 '==' true 是为了兼容不下发该键的旧 generator 提交。
+        if: fromJson(inputs.extras || '{}').light_background_white != 'false'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 亮色模式底色强制纯白。上游 lightTheme 里 scaffoldBackgroundColor 已是白色，
+          # 但 grayBg(#EFEFF2) 被三处消费，导致「窗口白、卡片/输入框/Container 灰」：
+          #   common.dart:397  inputDecorationTheme.fillColor -> 所有输入框
+          #   common.dart:412  cardColor                      -> 所有 Card
+          #   common.dart:457  colorScheme.background          -> Container/ColoredBox
+          # 本补丁把这三处改指 Colors.white，grayBg 常量本身保留（对话框描边 / 描边按钮
+          # 仍在用）。暗色主题走独立硬编码值（#24252B / #18191E），完全不受影响，
+          # 用户仍可正常切深色模式——补丁内已加反向断言校验这点。
+          python3 patches/patch_light_background_white.py .
+          grep -qF "[LnDesk v224 light background white]" flutter/lib/common.dart || { echo "[FAIL] v224: light background marker not injected"; exit 1; }
+          # 正向：三处必须已是 Colors.white
+          grep -q "fillColor: Colors.white," flutter/lib/common.dart || { echo "[FAIL] v224: input fillColor not white"; exit 1; }
+          grep -q "cardColor: Colors.white," flutter/lib/common.dart || { echo "[FAIL] v224: cardColor not white"; exit 1; }
+          grep -q "background: Colors.white)," flutter/lib/common.dart || { echo "[FAIL] v224: colorScheme.background not white"; exit 1; }
+          # 反向：暗色三值必须原样存在（深色模式仍可用）
+          grep -q "scaffoldBackgroundColor: Color(0xFF18191E)," flutter/lib/common.dart || { echo "[FAIL] v224: dark scaffoldBackgroundColor was altered"; exit 1; }
+          grep -q "cardColor: Color(0xFF24252B)," flutter/lib/common.dart || { echo "[FAIL] v224: dark cardColor was altered"; exit 1; }
+          echo "[OK] v224: 亮色底色已强制纯白（3 处），暗色主题保持不变"
+
+      - name: Font Awesome 4.7 icons for peer tab bar (v224)
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 二进制资源不能用 Python 注入，先 cp 再打补丁：
+          #   patches/assets/fontawesome-webfont.ttf -> flutter/assets/
+          # 之后 patch_font_awesome_icons.py 做三件事：
+          #   1. flutter/pubspec.yaml 追加 family: FontAwesome 字体族声明
+          #   2. flutter/lib/common.dart 的 IconFont 类追加 _family6 + 6 个 IconData
+          #   3. peer_tab_model.dart 的左半区 5 个 tab 图标 + peer_tab_page.dart
+          #      右半区（搜索 / 多选 / 视图切换）换成 FA 字形
+          cp -f patches/assets/fontawesome-webfont.ttf flutter/assets/fontawesome-webfont.ttf
+          test -s flutter/assets/fontawesome-webfont.ttf || { echo "[FAIL] v224: fontawesome-webfont.ttf missing/empty"; exit 1; }
+          python3 patches/patch_font_awesome_icons.py .
+          grep -q "family: FontAwesome" flutter/pubspec.yaml || { echo "[FAIL] v224: FontAwesome family missing in pubspec.yaml"; exit 1; }
+          grep -q "fontawesome-webfont.ttf" flutter/pubspec.yaml || { echo "[FAIL] v224: fontawesome ttf not declared in pubspec.yaml"; exit 1; }
+          grep -q "_family6 = 'FontAwesome'" flutter/lib/common.dart || { echo "[FAIL] v224: IconFont _family6 not injected"; exit 1; }
+          grep -q "IconFont.faClockO" flutter/lib/models/peer_tab_model.dart || { echo "[FAIL] v224: peer_tab_model icons not switched to FA"; exit 1; }
+          grep -qF "[LnDesk v224 font-awesome icons]" flutter/lib/common.dart || { echo "[FAIL] v224: FA marker not injected"; exit 1; }
+          echo "[OK] v224: Font Awesome 4.7 图标已接入"
+
+      - name: both-mode gear icon + compliance notice (v224)
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 「控制远程桌面」标题前的齿轮：上游是 Icons.help_outline_outlined，
+          # 这里换成客户提供的产品图标（20 px，与标题文字视觉齐平）。
+          cp -f patches/assets/icon_320.png flutter/assets/icon_320.png
+          test -s flutter/assets/icon_320.png || { echo "[FAIL] v224: icon_320.png missing/empty"; exit 1; }
+          python3 patches/patch_both_gear_and_notice.py .
+          grep -q "assets/icon_320.png" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v224: gear image not injected"; exit 1; }
+          if grep -q "Icons.help_outline_outlined" flutter/lib/common/widgets/connection_page_title.dart; then
+            echo "[FAIL] v224: old help glyph still present"; exit 1
+          fi
+          grep -qF "[LnDesk v224 both gear + compliance notice]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v224: gear/notice marker not injected"; exit 1; }
+          grep -q 'Official Website' src/lang/en.rs || { echo "[FAIL] v224: Official Website key missing in en.rs"; exit 1; }
+          echo "[OK] v224: 齿轮图标 + 合规提醒已注入"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true' && (env.UI_VARIANT != 'upstream' || env.CLIENT_TYPE == 'incoming')
