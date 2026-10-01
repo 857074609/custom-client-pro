@@ -2278,6 +2278,26 @@ jobs:
           YAML
           echo "[OK] suppressed upstream cosmetic lint rules for analyze gate"
 
+      - name: Guard - IconFont FA glyph references must be defined (v225)
+        shell: bash
+        run: |
+          # [v225] both 模板（connection_page_both / desktop_home_page_both）引用 IconFont.faXxx，
+          # 这些常量由 patch_font_awesome_icons.py 注入 flutter/lib/common.dart。若某工作流只 cp
+          # 模板、没跑 FA 步骤（win7 曾缺该步骤 -> undefined_getter），analyze 只会在 200+ 条
+          # info/warning 里冒出 4 行 error，定位成本很高。这里做一次廉价的符号对账，
+          # 直接在步骤日志里点名缺失的字形。
+          cd ./flutter
+          missing=0
+          for sym in $(grep -rhoE 'IconFont\.fa[A-Za-z0-9]+' lib | sed 's/IconFont\.//' | sort -u); do
+            if ! grep -q "static const IconData ${sym} " lib/common.dart; then
+              echo "[FAIL] v225-guard: IconFont.${sym} 未在 flutter/lib/common.dart 定义（FA 图标步骤未执行？）"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          echo "[OK] v225-guard: 所有 IconFont FA 字形引用均已在 common.dart 定义"
+          cd ..
+
       - name: Gate - flutter analyze (fail fast on Dart compile errors)
         shell: bash
         run: |
