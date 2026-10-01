@@ -2264,7 +2264,21 @@ jobs:
           # [LnDesk v160] cosmetic rules already silenced via flutter/analysis_options.yaml.
           cd ./flutter
           flutter pub get
-          flutter analyze lib --no-fatal-infos --no-fatal-warnings
+          set +e
+          flutter analyze lib --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### flutter analyze: Dart errors (fatal)"
+              echo '```'
+              grep -iE 'error' analyze.log | head -40 || echo '(no error line matched)'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "[FAIL] flutter analyze reported Dart errors - see the job summary"
+            exit 1
+          fi
+          echo "[OK] flutter analyze clean (no Dart errors)"
           cd ..
 
       - name: Build rustdesk
