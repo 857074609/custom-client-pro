@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: a04bfb43e9d88a720791dc84262e8c573aabaf36
+          ref: 6693663401d5806701ec450d29ce1989c9aee178
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -519,6 +519,12 @@ jobs:
           cp -f patches/desktop_home_page_both.dart flutter/lib/desktop/pages/desktop_home_page.dart
           # UI_MODE_BOTH 上下布局：同时替换 connection_page.dart，拆出顶部卡片与底部列表
           cp -f patches/connection_page_both.dart flutter/lib/desktop/pages/connection_page.dart
+          # [v224-fix5] both 模板同时用到两代 url_launcher API：
+          #   url_launcher.dart        -> launchUrl / LaunchMode（官网按钮）
+          #   url_launcher_string.dart -> canLaunchUrlString / launchUrlString（onUsePublicServerGuide）
+          # 缺任一都会让 flutter analyze 报 undefined_method。
+          grep -q "url_launcher_string.dart" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v224-fix5: url_launcher_string import missing (canLaunchUrlString/launchUrlString)"; exit 1; }
+          grep -q "package:url_launcher/url_launcher.dart" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v224-fix5: url_launcher import missing (launchUrl/LaunchMode)"; exit 1; }
           # UI_MODE_BOTH 扁平化：设备卡片默认 1px 细边框 + 透明背景，与窗口背景形成层次感
           cp -f patches/peer_card_both.dart flutter/lib/common/widgets/peer_card.dart
           # [v120] Accessible devices tab: assert the address-book alias helper is present.
