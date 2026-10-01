@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 9663cb160eaeefed89621b1743204e560bf4264a
+          ref: 3ec4f9b59128341e2de5e0b1b7b5c029fa019856
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -775,9 +775,11 @@ jobs:
           #   patches/assets/fontawesome-webfont.ttf -> flutter/assets/
           # 之后 patch_font_awesome_icons.py 做三件事：
           #   1. flutter/pubspec.yaml 追加 family: FontAwesome 字体族声明
-          #   2. flutter/lib/common.dart 的 IconFont 类追加 _family6 + 6 个 IconData
+          #   2. flutter/lib/common.dart 的 IconFont 类追加 _family6 + FA 字形常量
+          #      （含 fa-sort F0DC / fa-refresh F021）
           #   3. peer_tab_model.dart 的左半区 5 个 tab 图标 + peer_tab_page.dart
-          #      右半区（搜索 / 多选 / 视图切换）换成 FA 字形
+          #      右半区（搜索 / 多选 / 排序 / 刷新 / 视图切换）换成 FA 字形
+          #      刷新仍保留上游的 RotatedBox(quarterTurns: 2)，箭头朝向不变
           cp -f patches/assets/fontawesome-webfont.ttf flutter/assets/fontawesome-webfont.ttf
           test -s flutter/assets/fontawesome-webfont.ttf || { echo "[FAIL] v224: fontawesome-webfont.ttf missing/empty"; exit 1; }
           python3 patches/patch_font_awesome_icons.py .
@@ -785,8 +787,18 @@ jobs:
           grep -q "fontawesome-webfont.ttf" flutter/pubspec.yaml || { echo "[FAIL] v224: fontawesome ttf not declared in pubspec.yaml"; exit 1; }
           grep -q "_family6 = 'FontAwesome'" flutter/lib/common.dart || { echo "[FAIL] v224: IconFont _family6 not injected"; exit 1; }
           grep -q "IconFont.faClockO" flutter/lib/models/peer_tab_model.dart || { echo "[FAIL] v224: peer_tab_model icons not switched to FA"; exit 1; }
-          grep -q "IconFont.faCaretDown" flutter/lib/common.dart || { echo "[FAIL] v224: faCaretDown constant missing in IconFont"; exit 1; }
+          grep -q "static const IconData faCaretDown" flutter/lib/common.dart || { echo "[FAIL] v224: faCaretDown constant missing in IconFont"; exit 1; }
+          grep -q "static const IconData faSort" flutter/lib/common.dart || { echo "[FAIL] v224: faSort constant missing in IconFont"; exit 1; }
+          grep -q "static const IconData faRefresh" flutter/lib/common.dart || { echo "[FAIL] v224: faRefresh constant missing in IconFont"; exit 1; }
           grep -q "IconFont.faSearch" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v224: search magnifier not switched to FA"; exit 1; }
+          grep -q "IconFont.faSort" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v224: sort dropdown not switched to FA"; exit 1; }
+          grep -q "IconFont.faRefresh" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v224: refresh button not switched to FA"; exit 1; }
+          if grep -q "Icons.sort_rounded," flutter/lib/common/widgets/peer_tab_page.dart; then
+            echo "[FAIL] v224: old sort glyph still present"; exit 1
+          fi
+          if grep -q "Icons.refresh," flutter/lib/common/widgets/peer_tab_page.dart; then
+            echo "[FAIL] v224: old refresh glyph still present"; exit 1
+          fi
           grep -qF "[LnDesk v224 font-awesome icons]" flutter/lib/common.dart || { echo "[FAIL] v224: FA marker not injected"; exit 1; }
           echo "[OK] v224: Font Awesome 4.7 图标已接入"
 
