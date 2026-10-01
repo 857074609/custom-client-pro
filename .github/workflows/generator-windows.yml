@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 801a8c4551957f0d8f9a184c9b01e60619f5c61d
+          ref: 9663cb160eaeefed89621b1743204e560bf4264a
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -785,6 +785,8 @@ jobs:
           grep -q "fontawesome-webfont.ttf" flutter/pubspec.yaml || { echo "[FAIL] v224: fontawesome ttf not declared in pubspec.yaml"; exit 1; }
           grep -q "_family6 = 'FontAwesome'" flutter/lib/common.dart || { echo "[FAIL] v224: IconFont _family6 not injected"; exit 1; }
           grep -q "IconFont.faClockO" flutter/lib/models/peer_tab_model.dart || { echo "[FAIL] v224: peer_tab_model icons not switched to FA"; exit 1; }
+          grep -q "IconFont.faCaretDown" flutter/lib/common.dart || { echo "[FAIL] v224: faCaretDown constant missing in IconFont"; exit 1; }
+          grep -q "IconFont.faSearch" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v224: search magnifier not switched to FA"; exit 1; }
           grep -qF "[LnDesk v224 font-awesome icons]" flutter/lib/common.dart || { echo "[FAIL] v224: FA marker not injected"; exit 1; }
           echo "[OK] v224: Font Awesome 4.7 图标已接入"
 
