@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 3ec4f9b59128341e2de5e0b1b7b5c029fa019856
+          ref: a04bfb43e9d88a720791dc84262e8c573aabaf36
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -622,18 +622,18 @@ jobs:
           # patch_screen_wall_v107.py 整合原 v103/v104/v108/v109 四个补丁（锚点与
           # 执行顺序逐字保留；v104 为空操作占位已被 base 吸收，见
           # Docs/rustdesk-1.4.9/v108/修改方案.md）：
-          # - 多实例：最多 4 个屏幕墙窗口（4 墙 × 4 设备 = 16 路），级联错位、
-          #   强制深色 + 黑底；第 5 次点击提示"最多打开 4 个屏幕墙"；
+          # - 多实例：最多 10 个屏幕墙窗口（10 墙 × 4 设备 = 40 路），级联错位、
+          #   强制深色 + 黑底；第 11 次点击提示"最多打开 10 个屏幕墙"；
           # - 入口预览选择：无指定 wallId 时弹 Dialog 列出已保存屏幕墙（可选新建）；
           # - 设备卡片菜单「Add to Screen Wall」：自动依次填充，满了切下一块；
           # - 屏幕墙为「监控型」会话，服务端豁免「长时间不活动自动断开」。
           # 必须在 "Apply screen wall patch + i18n"（base）之后运行（锚点匹配其产物）。
           # 脚本自带幂等守卫：最终 marker 全部存在时 [SKIP] 退出 0。
           python3 patches/patch_screen_wall_v107.py .
-          grep -q "Screen Wall Max 4 Windows" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart 缺少 v103 多实例入口"; exit 1; }
+          grep -q "Screen Wall Max 10 Windows" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart 缺少 v103 多实例入口"; exit 1; }
           grep -q "Device Already Added" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v103 去重提示"; exit 1; }
           grep -q "ThemeData.dark" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少强制深色主题"; exit 1; }
-          grep -q "_screenWallWindows.length >= 4" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 4 实例上限"; exit 1; }
+          grep -q "_screenWallWindows.length >= 10" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 10 实例上限"; exit 1; }
           grep -q "kScreenWallWalls" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v107 多墙持久化键"; exit 1; }
           grep -q "addPeerToScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 添加到屏幕墙入口"; exit 1; }
           grep -q "_pickScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 预览选择 Dialog"; exit 1; }
