@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2eedc91e289c946c938cfc2a38e2e3ec163a6e50
+          ref: 607ad5d21b46252fcf3bc534708746e3003b3315
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1955,6 +1955,18 @@ jobs:
           python3 patches/patch_settings_theme.py .
           grep -q "settings page resilient to theme-change" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing theme-rebuild resilience"; exit 1; }
           echo "[OK] settings page immune to theme-change rebuilds"
+
+      - name: Crisp settings section outlines (v227c)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v227c] 设置页分区卡片加 1px 明确边框 + elevation 0（默认阴影太淡
+          # 看不出板块轮廓——客户要求轮廓清晰）。
+          python3 patches/patch_settings_card_border.py .
+          grep -qF "[LnDesk v227c settings outline]" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings outline marker missing"; exit 1; }
+          grep -q "elevation: 0," flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings card elevation 0 missing"; exit 1; }
+          echo "[OK] settings section outlines applied"
 
       - name: Disable_desktop_icon
         if: fromJson(inputs.extras).disable_desktop_icon == 'true'
