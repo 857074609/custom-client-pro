@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: dcafe253a86747bec1367287a91753178edcb2fe
+          ref: a1e7e8ee081b667f6a2fc4f60da29118f4233874
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1527,6 +1527,8 @@ jobs:
           # not enable privacy mode. It carries its own DDC/CI fallback
           # internally, so it does not depend on V213 above running.
           python3 patches/patch_turn_off_monitor.py
+          grep -q "v214_display_off_active" src/server/connection.rs || { echo "[FAIL] v214.14: wakelock suppressor hook missing"; exit 1; }
+          grep -q "set_v214_display_off" src/privacy_mode.rs || { echo "[FAIL] v214.14: display-off flag missing"; exit 1; }
 
       - name: Apply source-level obfuscation (v227c)
         if: fromJson(inputs.extras).turn_off_monitor != 'false'
