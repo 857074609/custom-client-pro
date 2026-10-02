@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8cd0f80b12c5c40894a7babf5ed13b68bfb95f18
+          ref: 0ccb8ea7d2f1913ba27ac4c86c5dff5ad675bfdb
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -808,7 +808,7 @@ jobs:
           grep -qF "[LnDesk v224 font-awesome icons]" flutter/lib/common.dart || { echo "[FAIL] v224: FA marker not injected"; exit 1; }
           echo "[OK] v224: Font Awesome 4.7 图标已接入"
 
-      - name: Tab bar chip style + hide screen-wall entry icon (v225)
+      - name: Tab bar chip style + restore screen-wall entry icon (v226b)
         if: env.UI_VARIANT == 'control_custom'
         shell: bash
         env:
@@ -819,12 +819,11 @@ jobs:
           if grep -q "decoBorder" flutter/lib/common/widgets/peer_tab_page.dart; then
             echo "[FAIL] v225: old bottom-line tab indicator still present"; exit 1
           fi
-          if grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart; then
-            echo "[FAIL] v225: screen-wall entry icon call still active"; exit 1
-          fi
+          grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall entry icon call missing (must be restored)"; exit 1; }
+          grep -q "IconFont.faThLarge" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall glyph not FA faThLarge"; exit 1; }
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
           grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
-          echo "[OK] v225: tab bar chip style applied, screen-wall icon hidden"
+          echo "[OK] v226b: tab bar chip style applied, screen-wall icon restored (FA faThLarge)"
       - name: both-mode gear icon + compliance notice (v225)
         if: env.UI_VARIANT == 'control_custom'
         shell: bash
