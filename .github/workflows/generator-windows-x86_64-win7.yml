@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 27e8a57083de8a3cc0fd6f64d50e2885ad5b5727
+          ref: 06495a411ea41cd36c62219a0b527c8865d923ef
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1659,7 +1659,7 @@ jobs:
           # 的文本，故门控条件与其一致；真正的 OLLVM 级混淆 = 独立工具链
           # 项目，另行立项。
           python3 patches/patch_obfstr.py .
-          grep -q 'obfstr = "0.4"' Cargo.toml || { echo "[FAIL] v227c: obfstr dep missing"; exit 1; }
+          grep -q 'obfstr = "=0.4.4"' Cargo.toml || { echo "[FAIL] v227c: obfstr dep missing (pinned 0.4.4 for cargo 1.75 win7)"; exit 1; }
           grep -q "obfstr::obfstr!" src/core_main.rs || { echo "[FAIL] v227c: obfstr literal missing"; exit 1; }
 
       - name: hide_chat_voice

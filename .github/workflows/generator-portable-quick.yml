@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 27e8a57083de8a3cc0fd6f64d50e2885ad5b5727
+          ref: 06495a411ea41cd36c62219a0b527c8865d923ef
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
