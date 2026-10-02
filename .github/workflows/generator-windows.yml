@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 1a984b6e49604447a2f47efdca1a50ffbb820d26
+          ref: 6c5ecc9121a652556aa501bea1bb11fd04287d4b
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1247,6 +1247,20 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_install_launch_retry.py .
+
+      - name: Move default install path to per-user AppData (v227c)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v227c] 默认安装目录 C:\Program Files\<app> 改为
+          # C:\Users\<用户名>\AppData\Roaming\<app>（单点：get_default_install_path，
+          # 注册表/托盘/防火墙/安装页默认显示全部派生）。仅影响全新安装：
+          # 已部署机器走注册表 InstallLocation，升级原地不动。APPDATA 缺失时
+          # 回退上游 Program Files 逻辑。
+          python3 patches/patch_install_path.py .
+          grep -qF "[LnDesk v227c appdata-install]" src/platform/windows.rs || { echo "[FAIL] v227c: appdata install path marker missing"; exit 1; }
+          grep -q 'std::env::var("APPDATA")' src/platform/windows.rs || { echo "[FAIL] v227c: APPDATA lookup missing"; exit 1; }
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
