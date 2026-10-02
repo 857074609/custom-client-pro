@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f2618090ff81e2d0455f56edfcc4cffb07c50547
+          ref: 8be1f73243b09b2d7c99ad9c06951103a9cff71e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -463,6 +463,8 @@ jobs:
             echo "[FAIL] v117 control button still relies on the no-op options-table write"
             exit 1
           fi
+          grep -q "copyPill" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v227c: copyPill missing (single top-right copy reverted)"; exit 1; }
+          grep -q "mainUpdateTemporaryPassword" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v227c: temp-password refresh button missing"; exit 1; }
           echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
 
       - name: Apply main-interface security lock (home-lock)
@@ -788,6 +790,8 @@ jobs:
           grep -q "Divider(height: 1, thickness: 1)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab top full-width divider missing"; exit 1; }
           grep -qF "[LnDesk v227 tab divider]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab divider marker missing"; exit 1; }
           grep -qF "[LnDesk v227c flat tab strip]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: flat tab strip marker missing"; exit 1; }
+          grep -q "Colors.white" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: explicit white surface missing (flat strip / search)"; exit 1; }
+          grep -q "withOpacity(0.5)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: toolbar icon tint 0.5 missing"; exit 1; }
           grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall entry icon call missing (must be restored)"; exit 1; }
           grep -q "IconFont.faThLarge" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall glyph not FA faThLarge"; exit 1; }
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
@@ -2182,6 +2186,20 @@ jobs:
         run: |
           cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
           echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
+
+      - name: Pack payload binaries with UPX (before packaging & signing)
+        if: env.UPLOAD_ARTIFACT == 'true'
+        shell: bash
+        run: |
+          # [v227c] 签名前对负载二进制加壳：压缩主程序与核心 DLL（体积约省 50-60%）。
+          # 顺序必须保证：先加壳、后自解压打包与签名（加壳会使既有签名失效）。
+          # 只压 rustdesk.exe + librustdesk.dll；flutter_windows.dll（引擎）与
+          # WindowInjection.dll（注入 DLL）不压，规避加载兼容与杀软误报放大。
+          choco install upx -y --no-progress
+          upx --version
+          upx -9 --lzma ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+          ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+          echo "[OK] payload packed with UPX"
 
       - name: Build self-extracted executable
         shell: bash
