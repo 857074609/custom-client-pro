@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 549932facd418b4b97215b655807a86e88ea7509
+          ref: 1d6defac9f80e18d7acf7042485bb7114a50f831
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -824,6 +824,7 @@ jobs:
           grep -q "decoration: null" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab container background not removed (decoration:null)"; exit 1; }
           grep -q "Divider(height: 1, thickness: 1)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab top full-width divider missing"; exit 1; }
           grep -qF "[LnDesk v227 tab divider]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab divider marker missing"; exit 1; }
+          grep -qF "[LnDesk v227c flat tab strip]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: flat tab strip marker missing"; exit 1; }
           grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall entry icon call missing (must be restored)"; exit 1; }
           grep -q "IconFont.faThLarge" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall glyph not FA faThLarge"; exit 1; }
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
