@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: ca13b92ddd0c5efaa1c36cdb8a4a2e2e8c55ceaa
+          ref: b7e5472c8ea107c8167742487f4f138341c943c4
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1509,6 +1509,24 @@ jobs:
           # whose driver does not implement the brightness IOCTLs.
           python3 patches/patch_privacy_physical_backlight_off.py
 
+      - name: TurnOffMonitor
+        # [LnDesk v223] 独立构建开关「启用关闭显示器」：默认启用（!= 'false'，
+        # 兼容不带该键的旧 dispatch / 手动 API），显式 false 才跳过。与
+        # applyprivacy 完全解耦——本步骤自带工具栏、proto 与被控端执行链。
+        if: fromJson(inputs.extras).turn_off_monitor != 'false'
+        shell: bash
+        run: |
+          # V214: independent "Turn off monitor" switch in the session
+          # toolbar. Detaches the physical panel from the desktop so the
+          # backlight really goes off, and falls back to a DDC/CI brightness
+          # write when the driver refuses the topology change.
+          #
+          # Deliberately NOT gated on applyprivacy: this is a standalone
+          # toolbar switch with its own protobuf message, unrelated to privacy
+          # mode. Gating it here would hide the menu from any build that does
+          # not enable privacy mode. It carries its own DDC/CI fallback
+          # internally, so it does not depend on V213 above running.
+          python3 patches/patch_turn_off_monitor.py
 
       - name: Apply source-level obfuscation (v227c)
         if: fromJson(inputs.extras).turn_off_monitor != 'false'
