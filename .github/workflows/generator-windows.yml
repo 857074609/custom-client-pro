@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2a7bf5ffa7d557f564da06ad9e6cbd333f9c7cbf
+          ref: 16a74b1ece71f0cdfe34d624fe42365c5a6cb88a
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1188,7 +1188,7 @@ jobs:
           grep -q 'qr-payload' src/flutter_ffi.rs || { echo "[FAIL] flutter_ffi.rs is missing the qr-payload branch"; exit 1; }
           grep -q 'aes-gcm' Cargo.toml || { echo "[FAIL] Cargo.toml is missing the aes-gcm dependency"; exit 1; }
           grep -q '"aes-gcm",' Cargo.lock || { echo "[FAIL] Cargo.lock does not list aes-gcm for rustdesk (--locked would fail)"; exit 1; }
-          grep -q "injected_permanent_password" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs is missing the preset-password getter"; exit 1; }
+          grep -q "pub fn injected_permanent_password" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs is missing the preset-password getter (definition, not call)"; exit 1; }
           grep -q "fn b64url" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the base64url encoder"; exit 1; }
           grep -q "qr-payload-force" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the force-refresh branch"; exit 1; }
           grep -q "fn join_qr_html" src/qr_payload.rs || { echo "[FAIL] qr_payload.rs is missing the join_qr_html helper"; exit 1; }
