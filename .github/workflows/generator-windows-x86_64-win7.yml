@@ -1123,12 +1123,6 @@ jobs:
         run: |
           python3 patches/patch_server_lock_compiletime.py
 
-      - name: Apply permanent password patch
-        shell: bash
-        run: |
-          VER="${{ env.VERSION }}"
-          python3 patches/patch_permanent_password_new.py
-
       - name: Apply QR code payload patch (v138)
         if: inputs.ui_mode == 'true' && fromJson(inputs.extras).enableQrCode == 'true'
         shell: bash
