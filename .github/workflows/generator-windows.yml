@@ -832,8 +832,13 @@ jobs:
           grep -qF "[LnDesk v227c flat tab strip]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: flat tab strip marker missing"; exit 1; }
           grep -q "Colors.white" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: explicit white surface missing (flat strip / search)"; exit 1; }
           grep -q "withOpacity(0.5)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: toolbar icon tint 0.5 missing"; exit 1; }
-          grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall entry icon call missing (must be restored)"; exit 1; }
-          grep -q "IconFont.faThLarge" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall glyph not FA faThLarge"; exit 1; }
+          # [LnDesk v246] 这两条断言检查的是 patch_screen_wall.py 的产物，而该补丁受
+          # inputs.screen_wall 门控；screen_wall 关闭时产物本就不存在，断言必须一并门控，
+          # 否则 control_custom + screen_wall!=true 的组合必然 FAIL（v226b 门控缺陷修复）。
+          if [ "${{ inputs.screen_wall }}" = "true" ]; then
+            grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall entry icon call missing (must be restored)"; exit 1; }
+            grep -q "IconFont.faThLarge" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall glyph not FA faThLarge"; exit 1; }
+          fi
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
           grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
           echo "[OK] v227: tab bar no background, icons visible, screen-wall icon restored (FA faThLarge)"
