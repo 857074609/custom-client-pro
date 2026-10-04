@@ -797,6 +797,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
+          # [v232-perf] 失败运行也保存缓存，避免失败后连续双倍冷启动。
+          cache-on-failure: true
 
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11

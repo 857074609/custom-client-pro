@@ -1320,6 +1320,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
+          # [v232-perf] 默认 false：构建失败的运行不保存缓存 -> 依赖变化后
+          # 若紧跟一次失败构建，下一次（即使代码已修好）仍要全量重编
+          # （实测 #2009 失败未存缓存，#2010 又冷启动 33m50s）。
+          # 打开后失败运行的缓存也会续命，避免连续双倍冷启动。
+          cache-on-failure: true
        
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
