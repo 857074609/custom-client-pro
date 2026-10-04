@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 2fc12ecf2bd82d40b1e7b9627c1bd4af4673044e
+          ref: 6eb499007c4b8876ace70b595aade691b1367c47
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -728,10 +728,15 @@ jobs:
           grep -q "setResizable(true)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: resizable lift missing"; exit 1; }
           grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
           test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 2 || { echo "[FAIL] v150: iroh preference must be applied on the main-window accept path"; exit 1; }
-          # [V216] connection_page_both.dart 仅 both 模式(control_custom)被 cp 使用；分享按钮已改为直接打开官网，
-          # 原 showShareDialog 断言改为校验 hydesk.cn。incoming/upstream 不使用该文件，跳过此门禁。
+          # [V216] connection_page_both.dart 仅 both 模式(control_custom)被 cp 使用。
+          # [v240] 分享/邀请按键回归（onShare/onInvite），官网字符码域名随方法移除；
+          # 原 hydesk.cn 断言（v227c 字符码化后已失真）改为校验分享与邀请处理器；
+          # 并分发右卡顶部 LOGO 资产。
           if [ "$UI_VARIANT" = "control_custom" ]; then
-            grep -q "hydesk.cn" ./patches/connection_page_both.dart || { echo "[FAIL] v216: official website link missing in both-mode connection page"; exit 1; }
+            grep -q "onShare" ./patches/connection_page_both.dart || { echo "[FAIL] v240: share handler missing in both-mode connection page"; exit 1; }
+            grep -q "onInvite" ./patches/connection_page_both.dart || { echo "[FAIL] v240: invite handler missing in both-mode connection page"; exit 1; }
+            cp -f patches/assets/logo_v15_cn.png flutter/assets/logo_v15_cn.png
+            test -s flutter/assets/logo_v15_cn.png || { echo "[FAIL] v240: logo_v15_cn.png missing/empty"; exit 1; }
           fi
           grep -q "ShareApi" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: device share api missing"; exit 1; }
           grep -q "kBrandAppName" ./flutter/lib/common/brand.dart || { echo "[FAIL] v150: brand.dart not injected"; exit 1; }

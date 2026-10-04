@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2fc12ecf2bd82d40b1e7b9627c1bd4af4673044e
+          ref: 6eb499007c4b8876ace70b595aade691b1367c47
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -781,20 +781,23 @@ jobs:
         run: |
           # 二进制资源不能用 Python 注入，先 cp 再打补丁：
           #   patches/assets/fontawesome-webfont.ttf -> flutter/assets/
+          #   patches/assets/logo_v15_cn.png       -> flutter/assets/（[v240] 右卡 LOGO）
           # 之后 patch_font_awesome_icons.py 做三件事：
           #   1. flutter/pubspec.yaml 追加 family: FontAwesome 字体族声明
           #   2. flutter/lib/common.dart 的 IconFont 类追加 _family6 + FA 字形常量
           #      （含 fa-sort F0DC / fa-refresh F021）
-          #   3. peer_tab_model.dart 的左半区 5 个 tab 图标 + peer_tab_page.dart
-          #      右半区（搜索 / 多选 / 排序 / 刷新 / 视图切换）换成 FA 字形
-          #      刷新仍保留上游的 RotatedBox(quarterTurns: 2)，箭头朝向不变
+          #   3. peer_tab_page.dart 右半区（搜索 / 多选 / 排序 / 刷新 / 视图切换）
+          #      换成 FA 字形；刷新仍保留上游的 RotatedBox(quarterTurns: 2)
+          # [v239] peer_tab_model.dart 不再替换：tab 栏图标回退官方字形
           cp -f patches/assets/fontawesome-webfont.ttf flutter/assets/fontawesome-webfont.ttf
           test -s flutter/assets/fontawesome-webfont.ttf || { echo "[FAIL] v224: fontawesome-webfont.ttf missing/empty"; exit 1; }
+          cp -f patches/assets/logo_v15_cn.png flutter/assets/logo_v15_cn.png
+          test -s flutter/assets/logo_v15_cn.png || { echo "[FAIL] v240: logo_v15_cn.png missing/empty"; exit 1; }
           python3 patches/patch_font_awesome_icons.py .
           grep -q "family: FontAwesome" flutter/pubspec.yaml || { echo "[FAIL] v224: FontAwesome family missing in pubspec.yaml"; exit 1; }
           grep -q "fontawesome-webfont.ttf" flutter/pubspec.yaml || { echo "[FAIL] v224: fontawesome ttf not declared in pubspec.yaml"; exit 1; }
           grep -q "_family6 = 'FontAwesome'" flutter/lib/common.dart || { echo "[FAIL] v224: IconFont _family6 not injected"; exit 1; }
-          grep -q "IconFont.faClockO" flutter/lib/models/peer_tab_model.dart || { echo "[FAIL] v224: peer_tab_model icons not switched to FA"; exit 1; }
+          grep -q "Icons.access_time_filled" flutter/lib/models/peer_tab_model.dart || { echo "[FAIL] v239: peer tab icons must stay official (access_time_filled missing)"; exit 1; }
           grep -q "static const IconData faCaretDown" flutter/lib/common.dart || { echo "[FAIL] v224: faCaretDown constant missing in IconFont"; exit 1; }
           grep -q "static const IconData faSort" flutter/lib/common.dart || { echo "[FAIL] v224: faSort constant missing in IconFont"; exit 1; }
           grep -q "static const IconData faRefresh" flutter/lib/common.dart || { echo "[FAIL] v224: faRefresh constant missing in IconFont"; exit 1; }
