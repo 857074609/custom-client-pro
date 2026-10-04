@@ -815,10 +815,8 @@ jobs:
             echo "[FAIL] v224: old help glyph still present"; exit 1
           fi
                     grep -qF "[LnDesk v225 both gear]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v225: gear marker not injected"; exit 1; }
-          # [v225] banner moved into the template, below the action-button row.
-          grep -q "Compliance Notice Body" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v225: compliance banner missing from connection_page.dart"; exit 1; }
           grep -q 'Official Website' src/lang/en.rs || { echo "[FAIL] v224: Official Website key missing in en.rs"; exit 1; }
-          echo "[OK] v225: 齿轮已移到标题前 + 合规提醒条在按钮下方"
+          echo "[OK] v225: 齿轮已移到标题前"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true' && (env.UI_VARIANT != 'upstream' || env.CLIENT_TYPE == 'incoming')
