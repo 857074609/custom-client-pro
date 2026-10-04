@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 26d141af819ddccb54fd57e9eac21cf0246f6ef3
+          ref: 8b02310f819ddccb54fd57e9eac21cf0246f6ef3
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -857,7 +857,7 @@ jobs:
           if grep -qF "'assets/logo_v15_cn.png'" flutter/lib/desktop/pages/connection_page.dart; then
             echo "[FAIL] v244: right-card LOGO container still present"; exit 1
           fi
-          grep -q "_cardHeight = 200" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v244: card height not 200"; exit 1; }
+          grep -q "_cardHeight = 172" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v245: card height not 172"; exit 1; }
           grep -q 'Official Website' src/lang/en.rs || { echo "[FAIL] v224: Official Website key missing in en.rs"; exit 1; }
           echo "[OK] v225: 齿轮已移到标题前"
 
