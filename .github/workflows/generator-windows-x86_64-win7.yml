@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 94defacf819ddccb54fd57e9eac21cf0246f6ef3
+          ref: 26d141af819ddccb54fd57e9eac21cf0246f6ef3
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -805,16 +805,21 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # 「控制远程桌面」标题前的齿轮：上游是 Icons.help_outline_outlined，
-          # 这里换成客户提供的产品图标（20 px，与标题文字视觉齐平）。
-          cp -f patches/assets/icon_320.png flutter/assets/icon_320.png
-          test -s flutter/assets/icon_320.png || { echo "[FAIL] v224: icon_320.png missing/empty"; exit 1; }
+          # 「控制远程桌面」标题前的产品图标：上游是 Icons.help_outline_outlined，
+          # 这里换成客户提供的 64x64 产品图，渲染进 32x32 方框（BoxFit.contain
+          # 自动等比缩小，2x DPI 下 1:1 不再放大糊边）。
+          cp -f patches/assets/icon_64.png flutter/assets/icon_64.png
+          test -s flutter/assets/icon_64.png || { echo "[FAIL] v244: icon_64.png missing/empty"; exit 1; }
           python3 patches/patch_both_gear_and_notice.py .
-          grep -q "assets/icon_320.png" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v224: gear image not injected"; exit 1; }
+          grep -q "assets/icon_64.png" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v244: gear image not injected"; exit 1; }
           if grep -q "Icons.help_outline_outlined" flutter/lib/common/widgets/connection_page_title.dart; then
             echo "[FAIL] v224: old help glyph still present"; exit 1
           fi
                     grep -qF "[LnDesk v225 both gear]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v225: gear marker not injected"; exit 1; }
+          if grep -qF "'assets/logo_v15_cn.png'" flutter/lib/desktop/pages/connection_page.dart; then
+            echo "[FAIL] v244: right-card LOGO container still present"; exit 1
+          fi
+          grep -q "_cardHeight = 200" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v244: card height not 200"; exit 1; }
           grep -q 'Official Website' src/lang/en.rs || { echo "[FAIL] v224: Official Website key missing in en.rs"; exit 1; }
           echo "[OK] v225: 齿轮已移到标题前"
 
