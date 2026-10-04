@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c0e80ac6b474404306d5c6bd30e0c2d873eaea9c
+          ref: fa3b7f55966fae93bfc04fccfc63937cfac1b150
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1919,6 +1919,14 @@ jobs:
           ! grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116-fix4 hwcodec pin not reverted"; exit 1; }
           ! grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116-fix4 qp_for_ratio must NOT survive (dead code removed)"; exit 1; }
           ! grep -q "patch/0030-nvenc" ./res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v116-fix4 portfile not reverted"; exit 1; }
+
+      - name: video tile-diff (v243)
+        shell: bash
+        run: |
+          python3 patches/patch_video_tile_diff.py .
+          grep -q "convert_to_yuv_tiled" ./libs/scrap/src/common/convert.rs || { echo "[FAIL] v243 tiled conversion missing"; exit 1; }
+          grep -qF "convert_to_yuv_tiled(&pixelbuffer" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 tiled call site missing"; exit 1; }
+          grep -q "sampled_equal" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 sampled compare missing"; exit 1; }
 
       - name: pin iroh lock closure to MSRV-safe versions (v88)
         shell: bash
