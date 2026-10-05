@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8011182769e647f22c3a4c70c266ebf713187467
+          ref: db3d384396cc0311461b8ad31f1fd895f6349bf5
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2129,6 +2129,27 @@ jobs:
           python3 patches/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
+      - name: Both-mode peer-tab sidebar collapsed by default (V258)
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V258 (both-mode only): the "Address book" tags panel and the
+          # "Accessible devices" (MyGroup) left list start COLLAPSED; the
+          # shared sidebar button in the peer-tab toolbar expands them with a
+          # single shared state (confirmed scope). The tab glyph bump
+          # 18 -> 22 comes from patch_peer_tab_style.py above.
+          # peer_tab_page.dart / address_book.dart / my_group.dart are SHARED
+          # files, so this stays gated on UI_VARIANT == 'control_custom'.
+          # MUST run after patch_add_address_book.py (V256/V257 ab toolbar).
+          python3 patches/patch_both_sidebar.py .
+          grep -q "offstage: hideAbTagsPanel.value," flutter/lib/common/widgets/my_group.dart || { echo "[FAIL] v258: MyGroup left list is not collapsible"; exit 1; }
+          grep -q "final hideAbTagsPanel = true.obs;" flutter/lib/common/widgets/address_book.dart || { echo "[FAIL] v258: ab tags panel is not collapsed by default"; exit 1; }
+          grep -q "PeerTabIndex.group.index," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v258: sidebar toggle not reachable from the devices tab"; exit 1; }
+          grep -q "size: 22," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v258: tab glyphs not enlarged to 22"; exit 1; }
+          grep -q "Toggle Sidebar" src/lang/cn.rs || { echo "[FAIL] v258: cn.rs is missing the Toggle Sidebar key"; exit 1; }
+          echo "[OK] V258: both-mode sidebars collapsed by default, tab glyphs enlarged"
       - name: Drag local files into remote session (V104)
         if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
         shell: bash
