@@ -207,7 +207,7 @@ jobs:
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','irohRelayUrl2','irohRelayUrl3','irohDnsUrl','irohDnsUrl2',''irohDnsUrl3','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
+          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','irohRelayUrl2','irohRelayUrl3','irohDnsUrl','irohDnsUrl2','irohDnsUrl3','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
