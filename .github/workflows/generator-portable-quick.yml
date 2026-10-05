@@ -158,7 +158,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 6685ab07040d442a08aadad108516829e732a9df
+          ref: 0d7f26d157af81c650a836b6a85bb79f55ff6e17
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -901,6 +901,7 @@ jobs:
           python3 patches/patch_add_to_ab_rename.py .
           python3 patches/patch_peer_card_alias.py .
           python3 patches/patch_desktop_toolbar_toggles.py .
+          python3 patches/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash

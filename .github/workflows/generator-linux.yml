@@ -257,7 +257,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 2563ccad2a1b0f5c49e8a6c64015c7f9547e12ec
+          ref: 0d7f26d157af81c650a836b6a85bb79f55ff6e17
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -767,6 +767,7 @@ jobs:
           python3 patches/patch_add_to_ab_rename.py .
           python3 patches/patch_peer_card_alias.py .
           python3 patches/patch_desktop_toolbar_toggles.py .
+          python3 patches/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # commit 2026-05-26
         name: Build rustdesk (cargo lib + flutter + deb + rpm + suse-rpm)

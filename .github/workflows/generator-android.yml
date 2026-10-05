@@ -342,7 +342,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 2563ccad2a1b0f5c49e8a6c64015c7f9547e12ec
+          ref: 0d7f26d157af81c650a836b6a85bb79f55ff6e17
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -939,6 +939,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_android_direct_server.py .
+          python3 patches/patch_add_address_book.py .
           grep -qF '[LnDesk v125]' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: marker missing in rendezvous_mediator.rs"; exit 1; }
           grep -q 'Config::get_option(OPTION_DIRECT_SERVER) != "Y"' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: direct-server guard missing in rendezvous_mediator.rs"; exit 1; }
           [ "$(grep -c 'force enabling direct-server (android)' ./src/rendezvous_mediator.rs)" = "1" ] || { echo "[FAIL] v125: expected exactly 1 forced enable in rendezvous_mediator.rs"; exit 1; }
