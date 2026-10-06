@@ -257,7 +257,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 92960e395b8e6c596565283387115228a5cf96e4
+          ref: 70e3ba4e31b742d4f68d289a06c0189fd062957d
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -426,6 +426,28 @@ jobs:
           grep -qF '[LnDesk v261 privacy-cursor-embedded]' src/server/display_service.rs || { echo "[FAIL] v261: cursor_embedded marker missing"; exit 1; }
           grep -q 'is_current_privacy_mode_impl' src/server/display_service.rs || { echo "[FAIL] v261: privacy impl query not wired"; exit 1; }
           echo "[OK] v261: virtual-display privacy reports cursor_embedded=true"
+
+      - name: Apply privacy cursor-by-encoder patch (v263)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v263] v261 regression fix: the embedded-cursor flag
+          # must follow the ACTIVE encoder. Only the VRAM texture path
+          # carries the OS-composited cursor of the privacy virtual
+          # display; software encoders (VP8/VP9/AV1/H264RAM) never do, so
+          # v261's blanket embedded=true left them pointerless (overlay
+          # suppressed + no in-video cursor). Encoder::new now refreshes a
+          # VRAM-active flag, display_service ANDs it into the v261
+          # condition, and the video service broadcasts a fresh
+          # SwitchDisplay on every (re)start (codec switch restarts the
+          # service) so the controller overlay stays in sync. Must run
+          # AFTER the v261 step (its anchor is the v261 output).
+          python3 patches/patch_privacy_cursor_by_encoder.py .
+          grep -qF '[LnDesk v263 vram-cursor-flag]' libs/scrap/src/common/codec.rs || { echo "[FAIL] v263: codec.rs flag missing"; exit 1; }
+          grep -qF 'scrap::codec::is_vram_encoder_active' src/server/display_service.rs || { echo "[FAIL] v263: display_service condition not wired"; exit 1; }
+          grep -qF '[LnDesk v263 vram-cursor-flag]' src/server/video_service.rs || { echo "[FAIL] v263: switchdisplay rebroadcast missing"; exit 1; }
+          echo "[OK] v263: cursor_embedded follows the active encoder"
       - name: Apply permanent password patch
         shell: bash
         run: python3 patches/patch_permanent_password_new.py
