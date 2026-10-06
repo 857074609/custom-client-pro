@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 5a077a2b923ae0cc64f48fe55c5f837653b05053
+          ref: 9fa763321cb872464f97a07b50c443968ebe82c8
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1249,6 +1249,23 @@ jobs:
           python3 patches/patch_privacy_fps.py .
           grep -qF '[LnDesk v264 privacy-fps]' src/client/io_loop.rs || { echo "[FAIL] v264: privacy-fps gate missing"; exit 1; }
           echo "[OK] v264: privacy sessions skip the auto-fps down-throttle"
+
+      - name: Apply privacy queue patch (v266)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v266] V264 regression fix: removing the auto-fps
+          # down-throttle without shrinking the controller video queue
+          # lets a 120-deep (~1-4 s) backlog accumulate whenever
+          # decode+render lag the high-fps source -- more lag, higher
+          # latency, stale cursor. Bound the queue to 3 frames in
+          # privacy/low-latency sessions (latest-wins via the existing
+          # force_push) and only treat a FULL small queue as refresh
+          # backlog. Same file as v264 -- chain-verified.
+          python3 patches/patch_privacy_queue.py .
+          grep -qF '[LnDesk v266 privacy-queue]' src/client/io_loop.rs || { echo "[FAIL] v266: privacy-queue gate missing"; exit 1; }
+          echo "[OK] v266: privacy sessions use a 3-frame latest-wins queue"
       - name: Apply permanent password patch
         shell: bash
         run: |
