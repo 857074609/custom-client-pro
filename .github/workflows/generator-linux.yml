@@ -257,7 +257,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: f2dff6e1b7a8cf344f0a38ba7401e213a5398acd
+          ref: 92960e395b8e6c596565283387115228a5cf96e4
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -407,6 +407,25 @@ jobs:
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
 
+
+      - name: Apply privacy virtual-display cursor-embedded patch (v261)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v261] The virtual-display privacy mode composites the OS
+          # cursor into the captured frames (IddCx has no hardware cursor,
+          # DWM draws it into the swapchain), but SwitchDisplay.cursor_embedded
+          # stayed false -> the controller painted its own cursor overlay on
+          # top: two cursors one video-latency apart during fast moves, gone
+          # with privacy mode off. Report embedded=true while a virtual-
+          # display privacy session owns the capture so the controller
+          # suppresses the overlay (remote_page.dart gates both the
+          # CursorPaint overlay and the local pointer on cursorEmbedded).
+          python3 patches/patch_privacy_vdisplay_cursor_embedded.py .
+          grep -qF '[LnDesk v261 privacy-cursor-embedded]' src/server/display_service.rs || { echo "[FAIL] v261: cursor_embedded marker missing"; exit 1; }
+          grep -q 'is_current_privacy_mode_impl' src/server/display_service.rs || { echo "[FAIL] v261: privacy impl query not wired"; exit 1; }
+          echo "[OK] v261: virtual-display privacy reports cursor_embedded=true"
       - name: Apply permanent password patch
         shell: bash
         run: python3 patches/patch_permanent_password_new.py
