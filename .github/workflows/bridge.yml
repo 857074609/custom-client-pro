@@ -10,6 +10,14 @@ on:
         required: true
         default: '1.3.1'
         type: string
+      patches_sha:
+        description: '857074609/patches commit SHA (MUST track the generator pins)'
+        required: true
+        type: string
+    secrets:
+      REPO:
+        description: 'token to checkout the private patches repo'
+        required: true
 
 env:
   CARGO_EXPAND_VERSION: "1.0.95"
@@ -50,6 +58,27 @@ jobs:
           submodules: recursive
           # No step here needs history (no git describe/rev-parse).
           fetch-depth: 1
+
+      - name: Checkout patches (for bridge binding)
+        uses: actions/checkout@v5
+        with:
+          repository: 857074609/patches
+          ref: ${{ inputs.patches_sha }}
+          path: patches
+          token: ${{ secrets.REPO }}
+
+      - name: Apply cursor-prediction patch so the Dart binding includes mainGetCursorPrediction
+        run: |
+          # [LnDesk v269] The windows/linux/macos/portable/win7/android builds inject a
+          # new flutter_ffi function main_get_cursor_prediction via patch_cursor_prediction.py.
+          # This bridge job generates generated_bridge.dart from the checked-out
+          # flutter_ffi.rs, so we must apply the SAME patch here -- otherwise the Dart
+          # side (cursor_overlay.dart -> bind.mainGetCursorPrediction()) fails to compile
+          # with "The method 'mainGetCursorPrediction' isn't defined". The patch is
+          # idempotent (SKIPs if already applied).
+          python3 patches/patch_cursor_prediction.py .
+          grep -qF 'main_get_cursor_prediction' ./src/flutter_ffi.rs || { echo "[FAIL] bridge: flutter_ffi.rs not patched"; exit 1; }
+          echo "[OK] bridge: flutter_ffi.rs patched for cursor prediction"
 
       - name: Install prerequisites
         run: |

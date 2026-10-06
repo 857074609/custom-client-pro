@@ -106,6 +106,9 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
+      patches_sha: ce110fd64acc2b4fc5b784784c4b857748ec8b06
+    secrets:
+      REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
     needs: [generate-bridge-linux]
     name: build rustdesk android apk ${{ matrix.job.target }}
