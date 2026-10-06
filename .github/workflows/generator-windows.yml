@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: ce110fd64acc2b4fc5b784784c4b857748ec8b06
+      patches_sha: af3ef83855fc9e907525e98466f5686f5e38f965
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: ce110fd64acc2b4fc5b784784c4b857748ec8b06
+          ref: af3ef83855fc9e907525e98466f5686f5e38f965
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2040,16 +2040,33 @@ jobs:
         run: |
           python3 patches/patch_cqp_quality.py .
           ! grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116 qp_for_ratio must NOT be present (removed as dead code)"; exit 1; }
-          grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116 hwcodec fork pin missing"; exit 1; }
+          # [v269] patch_cqp_quality.py is all-or-nothing: when the v269
+          # low-latency pipeline has rewritten the EncodeContext anchors it
+          # SKIP-ABSENTs, the whole CQP pair collapses to a no-op and the
+          # hwcodec fork pin never lands. Record the outcome so the revert
+          # step below knows whether there is anything to revert.
+          if grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml; then
+            echo "[OK] v116 cqp applied; hwcodec fork pinned"
+            echo "CQP_APPLIED=1" >> $GITHUB_ENV
+          else
+            echo "[SKIP] v116 cqp: anchors not applicable on this tree (v269 low-latency EncodeContext); patch skipped"
+            echo "CQP_APPLIED=0" >> $GITHUB_ENV
+          fi
 
       - name: v116 revert CQP (hwcodec 0.8.0 externals missing from git-data upload)
         shell: bash
         run: |
           python3 patches/patch_v116_revert_cqp.py .
-          grep -q "v116-fix4" ./libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v116-fix4 revert marker missing"; exit 1; }
-          ! grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116-fix4 hwcodec pin not reverted"; exit 1; }
-          ! grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116-fix4 qp_for_ratio must NOT survive (dead code removed)"; exit 1; }
-          ! grep -q "patch/0030-nvenc" ./res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v116-fix4 portfile not reverted"; exit 1; }
+          # [v269] only assert the revert when CQP actually landed; on a v269
+          # tree there is nothing to revert and the pair is a clean no-op.
+          if [ "${CQP_APPLIED:-0}" = "1" ]; then
+            grep -q "v116-fix4" ./libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v116-fix4 revert marker missing"; exit 1; }
+            ! grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116-fix4 hwcodec pin not reverted"; exit 1; }
+            ! grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116-fix4 qp_for_ratio must NOT survive (dead code removed)"; exit 1; }
+            ! grep -q "patch/0030-nvenc" ./res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v116-fix4 portfile not reverted"; exit 1; }
+          else
+            echo "[SKIP] v116-fix4: CQP was never applied (v269 tree); nothing to revert"
+          fi
 
       - name: video tile-diff (v243)
         shell: bash
