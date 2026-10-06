@@ -166,7 +166,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 70e3ba4e31b742d4f68d289a06c0189fd062957d
+          ref: ce110fd64acc2b4fc5b784784c4b857748ec8b06
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1197,6 +1197,46 @@ jobs:
           grep -qF '[LnDesk v263 vram-cursor-flag]' src/server/video_service.rs || { echo "[FAIL] v263: switchdisplay rebroadcast missing"; exit 1; }
           echo "[OK] v263: cursor_embedded follows the active encoder"
 
+
+      - name: Apply low-latency pipeline patch (v269)
+        shell: bash
+        env:
+          EXTRAS: '${{ inputs.extras }}'
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v269] steeldesk-derived low-latency pipeline, ALL
+          # THREE pieces shipped together (v264/v266 taught us they are
+          # inseparable): 1) hw encoder fps follows the QoS target
+          # (upstream hardcodes 30); 2) QoS fast-path (1s ratio interval,
+          # step 10, no INIT_FPS cap, RTT after 5 samples); 3) controller
+          # 3-frame latest-wins queue + auto-fps unthrottled + queue drops
+          # NEVER refresh (breaks the refresh<->restart loop). Gated by
+          # is_low_latency_mode(): option low-latency-mode Y/N explicit,
+          # empty = baked default from extras.low_latency_mode.
+          python3 patches/patch_low_latency_pipeline.py .
+          grep -qF '[LnDesk v269 low-latency]' src/server/video_qos.rs || { echo "[FAIL] v269: video_qos helper missing"; exit 1; }
+          grep -qF 'framerate: config.fps.unwrap_or(30)' libs/scrap/src/common/vram.rs || { echo "[FAIL] v269: vram fps missing"; exit 1; }
+          grep -qF 'fps: Some(VIDEO_QOS.lock().unwrap().highest_fps())' src/server/video_service.rs || { echo "[FAIL] v269: video_service fps feed missing"; exit 1; }
+          grep -qF '[LnDesk v269 low-latency]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop gates missing"; exit 1; }
+          echo "[OK] v269: low-latency pipeline applied"
+
+      - name: Apply cursor prediction patch (v269)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v269] client-side cursor prediction with snap/lerp
+          # server reconciliation. Self-gating: active only in low-latency
+          # mode AND while the cursor is not embedded in the video
+          # (virtual-display privacy), tracked live via SwitchDisplay.
+          # Coordinates normalized to raw mouse space (HiDPI-safe). The
+          # bridge job regenerates the Dart binding for
+          # main_get_cursor_prediction.
+          python3 patches/patch_cursor_prediction.py .
+          grep -qF '[LnDesk v269 cursor-prediction]' src/cursor_prediction.rs || { echo "[FAIL] v269: predictor module missing"; exit 1; }
+          grep -qF 'main_get_cursor_prediction' src/flutter_ffi.rs || { echo "[FAIL] v269: ffi missing"; exit 1; }
+          grep -qF '[LnDesk v269 cursor-prediction]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop hooks missing"; exit 1; }
+          echo "[OK] v269: cursor prediction applied"
       - name: Apply permanent password patch
         shell: bash
         run: |
