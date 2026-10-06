@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f94bfd07791ac43eb0c3aa612307af72b6fd600f
+      patches_sha: de368e4369bdebdad24f0efd708ca63de30a8ce2
     secrets:
       REPO: ${{ secrets.REPO }}
 
