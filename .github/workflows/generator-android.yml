@@ -342,7 +342,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 5ae77fbba143ec704e6ff31145aefe94ccf74123
+          ref: f2dff6e1b7a8cf344f0a38ba7401e213a5398acd
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -510,6 +510,25 @@ jobs:
           # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
           python3 patches/patch_keyframe_interval.py
           grep -q "else { Some(60) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
+
+      - name: Apply hwcodec zerolatency fork patch (v260)
+        shell: bash
+        run: |
+          # [LnDesk v260] Root fix for the H264/H265 hardware-encoder mouse
+          # smear (V259's 1s IDR only capped the ghost lifetime): reroute the
+          # hwcodec git dependency to our fork, pinned to the audited fix
+          # commit. The fork forces low-latency hardware encoding:
+          # NVENC rc-lookahead=0 + zerolatency=1 + tune=ull, QSV look_ahead=0,
+          # AMF no-op -- all verified against the ffmpeg 7.1 option tables
+          # shipped by the 1.4.9 vcpkg port. The script rewrites the
+          # Cargo.lock hwcodec source line byte-exactly (proven
+          # `cargo build --locked`-compatible); any drift still self-heals at
+          # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
+          python3 patches/patch_hwcodec_zerolatency.py .
+          grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
+          grep -qF '9a5eddb76e2b7f7b6e5b1089d15607d58e0c3512' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
+          echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
       - name: set permanent password (preset, via patches/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
         shell: bash

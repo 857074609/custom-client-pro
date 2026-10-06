@@ -187,7 +187,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 5ae77fbba143ec704e6ff31145aefe94ccf74123
+          ref: f2dff6e1b7a8cf344f0a38ba7401e213a5398acd
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1171,6 +1171,25 @@ jobs:
           python3 patches/patch_keyframe_interval.py
           grep -q "else { Some(60) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
 
+      - name: Apply hwcodec zerolatency fork patch (v260)
+        shell: bash
+        run: |
+          # [LnDesk v260] Root fix for the H264/H265 hardware-encoder mouse
+          # smear (V259's 1s IDR only capped the ghost lifetime): reroute the
+          # hwcodec git dependency to our fork, pinned to the audited fix
+          # commit. The fork forces low-latency hardware encoding:
+          # NVENC rc-lookahead=0 + zerolatency=1 + tune=ull, QSV look_ahead=0,
+          # AMF no-op -- all verified against the ffmpeg 7.1 option tables
+          # shipped by the 1.4.9 vcpkg port. The script rewrites the
+          # Cargo.lock hwcodec source line byte-exactly (proven
+          # `cargo build --locked`-compatible); any drift still self-heals at
+          # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
+          python3 patches/patch_hwcodec_zerolatency.py .
+          grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
+          grep -qF '9a5eddb76e2b7f7b6e5b1089d15607d58e0c3512' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
+          echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
+
       - name: Apply permanent password patch
         shell: bash
         run: |
@@ -1970,17 +1989,18 @@ jobs:
             echo "[SKIP] iroh not in Cargo.toml, no icu pin needed"
             cargo fetch
           fi
-      - name: gate hwcodec cqp fork NOT in lock (v116, CQP reverted)
-        # v116-fix4 reverts the hwcodec 0.8.0 migration (externals/ submodules
-        # are missing from the git-data API upload, so the C++ build fails).
-        # CQP lands in V117. The fork must NOT leak into Cargo.lock; if it
-        # does, the revert did not take and the build would fail at fetch.
+      - name: gate hwcodec zerolatency fork IS in lock (v260)
+        # [LnDesk v260] INVERTS the v116 NOT-in-lock gate: hwcodec is now
+        # rerouted to our zerolatency fork (H264/H265 mouse-smear root fix)
+        # via a root-Cargo.toml [patch] + a rewritten Cargo.lock source line
+        # (patch_hwcodec_zerolatency.py). The v116 assertion would fail every
+        # build from now on. Runs after the pre-build `cargo fetch`, so the
+        # pinned fork rev must already be materialized here.
         shell: bash
         run: |
-          if grep -qF '857074609/hwcodec' ./Cargo.lock; then
-            echo "[FAIL] v116 hwcodec cqp fork must NOT be in lock (reverted for V116; lands in V117)"
-            exit 1
-          fi
+          grep -qF '857074609/hwcodec' ./Cargo.lock || { echo "[FAIL] v260 hwcodec zerolatency fork missing from lock"; exit 1; }
+          grep -qF '9a5eddb76e2b7f7b6e5b1089d15607d58e0c3512' ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to 9a5eddb"; exit 1; }
+          echo "[OK] v260 hwcodec fork materialized in lock @ 9a5eddb"
       - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
         # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
         # 「启用P2P增强」(super_p2p_enforcement) 一个复选框。
