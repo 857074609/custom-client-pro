@@ -417,6 +417,9 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_lock_compiletime.py
+          # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
+          python3 patches/patch_keyframe_interval.py
+          grep -q "else { Some(60) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
 
       - name: set permanent password (preset, via patches/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
