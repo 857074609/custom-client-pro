@@ -525,6 +525,20 @@ jobs:
           grep -qF 'main_get_cursor_prediction' src/flutter_ffi.rs || { echo "[FAIL] v269: ffi missing"; exit 1; }
           grep -qF '[LnDesk v269 cursor-prediction]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop hooks missing"; exit 1; }
           echo "[OK] v269: cursor prediction applied"
+      - name: Apply fps240 patch (v270)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v270 fps240] raise fps ceiling 120->240 across the
+          # full chain: UI slider (consts.dart kMaxFps), server QoS
+          # (video_qos.rs MAX_FPS), controller validation (io_loop.rs),
+          # and legacy peer-compat cap (client.rs).
+          python3 patches/patch_fps240.py .
+          grep -qF "kMaxFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kMaxFps not 240"; exit 1; }
+          grep -qF "MAX_FPS: u32 = 240" src/server/video_qos.rs || { echo "[FAIL] v270: MAX_FPS not 240"; exit 1; }
+          echo "[OK] v270 fps240: full chain opened to 240"
+
       - name: set permanent password (preset, via patches/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
         shell: bash
