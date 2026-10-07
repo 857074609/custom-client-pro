@@ -1157,6 +1157,56 @@ jobs:
           grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
+          grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' Cargo.lock || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.lock"; exit 1; }
+
+      - name: Apply AV1 hardware encoding patch (v275)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v275] AV1 used to have no hardware path at all:
+          #   - src/server/video_service.rs::make_encoder() mapped
+          #     CodecFormat::AV1 straight to EncoderCfg::AOM (software libaom)
+          #     while the H264/H265 arm already walked VRAM -> HWRAM -> software.
+          #   - res/vcpkg/ffmpeg/portfile.cmake builds with --disable-everything
+          #     and re-enables codecs one by one, but listed no av1_* hardware
+          #     encoder, so av1_nvenc/av1_qsv simply did not exist in the build.
+          # Both are fixed here; the hwcodec side (registering the encoders and
+          # allowing AV1 through the vram capability filter) rides in with the
+          # fork rev pinned by the v260 step above.
+          # NOTE for this win7 generator specifically: the encoder selection is
+          # runtime, so older machines simply fall back to libaom. Nobody expects
+          # an RTX 40 / Intel Arc here -- this step exists so the binary accepts
+          # codec-preference=av1 instead of silently ignoring it.
+          python3 patches/patch_av1_hw_encode.py .
+          grep -qF 'HwRamEncoder::try_get(CodecFormat::AV1)' src/server/video_service.rs || { echo "[FAIL] v275: AV1 hardware ladder missing from make_encoder()"; exit 1; }
+          grep -qF 'EncoderCfg::AOM(AomEncoderConfig' src/server/video_service.rs || { echo "[FAIL] v275: libaom fallback was dropped, old behaviour lost"; exit 1; }
+          grep -qF -- '--enable-encoder=av1_nvenc' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_nvenc not enabled in ffmpeg build"; exit 1; }
+          grep -qF -- '--enable-encoder=av1_qsv' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_qsv not enabled in ffmpeg build"; exit 1; }
+          echo "[OK] v275: AV1 may use av1_nvenc / av1_qsv, libaom fallback retained"
+
+      - name: Bump vendored ffmpeg overlay to 9.0.2 (v275)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v275] The overlay port was pinned at ffmpeg 7.1. Move to
+          # 9.0.2 and adopt upstream's own patch set -- the 7.1-era patches
+          # target source lines that no longer exist. RustDesk's custom patches
+          # under patch/ are kept (0009 nvenc reconfigure blur and 0010
+          # disable-loading-DLLs matter to us); if this step fails in the patch
+          # phase, run once with LN_FFMPEG_DROP_CUSTOM_PATCHES=1 to separate
+          # "custom patch no longer applies" from "libavcodec moved".
+          # NOTE: changing res/vcpkg/** busts the vcpkg cache key, so this run
+          # rebuilds ffmpeg from source and takes noticeably longer than usual.
+          # This generator uses the x64-windows-static triplet with the win7
+          # Rust target -- that pairing is untested against ffmpeg 9.0.2, so if
+          # this one fails while generator-windows.yml succeeds, the triplet is
+          # the first suspect, not the patch scripts.
+          python3 patches/patch_ffmpeg_902.py .
+          grep -qF '"version": "9.0.2"' res/vcpkg/ffmpeg/vcpkg.json || { echo "[FAIL] v275: ffmpeg port version not bumped"; exit 1; }
+          grep -qF '21bf3fbcdfd2f41ea6edeab40433fecfe362b09ecaa177a652471b54f9357011b4f74dab18245ab1c26f1a473b94205490baecb42289afd2effd603cd0b22b59' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: ffmpeg 9.0.2 digest not applied"; exit 1; }
+          echo "[OK] v275: ffmpeg overlay port at 9.0.2"
 
 
       - name: Apply privacy virtual-display cursor-embedded patch (v261)
