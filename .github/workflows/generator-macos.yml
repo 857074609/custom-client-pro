@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: a723728d0692a7be5ecb3ee0c3596a49ae5f06e0
+      patches_sha: 71bdad1dc3a8fdd5e4e240eb386e6e27d0488f0e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -439,7 +439,7 @@ jobs:
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
           python3 patches/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF 'b0058be38fc85880fff6993290a3a2b5461db325' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
 

@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: a723728d0692a7be5ecb3ee0c3596a49ae5f06e0
+      patches_sha: 71bdad1dc3a8fdd5e4e240eb386e6e27d0488f0e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: a723728d0692a7be5ecb3ee0c3596a49ae5f06e0
+          ref: 71bdad1dc3a8fdd5e4e240eb386e6e27d0488f0e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1189,9 +1189,55 @@ jobs:
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
           python3 patches/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF 'b0058be38fc85880fff6993290a3a2b5461db325' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
+
+
+      - name: Apply AV1 hardware encoding patch (v275)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v275] AV1 used to have no hardware path at all:
+          #   - src/server/video_service.rs::make_encoder() mapped
+          #     CodecFormat::AV1 straight to EncoderCfg::AOM (software libaom)
+          #     while the H264/H265 arm already walked VRAM -> HWRAM -> software.
+          #   - res/vcpkg/ffmpeg/portfile.cmake builds with --disable-everything
+          #     and re-enables codecs one by one, but listed no av1_* hardware
+          #     encoder, so av1_nvenc/av1_qsv simply did not exist in the build.
+          # Both are fixed here; the hwcodec side (registering the encoders and
+          # allowing AV1 through the vram capability filter) rides in with the
+          # fork rev pinned by the v260 step above.
+          # GPU floor -- these are silent misses, not errors: av1_nvenc needs
+          # Ada Lovelace / RTX 40 or newer (RTX 30 decodes AV1 but cannot
+          # encode it), av1_qsv needs Intel Arc or Gen12.5+ integrated graphics.
+          # Anything older keeps working exactly as before via libaom.
+          python3 patches/patch_av1_hw_encode.py .
+          grep -qF 'HwRamEncoder::try_get(CodecFormat::AV1)' src/server/video_service.rs || { echo "[FAIL] v275: AV1 hardware ladder missing from make_encoder()"; exit 1; }
+          grep -qF 'EncoderCfg::AOM(AomEncoderConfig' src/server/video_service.rs || { echo "[FAIL] v275: libaom fallback was dropped, old behaviour lost"; exit 1; }
+          grep -qF -- '--enable-encoder=av1_nvenc' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_nvenc not enabled in ffmpeg build"; exit 1; }
+          grep -qF -- '--enable-encoder=av1_qsv' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_qsv not enabled in ffmpeg build"; exit 1; }
+          echo "[OK] v275: AV1 may use av1_nvenc / av1_qsv, libaom fallback retained"
+
+      - name: Bump vendored ffmpeg overlay to 9.0.2 (v275)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v275] The overlay port was pinned at ffmpeg 7.1. Move to
+          # 9.0.2 and adopt upstream's own patch set -- the 7.1-era patches
+          # target source lines that no longer exist. RustDesk's custom patches
+          # under patch/ are kept (0009 nvenc reconfigure blur and 0010
+          # disable-loading-DLLs matter to us); if this step fails in the patch
+          # phase, run once with LN_FFMPEG_DROP_CUSTOM_PATCHES=1 to separate
+          # "custom patch no longer applies" from "libavcodec moved".
+          # NOTE: changing res/vcpkg/** busts the vcpkg cache key, so this run
+          # rebuilds ffmpeg from source and takes noticeably longer than usual.
+          python3 patches/patch_ffmpeg_902.py .
+          grep -qF '"version": "9.0.2"' res/vcpkg/ffmpeg/vcpkg.json || { echo "[FAIL] v275: ffmpeg port version not bumped"; exit 1; }
+          grep -qF '21bf3fbcdfd2f41ea6edeab40433fecfe362b09ecaa177a652471b54f9357011b4f74dab18245ab1c26f1a473b94205490baecb42289afd2effd603cd0b22b59' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: ffmpeg 9.0.2 digest not applied"; exit 1; }
+          echo "[OK] v275: ffmpeg overlay port at 9.0.2"
 
 
       - name: Apply privacy virtual-display cursor-embedded patch (v261)
@@ -2129,7 +2175,7 @@ jobs:
         shell: bash
         run: |
           grep -qF '857074609/hwcodec' ./Cargo.lock || { echo "[FAIL] v260 hwcodec zerolatency fork missing from lock"; exit 1; }
-          grep -qF 'b0058be38fc85880fff6993290a3a2b5461db325' ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to 9a5eddb"; exit 1; }
+          grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to 9a5eddb"; exit 1; }
           echo "[OK] v260 hwcodec fork materialized in lock @ 9a5eddb"
       - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
         # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
