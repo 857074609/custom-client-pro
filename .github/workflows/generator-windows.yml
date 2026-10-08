@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+      patches_sha: 44ab80ac018efc19104d2a3844e551f4920d62ac
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+          ref: 44ab80ac018efc19104d2a3844e551f4920d62ac
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2551,6 +2551,7 @@ jobs:
           # [v227c] 设置页分区卡片加 1px 明确边框 + elevation 0（默认阴影太淡
           # 看不出板块轮廓——客户要求轮廓清晰）。
           python3 patches/patch_settings_card_border.py .
+          python3 patches/patch_quality_monitor_c.py .
           grep -qF "[LnDesk v227c settings outline]" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings outline marker missing"; exit 1; }
           grep -q "elevation: 0," flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings card elevation 0 missing"; exit 1; }
           echo "[OK] settings section outlines applied"

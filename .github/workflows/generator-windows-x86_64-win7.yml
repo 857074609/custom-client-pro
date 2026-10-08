@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+      patches_sha: 44ab80ac018efc19104d2a3844e551f4920d62ac
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+          ref: 44ab80ac018efc19104d2a3844e551f4920d62ac
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2262,6 +2262,7 @@ jobs:
           # super_p2p command above (which adds the module). Only wired here
           # because super_p2p is currently applied only in this windows workflow.
           python3 patches/patch_remove_test_nat_type.py .
+          python3 patches/patch_quality_monitor_c.py .
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the

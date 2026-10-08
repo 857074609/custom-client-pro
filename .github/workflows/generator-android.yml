@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+      patches_sha: 44ab80ac018efc19104d2a3844e551f4920d62ac
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+          ref: 44ab80ac018efc19104d2a3844e551f4920d62ac
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -1064,6 +1064,7 @@ jobs:
         run: |
           python3 patches/patch_android_direct_server.py .
           python3 patches/patch_add_address_book.py .
+          python3 patches/patch_quality_monitor_c.py .
           grep -qF '[LnDesk v125]' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: marker missing in rendezvous_mediator.rs"; exit 1; }
           grep -q 'Config::get_option(OPTION_DIRECT_SERVER) != "Y"' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: direct-server guard missing in rendezvous_mediator.rs"; exit 1; }
           [ "$(grep -c 'force enabling direct-server (android)' ./src/rendezvous_mediator.rs)" = "1" ] || { echo "[FAIL] v125: expected exactly 1 forced enable in rendezvous_mediator.rs"; exit 1; }

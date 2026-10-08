@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+      patches_sha: 44ab80ac018efc19104d2a3844e551f4920d62ac
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -260,7 +260,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 8a8514c2e318dd7e56c86e4f9323ce49762c1c13
+          ref: 44ab80ac018efc19104d2a3844e551f4920d62ac
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -892,6 +892,7 @@ jobs:
           python3 patches/patch_peer_card_alias.py .
           python3 patches/patch_desktop_toolbar_toggles.py .
           python3 patches/patch_add_address_book.py .
+          python3 patches/patch_quality_monitor_c.py .
           python3 patches/iroh/iroh_badge.py .
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # commit 2026-05-26
         name: Build rustdesk (cargo lib + flutter + deb + rpm + suse-rpm)
