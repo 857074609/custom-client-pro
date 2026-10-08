@@ -529,7 +529,7 @@ jobs:
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
           python3 patches/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '61b96c2fddfe8a66adfb8f13b6ae7e530a72bb6f' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
 

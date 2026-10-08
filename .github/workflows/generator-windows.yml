@@ -1189,7 +1189,7 @@ jobs:
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
           python3 patches/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '61b96c2fddfe8a66adfb8f13b6ae7e530a72bb6f' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
 
@@ -2175,7 +2175,7 @@ jobs:
         shell: bash
         run: |
           grep -qF '857074609/hwcodec' ./Cargo.lock || { echo "[FAIL] v260 hwcodec zerolatency fork missing from lock"; exit 1; }
-          grep -qF '99bb8320bd793e9bd60de55c98dde5b7d7e48b20' ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to 9a5eddb"; exit 1; }
+          grep -qF '61b96c2fddfe8a66adfb8f13b6ae7e530a72bb6f' ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to 61b96c2"; exit 1; }
           echo "[OK] v260 hwcodec fork materialized in lock @ 9a5eddb"
       - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
         # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
