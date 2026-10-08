@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 3c54c3ccc952e045be228774dc02b691181b1201
+      patches_sha: 0319f40a0e7ee6e87d454ce2436d7dd699b8f12c
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -1402,7 +1402,6 @@ jobs:
         run: python3 patches/patch_clipboard_session_sync.py .
       - name: Apply audio playback refactor patch
         run: python3 patches/patch_audio_playback_refactor.py .
-        python3 patches/patch_quality_monitor_c.py .
 
       - name: Download STATUS_URL artifacts
         uses: actions/download-artifact@v4
