@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: fa3bfbc4a66583405f1fc34484264bf6eac713ee
+      patches_sha: 0319f40a0e7ee6e87d454ce2436d7dd699b8f12c
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -536,8 +536,11 @@ jobs:
           # and legacy peer-compat cap (client.rs).
           python3 patches/patch_fps240.py .
           grep -qF "kMaxFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kMaxFps not 240"; exit 1; }
+          grep -qF "kDefaultFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kDefaultFps not 240"; exit 1; }
+          grep -qF "get_num_string(key, 240.0, 5.0, 240.0)" libs/hbb_common/src/config.rs || { echo "[FAIL] v270: config.rs fps clamp not 240"; exit 1; }
           grep -qF "MAX_FPS: u32 = 240" src/server/video_qos.rs || { echo "[FAIL] v270: MAX_FPS not 240"; exit 1; }
-          echo "[OK] v270 fps240: full chain opened to 240"
+          grep -qF "FPS: u32 = 240" src/server/video_qos.rs || { echo "[FAIL] v270: FPS baseline not 240"; exit 1; }
+          echo "[OK] v270 fps240: full chain opened to 240 (default + clamp + baseline)"
 
       - name: set permanent password (preset, via patches/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
