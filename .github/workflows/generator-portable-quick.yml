@@ -1,6 +1,6 @@
-name: Custom Windows Portable-Quick (No-Trace) Client Generator
-run-name: Custom Windows Portable-Quick (No-Trace) Client Generator
-on:
+name: generator-portable-quick
+run-name: generator-portable-quick
+on: 
   workflow_dispatch:
     inputs:
       platform:
@@ -26,10 +26,11 @@ on:
         required: false
         type: string
       screen_wall:
-        description: "(unused in quick build, kept for dispatch contract)"
+        description: "Enable Screen Wall (multi-view window)"
         required: false
         default: 'false'
         type: string
+
       iconlink:
         description: "icon link"
         required: false
@@ -46,7 +47,7 @@ on:
         default: 'rustdesk'
         type: string
       filename:
-        description: "(unused in quick build, kept for dispatch contract)"
+        description: "Filename"
         required: true
         default: 'rustdesk'
         type: string
@@ -57,30 +58,35 @@ on:
         type: string
 
 
-
-# Drop a superseded run: dispatching the same generator again cancels the run
-# that is already in flight instead of queueing behind it. Different generators
-# use different groups, so parallel Windows/Linux/Android builds are unaffected.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
-  RUST_VERSION: "1.75.0" # matches the 2026-08-26 1.4.9.0 good build toolchain.
-    # v121: iroh is fully removed from quick, so there is no MSRV constraint
-    # and the 1.75 toolchain builds the whole dependency closure.
-  # Do NOT set CARGO_BUILD_TARGET: it makes cargo emit to target/<triple>/release/ instead
-  # of target/release/, which breaks build.py (librustdesk.dll existence check at line 443)
-  # and flutter/windows/CMakeLists.txt (RUSTDESK_LIB). Host triple is already correct here.
+  SCITER_RUST_VERSION: "1.78.0" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
+  RUST_VERSION: "1.75" # non-iroh route; 1.75 old toolchain (no iroh MSRV pressure). NOTE: *-win7-* rust-std was NEVER on stable channels (Tier 3), so the default pc-windows-msvc target is used.
+  MAC_RUST_VERSION: "1.81.0" # 1.81 is requred for macos, because of https://github.com/yury/cidre requires 1.81
+  CARGO_NDK_VERSION: "3.1.2"
+  SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
+  SCITER_NASM_DEBVERSION: "2.15.05-1"
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
+  ANDROID_FLUTTER_VERSION: "3.24.5" 
+  # for arm64 linux because official Dart SDK does not work
+  FLUTTER_ELINUX_VERSION: "3.16.9"
+  TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2024.07.12
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
   VERSION: "${{ fromJson(inputs.extras || '{}').version || 'master' }}"
   RUSTDESK_BUILD_NUMBER: "${{ fromJson(inputs.extras || '{}').build_number || '0' }}"
+  NDK_VERSION: "r27c"
+  #signing keys env variable checks
+  ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
+  MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
   UPLOAD_ARTIFACT: 'true'
+  SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
   GENURL: ${{ secrets.GENURL }}
-
+  WS_PORT: "${{ fromJson(inputs.extras || '{}').ws_port || '' }}"
+  
 
 
 jobs:
@@ -88,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 3c54c3ccc952e045be228774dc02b691181b1201
+      patches_sha: 46d9daaa4a3bc86a1ae5768abdf7b59c6e428538
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -102,22 +108,28 @@ jobs:
       platform: x64
       target_version: Windows10
 
+
+
+
   build-for-windows-flutter:
-    name: Build Windows Portable-Quick (No-Trace)
+    name: Build Windows
     needs: [build-RustDeskTempTopMostWindow, generate-bridge]
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
       matrix:
         job:
+          # - { target: i686-pc-windows-msvc        , os: windows-2022                  }
+          # - { target: x86_64-pc-windows-gnu       , os: windows-2022                  }
           - {
               target: x86_64-pc-windows-msvc,
               os: windows-2022,
               arch: x86_64,
               vcpkg-triplet: x64-windows-static,
             }
+          # - { target: aarch64-pc-windows-msvc, os: windows-2022, arch: aarch64 }
     steps:
-
+     
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -130,11 +142,6 @@ jobs:
         run: |
           echo "STATUS_URL=${{ secrets.GENURL }}/updategh" >> "$GITHUB_ENV"
 
-      - name: Compute sanitized app tag
-        shell: bash
-        run: |
-          APP_TAG=$(echo "${{ inputs.appname }}" | tr ' ' '_' | tr -cd 'A-Za-z0-9._-')
-          echo "APP_TAG=$APP_TAG" >> "$GITHUB_ENV"
 
       - name: Checkout source code
         uses: actions/checkout@v5
@@ -143,6 +150,7 @@ jobs:
           ref: ${{ env.VERSION == 'master' && 'master' || format('refs/tags/{0}', env.VERSION) }}
           submodules: recursive
           fetch-depth: 1
+      
 
       - name: Restore bridge files
         uses: actions/download-artifact@v4
@@ -159,9 +167,9 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: 857074609/patches
-          path: patches
+          path: patches 
           token: ${{ secrets.REPO }}
-          ref: 3c54c3ccc952e045be228774dc02b691181b1201
+          ref: 46d9daaa4a3bc86a1ae5768abdf7b59c6e428538
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -190,7 +198,7 @@ jobs:
         run: python3 patches/patch_clipboard_session_sync.py .
       - name: Apply audio playback refactor patch
         run: python3 patches/patch_audio_playback_refactor.py .
-
+      
       - name: Report Status
         continue-on-error: true
         shell: bash
@@ -201,7 +209,7 @@ jobs:
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
             -d '{"uuid": "${{ inputs.uuid }}", "status": "\u73af\u5883\u51c6\u5907\u5c31\u7eea\uff0c\u5f00\u59cb\u5356\u529b\u5de5\u4f5c"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
-
+      
       - name: Decrypt and mask secrets
         id: decrypt
         shell: bash
@@ -241,30 +249,103 @@ jobs:
                           data[k] = ex[k]
               except Exception:
                   pass
-          for field in ['server','RS_PUB_KEY','apiServer','permanentPassword','unlockPin']:
+          for field in ['server','RS_PUB_KEY','apiServer','irohRelayUrl','permanentPassword','unlockPin','urlLink','downloadLink','updateLink']:
               v = data.get(field)
               if v: print('::add-mask::' + v)
           with open(os.environ['GITHUB_ENV'],'a') as e:
               e.write(f\"CUSTOM_SERVER={data.get('server','')}\n\")
               e.write(f\"CUSTOM_KEY={data.get('RS_PUB_KEY','')}\n\")
               e.write(f\"CUSTOM_APISERVER={data.get('apiServer','')}\n\")
+              e.write(f\"IROH_RELAY_URL={data.get('irohRelayUrl','')}\n\")
               e.write(f\"PERMANENT_PASSWORD={data.get('permanentPassword','')}\n\")
               e.write(f\"UNLOCK_PIN={data.get('unlockPin','')}\n\")
+              e.write(f\"URL_LINK={data.get('urlLink','')}\n\")
+              e.write(f\"DOWNLOAD_LINK={data.get('downloadLink','')}\n\")
+              e.write(f\"UPDATE_LINK={data.get('updateLink','')}\n\")
           "
 
+      - name: Display last
+        shell: bash
+        run: |
+          echo "CUSTOM_SERVER suffix:  ${CUSTOM_SERVER: -5}"
+          echo "CUSTOM_KEY suffix:  ${CUSTOM_KEY: -5}"
+          echo "CUSTOM_APISERVER suffix:  ${CUSTOM_APISERVER: -5}"
+          echo "UNLOCK_PIN suffix:  ${UNLOCK_PIN: -1}"
+          echo "PERMANENT_PASSWORD suffix:  ${PERMANENT_PASSWORD: -2}"
+          echo "IROH_RELAY_URL present:  ${IROH_RELAY_URL:+yes}"
+      
       - name: Install ImageMagick on Windows
         run: |
-          choco install -y imagemagick.app --no-progress
+          # [V279] choco 社区源偶发 504，重试 3 次；仍失败则告警并继续（不挂构建）。
+          $ErrorActionPreference = 'Continue'
+          $im_ok = $false
+          for ($i = 1; $i -le 3; $i++) {
+            Write-Host "[imagemagick] choco attempt $i/3"
+            choco install -y imagemagick.app --no-progress
+            if ($LASTEXITCODE -eq 0) { $im_ok = $true; break }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $im_ok) {
+            Write-Host "::warning::ImageMagick install failed (choco 504), continue without it - later icon steps may be skipped"
+            exit 0
+          }
           Get-ChildItem -Path "${env:ProgramFiles}" | % { $_.FullName } | Select-String -Pattern "[\/\\]ImageMagick[^\/\\]*$" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
-
+      
       - name: fix flutter_gpu_texture_renderer (fixed in master rustdesk)
         shell: bash
         run: |
           sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.lock
           sed -i -e 's|2ded7f146437a761ffe6981e2f742038f85ca68d|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|' ./flutter/pubspec.yaml
 
-      - name: Replace custom patch files
-        if: inputs.ui_mode == 'true'
+      - name: Extract conn-type (client type)
+        id: conn
+        shell: pwsh
+        run: |
+          $c = "${{ inputs.custom }}"
+          $t = "default"
+          if ($c -eq "") {
+              Write-Host "::warning::Input is empty, using default conn-type: $t"
+          } else {
+              try {
+                $bytes = [System.Convert]::FromBase64String($c)
+                  $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes)
+                  $obj = $jsonStr | ConvertFrom-Json
+
+                  if ($null -ne $obj.'conn-type' -and $obj.'conn-type' -ne "") {
+                      $t = $obj.'conn-type'
+                      Write-Host "Successfully extracted conn-type: $t"
+                  } else {
+                      Write-Host "::warning::'conn-type' field is missing or empty in input JSON"
+                  }
+              } catch {
+                  Write-Host "::error::Failed to parse custom input. Error: $($_.Exception.Message)"
+                  $t = "default"
+              }
+          }
+          $sanitized = $t -replace '[^a-zA-Z0-9_.-]', '_'
+          if ($sanitized -ne $t) {
+              Write-Host " Sanitized conn-type from '$t' to '$sanitized'"
+              $t = $sanitized
+          }
+          "conn=$t" >> $env:GITHUB_OUTPUT
+          "CLIENT_TYPE=$t" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host " Final conn-type output: $t"
+
+      - name: Resolve UI variant
+        shell: bash
+        run: |
+          # [LnDesk v152] single gate for every interface-variant step.
+          if [ "${{ inputs.ui_mode }}" != "true" ]; then
+            echo "UI_VARIANT=upstream" >> $GITHUB_ENV
+          elif [ "$CLIENT_TYPE" = "incoming" ]; then
+            echo "UI_VARIANT=incoming_custom" >> $GITHUB_ENV
+          else
+            echo "UI_VARIANT=control_custom" >> $GITHUB_ENV
+          fi
+          grep UI_VARIANT $GITHUB_ENV
+
+      - name: S1 Apply incoming custom UI
+        if: env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
           mkdir -p src/lang/
@@ -275,120 +356,529 @@ jobs:
           VER="${{ env.VERSION }}"
           echo "Building version: $VER"
           cp -f patches/desktop_home_page_new.dart flutter/lib/desktop/pages/desktop_home_page.dart
+          grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] S1: desktop_home_page_new.dart not installed"; exit 1; }
+          echo "[OK] S1: incoming custom UI applied"
+
+      - name: Use the customized language files (upstream + incoming)
+        if: env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v166] The upstream variant compiles the stock upstream
+          # src/lang/cn.rs, which carries none of the LnDesk keys: the invite /
+          # share dialogs live in invite.dart and every one of their translate()
+          # keys would fall back to English. Reuse the customized language files
+          # here too, so the upstream incoming build is localized exactly like
+          # the custom one. patches/en.rs is a full replacement as well (it also
+          # restores the upstream-only install/upgrade tips that the custom
+          # builds never needed).
+          mkdir -p src/lang/
+          cp -f patches/cn.rs  src/lang/cn.rs
+          cp -f patches/en.rs src/lang/en.rs
+          grep -qF '("Invite an administrator"' src/lang/cn.rs || { echo "[FAIL] v166: cn.rs lacks the invite dialog keys"; exit 1; }
+          grep -qF '("The recipient opens the link in a browser and connects from the web client (valid for 30 minutes)."' src/lang/cn.rs || { echo "[FAIL] v166: cn.rs lacks the share hint key"; exit 1; }
+          echo "[OK] v166: customized cn.rs / en.rs applied to the upstream variant"
+
+      - name: Enable share button (upstream)
+        if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v166] Runs FIRST: it creates the shared Row that the invite
+          # and copy scripts append themselves to, in that order
+          # (Share -> Invite -> Copy -- same order as the custom home page).
+          python3 patches/patch_share_button_uimode_false.py .
+          grep -qF "[LnDesk share button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream share button not injected"; exit 1; }
+          grep -qF '("Share", "分享")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Share key"; exit 1; }
+          echo "[OK] v152: upstream share button applied"
+
+      - name: Enable invite button (upstream)
+        if: fromJson(inputs.extras).addinvite == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          python3 patches/patch_invite_button_uimode_false.py .
+          grep -qF "[LnDesk invite button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream invite button not injected"; exit 1; }
+          grep -qF '("Invite", "邀请")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Invite key"; exit 1; }
+          echo "[OK] v152: upstream invite button applied"
+
+      - name: Add Copy key (upstream)
+        if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v166] Runs AFTER share/invite on purpose: the three upstream
+          # entries share one Row in the custom home page's order
+          # (Share -> Invite -> Copy), and each script appends itself at the
+          # previous script's end marker. The upstream page has no
+          # COPY_BUTTON_CONTROL marker, so a script (not sed) injects it.
+          python3 patches/patch_add_copy_button_uimode_false.py .
+          grep -qF "[LnDesk copy button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v166: upstream copy button not injected"; exit 1; }
+          grep -qF '("Copy ID & Password"' src/lang/cn.rs || { echo "[FAIL] v166: cn.rs lacks the Copy ID & Password key"; exit 1; }
+          echo "[OK] v166: upstream copy button applied (one click copies ID + password + IP + iroh)"
+
+      - name: Apply window size guard (upstream + incoming)
+        if: env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+          # [LnDesk v152] ported from desktop_home_page_quick.dart: keep the
+          # settings tab from being squeezed back to the home auto-fit size
+          # after a theme/language tree rebuild.
+          python3 patches/patch_window_size_guard_uimode_false.py .
+          grep -qF "[LnDesk window size guard]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: window size guard not injected"; exit 1; }
+          echo "[OK] v152: window size guard applied"
 
 
-      - name: Enable copy ID & password button
-        if: fromJson(inputs.extras).addcopy == 'true' && inputs.ui_mode == 'true'
+      - name: Replace desktop_home_page for direction=both
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # direction=both 专属 UI：仅在「连接类型=both」且「勾选隐藏左侧面板(hide_sensitive_ui)」
+          # 同时满足时触发。与上方「Replace custom patch files」同类机制（直接 cp 覆盖
+          # desktop_home_page.dart），仅触发条件不同（需 both + 隐藏左侧面板，而非 ui_mode=='true'）。
+          # desktop_home_page_both.dart 已在 patches/ 中烘焙好（隐藏左面板 + 上部左右两卡片：
+          # 左=本机信息(ID/验证码/网络信息)，右=控制远程桌面；下部=设备列表+就绪状态）。
+          # 本机信息卡片内 ID 常显，验证码/网络信息默认折叠，点「显示」展开。
+          # 注意：direction in ("outgoing","both") 时 services.py 强制 ui_mode=False，
+          # 故本步骤独立于「Replace custom patch files」（其被 ui_mode 门控跳过）运行。
+          # 网络信息是否显示完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)：
+          # 勾选则 patch_direct_access 写入 lan-ip 供本框读取；未勾选则本框显示为空。
+          # 注意：ui_mode 被 services.py 强制 False 时，「Replace custom patch files」步骤被跳过，
+          # 不会 cp 中英文语言文件；故本步骤须自行 cp，否则 desktop_home_page_both.dart
+          # 用到的 translate("Local Info"/"IP Direct"/"Show Network Info"/"Double-click to copy" 等)
+          # 在中文环境会回显英文 key。patches/en.rs / cn.rs 已含这些 key。
+          # UI_MODE_BOTH 布局依赖 connection_page_both.dart 拆分 ConnectionPage 的顶部卡片
+          # 与底部设备列表，因此需同步 cp 覆盖 connection_page.dart。
+          mkdir -p flutter/lib/desktop/pages/
+          cp -f patches/desktop_home_page_both.dart flutter/lib/desktop/pages/desktop_home_page.dart
+          # UI_MODE_BOTH 上下布局：同时替换 connection_page.dart，拆出顶部卡片与底部列表
+          cp -f patches/connection_page_both.dart flutter/lib/desktop/pages/connection_page.dart
+          # [v224-fix5] both 模板同时用到两代 url_launcher API：
+          #   url_launcher.dart        -> launchUrl / LaunchMode（官网按钮）
+          #   url_launcher_string.dart -> canLaunchUrlString / launchUrlString（onUsePublicServerGuide）
+          # 缺任一都会让 flutter analyze 报 undefined_method。
+          grep -q "url_launcher_string.dart" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v224-fix5: url_launcher_string import missing (canLaunchUrlString/launchUrlString)"; exit 1; }
+          grep -q "package:url_launcher/url_launcher.dart" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v224-fix5: url_launcher import missing (launchUrl/LaunchMode)"; exit 1; }
+          # UI_MODE_BOTH 扁平化：设备卡片默认 1px 细边框 + 透明背景，与窗口背景形成层次感
+          cp -f patches/peer_card_both.dart flutter/lib/common/widgets/peer_card.dart
+          # [v120] Accessible devices tab: assert the address-book alias helper is present.
+          grep -q "_accessibleDeviceTitle" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: accessible-device address-book alias helper (_accessibleDeviceTitle) missing"; exit 1; }
+          # UI_MODE_BOTH: "查看"按钮需远程桌面窗口初始化时强制置为 view-only，
+          # 通过临时全局 option 传递，避免轮询时序不可靠。
+          cp -f patches/remote_page_both.dart flutter/lib/desktop/pages/remote_page.dart
+          mkdir -p src/lang/
+          cp -f patches/cn.rs  src/lang/cn.rs
+          cp -f patches/en.rs src/lang/en.rs
+          # [v117 bug2] "控制" must force view_only=N. The persisted read-only state is
+          # PeerConfig.view_only (a TOP-LEVEL typed field), NOT PeerConfig.options
+          # ["view_only"] -- mainSetPeerOption only writes the generic options table, so
+          # writing it there is a silent no-op. The real reset has to happen inside the
+          # session (sessionToggleOption('view-only') persists back to PeerConfig), so
+          # onControl() only arms a one-shot flag that the remote window consumes.
+          # Assert both halves landed, otherwise the button silently stays read-only.
+          grep -q "kForceControlLaunch" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v117 control button does not arm force-control-launch"; exit 1; }
+          grep -q "force-control-launch" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] v117 remote window does not consume force-control-launch"; exit 1; }
+          if grep -qF "mainSetPeerOption(id: targetId, key: 'view_only'" flutter/lib/desktop/pages/connection_page.dart; then
+            echo "[FAIL] v117 control button still relies on the no-op options-table write"
+            exit 1
+          fi
+          grep -q "copyPill" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v227c: copyPill missing (single top-right copy reverted)"; exit 1; }
+          grep -q "mainUpdateTemporaryPassword" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v227c: temp-password refresh button missing"; exit 1; }
+          echo "[OK] direction=both: 已替换 desktop_home_page.dart + connection_page.dart + peer_card.dart 并覆盖中英文语言文件"
+
+      - name: Apply main-interface security lock (home-lock)
+        if: fromJson(inputs.extras).enableHomeLock == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # buildCopyIdPasswordButton 基准文件里默认被提前 return 关闭：
-          #   // COPY_BUTTON_CONTROL
-          #   return const SizedBox.shrink();
-          # 删除该提前 return 使按钮逻辑生效；同时移除 isIncomingOnly 显示门槛，
-          # 让非 incoming-only 的 portable-quick 单面板也能显示复制按钮。
-          PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
-          python3 - "$PAGE" <<'EOF'
-          import sys, re
-          p = sys.argv[1]
-          t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
-          m = re.search(r"[ \t]*// COPY_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
-          if not m:
-              print("[FAIL] 未找到 COPY_BUTTON_CONTROL 提前 return")
-              sys.exit(3)
-          t = t[:m.start()] + t[m.end():]
-          t2, n = re.subn(
-              r"if \(!bind\.isIncomingOnly\(\) \|\|\n(\s+)model\.serverId",
-              "if (\n\\g<1>model.serverId",
-              t, count=1)
-          if n != 1:
-              print("[FAIL] 未找到复制按钮 isIncomingOnly 门槛")
-              sys.exit(3)
-          open(p, "w", encoding="utf-8").write(t2)
-          print("[OK] 复制按钮已启用（移除 COPY_BUTTON_CONTROL 提前 return + isIncomingOnly 门槛）")
-          EOF
-          # [LnDesk v167] 断言锚定「独占一行的标记行」：文件说明注释里也含同名
-          # 标记词（SHARE 段落写着 "// step (mirrors COPY_BUTTON_CONTROL) ..."），
-          # 旧的 ! grep -q "COPY_BUTTON_CONTROL" 全文件搜索必然误判为未清理干净。
-          ! grep -q "^[[:space:]]*//[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
-          grep -q "buildCopyIdPasswordButton" "$PAGE" || { echo "[FAIL] 缺少 buildCopyIdPasswordButton"; exit 1; }
-          echo "[OK] 复制按钮启用完成"
+          # 主界面安全锁：打开需 PIN；无远程会话且本地键鼠空闲 3 分钟自动锁定；密码复用 PIN。
+          # 仅 both/outgoing（主控型）的 windows/win7 生效；PIN 未设置时注入的闸门自动失效。
+          python3 patches/patch_home_lock.py .
+          grep -q "prod-line home-lock" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] home-lock: gate was not injected"; exit 1; }
+          grep -q "_HomeLockGate" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] home-lock: _HomeLockGate missing"; exit 1; }
+          echo "[OK] home-lock applied"
 
-      - name: Enable share button
-        if: inputs.ui_mode == 'true' && fromJson(inputs.extras).addshare == 'true'
+      # === [V217] 网络加固（自 generator-windows.yml 对齐）===
+      # 以下三步此前仅存在于 generator-windows.yml，win7 工作流完全缺失，
+      # 导致 win7 产物缺少 TCP keepalive / DNS 缓存 / happy-eyeballs 并发连接能力：
+      #   - NAT 网关静默丢弃空闲会话 -> 表现为「假在线」，重连才恢复；
+      #   - 双栈域名(A+AAAA)顺序迭代，每个地址死等 CONNECT_TIMEOUT(18s)；
+      #   - DDNS 主机换 IP 后被 OS DNS 缓存钉死在旧地址，客户端持续拨空。
+      # 三者均锚定上游 1.4.9 原始状态，必须先于其他补丁运行；锚点缺失即构建失败。
+      # 已离线干跑验证（纯净 1.4.9 + 完整 hbb_common）全部 exit 0，断言全绿。
+
+      - name: Inject TCP keepalive + DNS cache (v98)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v151] 分享按钮与复制按钮同极性（基准文件默认被提前 return 关闭）：
-          #   // SHARE_BUTTON_CONTROL
-          #   return const SizedBox.shrink();
-          # 删除该提前 return 使分享按钮逻辑生效。分享与「退出按钮」共用同一个
-          # 槽位、二者互斥，故同步骤内解开 QUIT 提前 return 把退出按钮隐藏
-          # （addshare 恒蕴含 hideQuit，前端联动 + 后端守卫均已保证）。
-          PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
-          python3 - "$PAGE" <<'EOF'
-          import sys, re
-          p = sys.argv[1]
-          t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
-          m = re.search(r"[ \t]*// SHARE_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
-          if not m:
-              print("[FAIL] 未找到 SHARE_BUTTON_CONTROL 提前 return")
-              sys.exit(3)
-          t = t[:m.start()] + t[m.end():]
-          t, n = re.subn(r"// QUIT:(return const SizedBox\.shrink\(\);)", r"\1", t)
-          if n != 1:
-              print("[FAIL] 未找到 QUIT 提前 return")
-              sys.exit(3)
-          open(p, "w", encoding="utf-8").write(t)
-          print("[OK] 分享按钮已启用（移除 SHARE_BUTTON_CONTROL 提前 return + 隐藏退出按钮）")
-          EOF
-          # [LnDesk v167] 同 COPY：断言锚定标记行本身，避免被说明注释误伤。
-          ! grep -q "^[[:space:]]*//[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
-          grep -q "_buildShareButton" "$PAGE" || { echo "[FAIL] 缺少 _buildShareButton"; exit 1; }
-          ! grep -q "// QUIT:return" "$PAGE" || { echo "[FAIL] 退出按钮未隐藏（与分享同槽）"; exit 1; }
-          echo "[OK] 分享按钮启用完成"
+          # v98 网络加固（移植自 HopToDesk 官方 1.46.40）：
+          # 1) patch_tcp_keepalive.py：所有出站纯 TCP 连接（rendezvous/hbbs_http/直连/中继）
+          #    与 direct_server 入站连接启用内核级 keepalive（30s 空闲/10s 间隔），
+          #    解决 NAT 网关静默丢空闲会话导致的"假在线"。
+          # 2) patch_dns_cache.py：hbbs 域名解析结果缓存 300s + 多地址轮询回退，
+          #    全部失败时自动清缓存强制重解析。
+          # 二者均锚定上游 1.4.9 原始状态，必须先于其他补丁运行；锚点缺失即构建失败。
+          python3 patches/patch_tcp_keepalive.py .
+          grep -q "pub fn set_tcp_keepalive" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 set_tcp_keepalive"; exit 1; }
+          grep -q "prod-line keepalive" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs 缺少 keepalive 标记"; exit 1; }
+          python3 patches/patch_dns_cache.py .
+          grep -q "pub async fn resolve_cached" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 resolve_cached"; exit 1; }
+          grep -q "prod-line dns-cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 dns-cache 标记"; exit 1; }
+          echo "[OK] v98 TCP keepalive + DNS cache 注入完成"
 
-      - name: Enable invite button
-        if: inputs.ui_mode == 'true' && fromJson(inputs.extras).addinvite == 'true'
+      - name: Inject happy-eyeballs concurrent connect (V101)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v160] 邀请按钮与复制/分享同极性（基准文件默认被提前 return 关闭）：
-          #   // INVITE_BUTTON_CONTROL
-          #   return const SizedBox.shrink();
-          # 删除该提前 return 使邀请按钮逻辑生效（定制 UI 下由本步骤按复选框揭示；
-          # 上游版则由 patch_invite_button_uimode_false.py 注入，不在此路径）。
-          PAGE=flutter/lib/desktop/pages/desktop_home_page.dart
-          python3 - "$PAGE" <<'EOF'
-          import sys, re
-          p = sys.argv[1]
-          t = open(p, encoding="utf-8").read().replace("\r\n", "\n")
-          m = re.search(r"[ \t]*// INVITE_BUTTON_CONTROL[ \t]*\n[ \t]*return const SizedBox\.shrink\(\);[ \t]*\n", t)
-          if not m:
-              print("[FAIL] 未找到 INVITE_BUTTON_CONTROL 提前 return")
-              sys.exit(3)
-          t = t[:m.start()] + t[m.end():]
-          open(p, "w", encoding="utf-8").write(t)
-          print("[OK] 邀请按钮已启用（移除 INVITE_BUTTON_CONTROL 提前 return）")
-          EOF
-          # [LnDesk v167] 同 COPY：断言锚定标记行本身，避免被说明注释误伤。
-          ! grep -q "^[[:space:]]*//[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$" "$PAGE" || { echo "[FAIL] 提前 return 未移除干净（标记行仍在）"; exit 1; }
-          grep -q "_buildInviteButton" "$PAGE" || { echo "[FAIL] 缺少 _buildInviteButton"; exit 1; }
-          echo "[OK] 邀请按钮启用完成"
+          # V101: FramedStream::new RFC 6555 并发连接竞速。
+          # 修复双栈域名(A+AAAA)下顺序迭代、每个地址死等 CONNECT_TIMEOUT(18s) 的卡顿：
+          # 解析出的所有地址并发 connect（250ms 探测），先通者胜、其余取消；
+          # 全失败时回退传统顺序连接（保留单地址慢路径语义）。
+          # 锚定上游 1.4.9 原始状态，标记缺失即构建失败。
+          # 注意：当前 connect_tcp_local 仍逐个传单 IP 给 FramedStream::new，
+          # 故 race 退化为单次 connect（V102 会把 race 上提到 connect_tcp_local 层）。
+          python3 patches/patch_FramedStream_happy_eyeballs.py .
+          grep -q "race_connect_all" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing race_connect_all"; exit 1; }
+          grep -q "prod-line v101 happy-eyeballs" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing v101 marker"; exit 1; }
+          echo "[OK] V101 happy-eyeballs concurrent connect injected"
+
+      - name: Inject happy-eyeballs lift + DNS timeout + split metrics (V102)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V102: lift happy-eyeballs race to connect_tcp_local (V101's inner race
+          # degenerates when fed a single IP) + cap DNS lookups with a 5s timeout
+          # (a dead resolver could otherwise stall connect past CONNECT_TIMEOUT) +
+          # log DNS-resolve time and connect-race time separately for diagnosis.
+          # Requires V101 already injected (FramedStream::new present). Anchors are
+          # unique single-occurrence strings; marker missing -> build fails.
+          python3 patches/patch_V102_happy_eyeballs_lift.py .
+          grep -q "prod-line v102 happy-eyeballs-lift" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v102 marker"; exit 1; }
+          grep -q "DNS_LOOKUP_TIMEOUT_SEC" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DNS_LOOKUP_TIMEOUT_SEC"; exit 1; }
+          # [LnDesk dns-flush] A DDNS host that moved to a new IP stays pinned inside
+          # the OS resolver cache (Windows Dnscache honours the A-record TTL), so the
+          # client keeps dialling the dead address and never reconnects. Verify the
+          # flush hook actually shipped -- at patch time, not 40 minutes into the build.
+          grep -q "pub fn flush_os_dns_cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing flush_os_dns_cache"; exit 1; }
+          grep -q "DnsFlushResolverCache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DnsFlushResolverCache FFI"; exit 1; }
+          grep -qF "[dns-flush] OS resolver cache flushed" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing the dns-flush log marker"; exit 1; }
+          grep -q "flush_os_dns_cache();" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs: the dns-flush hook is defined but never called"; exit 1; }
+          echo "[OK] V102 happy-eyeballs lift + DNS timeout injected"
+          echo "[OK] dns-flush hook verified (OS resolver cache cleared once all addrs fail)"
+
+      - name: Rendezvous family-match DNS probe (v100, IPv6 preferred, default-on)
+        # [V283] 无 iroh 构建：移除 enable_iroh_direct 门控（本工作流恒不启用 iroh），
+        # 仅按 super_p2p_enforcement 决定步骤是否运行（与 iroh 无关）。
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Default-on client-side DNS probe: when enable-dual-stack-lookup is
+          # set (or absent, because the "enable-" prefix defaults to enabled) AND
+          # the local host has a usable IPv6 stack, resolve AAAA first (500ms
+          # ceiling) before falling back to the legacy IPv4 happy-eyeballs path.
+          # Set enable-dual-stack-lookup=N to disable.
+          # 锚定上游 1.4.9 原始 socket_client.rs，须在 v98/V102 之后运行。
+          python3 patches/patch_rendezvous_family_match.py .
+          grep -qF "prod-line v100 family-match" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v100 family-match probe"; exit 1; }
+          echo "[OK] V100 rendezvous family-match (IPv6 preferred, default-on DNS probe)"
+
+      - name: Rendezvous family-match settings toggle (v100 UI)
+        # [V283] 无 iroh 构建：移除 enable_iroh_direct 门控（本工作流恒不启用 iroh），
+        # 仅按 super_p2p_enforcement 决定步骤是否运行（与 iroh 无关）。
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Adds a Settings > Network switch ("DNS resolve by address family
+          # (IPv6 preferred)") that writes the local config key
+          # enable-dual-stack-lookup, which the Rust probe above reads. The
+          # "enable-" prefix makes it default-on.
+          python3 patches/patch_family_match_setting.py .
+          grep -qF "prod-line v100 family-match-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing v100 family-match toggle"; exit 1; }
+          # [v175] switchWidget() funnels the title and the tooltip through
+          # listTile() -> translate(), so the row stays English unless cn.rs
+          # carries both strings byte-for-byte. Asserted only when the
+          # customized cn.rs is in play: the upstream-only variant compiles the
+          # stock upstream file and must not be forced to use ours.
+          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
+            grep -qF '("DNS resolve by address family (IPv6 preferred)"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match toggle title"; exit 1; }
+            grep -qF '("Enable IPv6-first DNS resolution for P2P connections.' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match tooltip"; exit 1; }
+          fi
+          echo "[OK] V100 rendezvous family-match settings toggle"
+
+      - name: Apply screen wall patch + i18n
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内也已 reconfigure，双保险）。
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 屏幕墙功能（多设备独立窗口）+ 中英文多语言【同时】注入：
+          # patch_screen_wall.py 对上游 1.4.9 源码做锚点注入（新增
+          # screen_wall_page.dart / mini_remote_view.dart + 修改 8 个既有文件），
+          # 并在 src/lang/en.rs / src/lang/cn.rs 尾部插入屏幕墙 UI 翻译 key
+          # （Screen Wall 等 23 组，已存在自动跳过）——勾选"开启屏幕墙"时，
+          # 客户端中文环境显示"屏幕墙"、英文环境显示 "Screen Wall"。
+          # 任一锚点缺失/歧义即报错退出，构建显式失败。
+          python3 patches/patch_screen_wall.py .
+
+          # [screen_wall v137] _peerBrief() uses bind.mainGetPeerOptionSync; `bind`
+          # comes from models/platform_model.dart. Base patch now injects the import
+          # itself so chains without v107 still compile (win7 runs v107 too since V218); v107 skips its own B1
+          # when it is already there. Guard it so a missing import fails here and not
+          # halfway through `flutter build windows` ("Undefined name 'bind'").
+          grep -q "models/platform_model.dart" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart: missing platform_model import (bind undefined)"; exit 1; }
+          echo "[OK] screen wall v137 verified (platform_model import present)"
+
+          # 注入后验证多语言 key 已就位（en.rs/cn.rs 必须含 Screen Wall）
+          for f in src/lang/en.rs src/lang/cn.rs; do
+            grep -q '"Screen Wall"' "$f" || { echo "[FAIL] $f 缺少 Screen Wall 翻译 key"; exit 1; }
+          done
+          echo "[OK] 屏幕墙功能 + 多语言（en/cn）注入完成"
+
+          # [v227c] both 模式右卡「屏幕墙」按钮：与 generator-windows.yml 同款注入，
+          # 此前 win7 工作流漏了这一步——屏幕墙功能链在包里、右卡按钮却不存在
+          # （官网旁边没有屏幕墙，回溯到 18:17 的 windows 生成器构建才有）。
+          # 前置："Replace desktop_home_page"（本文件 413 行）已铺 connection_page_both.dart。
+          python3 patches/patch_both_screen_wall_button.py .
+          grep -qF "[LnDesk v224 screen-wall-btn-import]" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v227c win7: screen wall button import not injected"; exit 1; }
+          echo "[OK] v227c win7: both 右卡屏幕墙按钮已注入"
+
+      - name: Screen wall v107 consolidated chain (multi-instance + preview + add-to-wall + idle exemption)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # patch_screen_wall_v107.py 整合原 v103/v104/v108/v109 四个补丁（锚点与
+          # 执行顺序逐字保留；v104 为空操作占位已被 base 吸收，见
+          # Docs/rustdesk-1.4.9/v108/修改方案.md）：
+          # - 多实例：最多 10 个屏幕墙窗口（10 墙 × 4 设备 = 40 路），级联错位、
+          #   强制深色 + 黑底；第 11 次点击提示"最多打开 10 个屏幕墙"；
+          # - 入口预览选择：无指定 wallId 时弹 Dialog 列出已保存屏幕墙（可选新建）；
+          # - 设备卡片菜单「Add to Screen Wall」：自动依次填充，满了切下一块；
+          # - 屏幕墙为「监控型」会话，服务端豁免「长时间不活动自动断开」。
+          # 必须在 "Apply screen wall patch + i18n"（base）之后运行（锚点匹配其产物）。
+          # 脚本自带幂等守卫：最终 marker 全部存在时 [SKIP] 退出 0。
+          python3 patches/patch_screen_wall_v107.py .
+          grep -q "Screen Wall Max 10 Windows" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart 缺少 v103 多实例入口"; exit 1; }
+          grep -q "Device Already Added" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v103 去重提示"; exit 1; }
+          grep -q "ThemeData.dark" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少强制深色主题"; exit 1; }
+          grep -q "_screenWallWindows.length >= 10" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 10 实例上限"; exit 1; }
+          grep -q "kScreenWallWalls" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart 缺少 v107 多墙持久化键"; exit 1; }
+          grep -q "addPeerToScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 添加到屏幕墙入口"; exit 1; }
+          grep -q "_pickScreenWall" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 预览选择 Dialog"; exit 1; }
+          grep -q "Add to Screen Wall" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 v108 菜单项"; exit 1; }
+          grep -q "String? wallId" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart 缺少 v108 wallId 参数"; exit 1; }
+          # 反向断言：v109 的 SW__ 密码哨兵已整条下线（Dart 不再加前缀，
+          # Rust 侧 is_screen_wall 也随 V119 死代码清理移除），任何一侧残留都判失败。
+          if grep -q "SW__" flutter/lib/desktop/widgets/mini_remote_view.dart; then echo "[FAIL] mini_remote_view.dart 仍包含 v109 密码哨兵前缀"; exit 1; fi
+          if grep -q "SW__" flutter/lib/utils/multi_window_manager.dart; then echo "[FAIL] multi_window_manager.dart 仍包含 v109 哨兵剥离"; exit 1; fi
+          if grep -q "is_screen_wall\|SW__" src/server/connection.rs; then echo "[FAIL] connection.rs 仍残留 v109 is_screen_wall / SW__ 死代码"; exit 1; fi
+          echo "[OK] 屏幕墙 v107 整合链（多实例/预览/添加入口）注入完成"
+          # [v119] 屏幕墙会话不自动进入隐私模式（握手期豁免，零闪黑）
+          python3 patches/patch_screen_wall_v119.py .
+          grep -q "pub is_screen_wall: bool" src/client.rs || { echo "[FAIL] client.rs 缺少 v119 is_screen_wall 字段"; exit 1; }
+          grep -q "lc.read().unwrap().is_screen_wall" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs 缺少 v119 隐私模式豁免"; exit 1; }
+          grep -q "bool? isScreenWall," flutter/lib/models/model.dart || { echo "[FAIL] model.dart 缺少 v119 isScreenWall 参数"; exit 1; }
+          # [v120] 屏幕墙工具栏保留隐私模式手动开关（默认关、可手动开）：icon 仍调用
+          # sessionTogglePrivacyMode；与 v119 握手期跳过自动进隐私（io_loop.rs）配合 = 默认关 + 图标可手动开。
+          grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式手动开关"; exit 1; }
+          grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
+          grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 view-style 切换"; exit 1; }
+          # 首帧强制关闭隐私模式（清掉主窗口残留的全局 PrivacyModeState 单例，避免图标错显「已开隐私」）。
+          grep -q "MiniRemoteView force privacy-off error" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙首帧强制关闭隐私模式"; exit 1; }
+          # 图标必须改用本格私有 _privacyOn，不得再读全局 PrivacyModeState 单例
+          # （按 peer id 共享，会被主界面同设备会话污染 → 假性「已开隐私」）。
+          grep -q "_privacyOn" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙隐私图标私有状态"; exit 1; }
+          # 反向断言：图标不得再读 PrivacyModeState.find(widget.id)（主界面污染源）。
+          if grep -q "PrivacyModeState.find(widget.id)" flutter/lib/desktop/widgets/mini_remote_view.dart; then
+            echo "[FAIL] mini_remote_view.dart 隐私图标仍读全局 PrivacyModeState 单例"; exit 1;
+          fi
+          echo "[OK] 屏幕墙 v119（隐私模式豁免）+ v120（隐私开关保留 + 图标间隔 + view-style 切换 + 首帧强制关隐私 + 图标私有状态）注入完成"
+
+          # [screen_wall v121] Assert the v121 screen-wall enhancements really landed in
+          # the tree. windows / win7 / quick pin the patches checkout to a concrete sha
+          # instead of main, so a stale pin silently ships a build without these features
+          # (exactly what happened to run #1744). Fail here instead of at the user's desk.
+                    # [screen_wall v136] The one-shot 1920x1080 button is now a resolution
+          # cycle (2560x1440 -> ... -> 1360x768) that skips unsupported modes.
+          grep -q "_kCycleResolutions" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the v136 resolution cycle list"; exit 1; }
+          grep -q "_resCycleIdx" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the v136 resolution cycle cursor"; exit 1; }
+          grep -q "Icons.aspect_ratio" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: missing the resolution icon"; exit 1; }
+          grep -q "Maximize Window" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing the Maximize Window label"; exit 1; }
+          grep -q "widget.onMaximize?.call()" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing toolbar double-click maximize"; exit 1; }
+          grep -q "requestExitZoom" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: missing the global Esc exit-zoom hook"; exit 1; }
+          echo "[OK] screen wall v121 verified (resolution icon / double-click maximize / label fix / global Esc)"
+
+          # [screen_wall v132] Two runtime fixes that v121 shipped broken:
+          # 1) Escape never reached the local UI while the keyboard was grabbed --
+          #    rdev swallows every key-down (returns None), so the zoom's local Esc
+          #    handler was unreachable from inside a grabbed device view.
+          # 2) The 1920x1080 button did nothing on view-only sessions (the controlled
+          #    side's change_resolution is gated on `if self.keyboard`) and on peers
+          #    whose SupportedResolutions lacks 1920x1080.
+          grep -q "LnDesk v132\] Let Escape ALSO reach the local Flutter UI" src/keyboard.rs || { echo "[FAIL] keyboard.rs: v132 Escape passthrough missing"; exit 1; }
+          grep -q "if key == Key::Escape {" src/keyboard.rs || { echo "[FAIL] keyboard.rs: v132 Escape branch missing"; exit 1; }
+          grep -q "_ffi.ffiModel.viewOnly" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution button lacks the view-only guard"; exit 1; }
+          grep -q "Unsupported resolution" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution precheck missing"; exit 1; }
+          echo "[OK] screen wall v132 verified (Escape passthrough + resolution guard)"
+
+      - name: Force light-mode background to pure white (v224)
+        # 值驱动补丁：extras.light_background_white != 'false' 时生效（默认开）。
+        # 不用 '==' true 是为了兼容不下发该键的旧 generator 提交。
+        if: fromJson(inputs.extras || '{}').light_background_white != 'false'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 亮色模式底色强制纯白。上游 lightTheme 里 scaffoldBackgroundColor 已是白色，
+          # 但 grayBg(#EFEFF2) 被三处消费，导致「窗口白、卡片/输入框/Container 灰」：
+          #   common.dart:397  inputDecorationTheme.fillColor -> 所有输入框
+          #   common.dart:412  cardColor                      -> 所有 Card
+          #   common.dart:457  colorScheme.background          -> Container/ColoredBox
+          # 本补丁把这三处改指 Colors.white，grayBg 常量本身保留（对话框描边 / 描边按钮
+          # 仍在用）。暗色主题走独立硬编码值（#24252B / #18191E），完全不受影响，
+          # 用户仍可正常切深色模式——补丁内已加反向断言校验这点。
+          python3 patches/patch_light_background_white.py .
+          grep -qF "[LnDesk v224 light background white]" flutter/lib/common.dart || { echo "[FAIL] v224: light background marker not injected"; exit 1; }
+          # 正向：三处必须已是 Colors.white
+          grep -q "fillColor: Colors.white," flutter/lib/common.dart || { echo "[FAIL] v224: input fillColor not white"; exit 1; }
+          grep -q "cardColor: Colors.white," flutter/lib/common.dart || { echo "[FAIL] v224: cardColor not white"; exit 1; }
+          grep -q "background: Colors.white)," flutter/lib/common.dart || { echo "[FAIL] v224: colorScheme.background not white"; exit 1; }
+          # 反向：暗色三值必须原样存在（深色模式仍可用）
+          grep -q "scaffoldBackgroundColor: Color(0xFF18191E)," flutter/lib/common.dart || { echo "[FAIL] v224: dark scaffoldBackgroundColor was altered"; exit 1; }
+          grep -q "cardColor: Color(0xFF24252B)," flutter/lib/common.dart || { echo "[FAIL] v224: dark cardColor was altered"; exit 1; }
+          echo "[OK] v224: 亮色底色已强制纯白（3 处），暗色主题保持不变"
+
+      - name: Font Awesome 4.7 icons for peer tab bar (v224)
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 二进制资源不能用 Python 注入，先 cp 再打补丁：
+          #   patches/assets/fontawesome-webfont.ttf -> flutter/assets/
+          # 之后 patch_font_awesome_icons.py 做三件事：
+          #   1. flutter/pubspec.yaml 追加 family: FontAwesome 字体族声明
+          #   2. flutter/lib/common.dart 的 IconFont 类追加 _family6 + FA 字形常量
+          #      （含 fa-sort F0DC / fa-refresh F021）
+          #   3. peer_tab_model.dart 的左半区 5 个 tab 图标 + peer_tab_page.dart
+          #      右半区（搜索 / 多选 / 排序 / 刷新 / 视图切换）换成 FA 字形
+          #      刷新仍保留上游的 RotatedBox(quarterTurns: 2)，箭头朝向不变
+          cp -f patches/assets/fontawesome-webfont.ttf flutter/assets/fontawesome-webfont.ttf
+          test -s flutter/assets/fontawesome-webfont.ttf || { echo "[FAIL] v224: fontawesome-webfont.ttf missing/empty"; exit 1; }
+          cp -f patches/assets/logo_v15_cn.png flutter/assets/logo_v15_cn.png
+          test -s flutter/assets/logo_v15_cn.png || { echo "[FAIL] v240: logo_v15_cn.png missing/empty"; exit 1; }
+          python3 patches/patch_font_awesome_icons.py .
+          grep -q "family: FontAwesome" flutter/pubspec.yaml || { echo "[FAIL] v224: FontAwesome family missing in pubspec.yaml"; exit 1; }
+          grep -q "fontawesome-webfont.ttf" flutter/pubspec.yaml || { echo "[FAIL] v224: fontawesome ttf not declared in pubspec.yaml"; exit 1; }
+          grep -q "_family6 = 'FontAwesome'" flutter/lib/common.dart || { echo "[FAIL] v224: IconFont _family6 not injected"; exit 1; }
+          grep -q "Icons.access_time_filled" flutter/lib/models/peer_tab_model.dart || { echo "[FAIL] v239: peer tab icons must stay official (access_time_filled missing)"; exit 1; }
+          grep -q "static const IconData faCaretDown" flutter/lib/common.dart || { echo "[FAIL] v224: faCaretDown constant missing in IconFont"; exit 1; }
+          grep -q "static const IconData faSort" flutter/lib/common.dart || { echo "[FAIL] v224: faSort constant missing in IconFont"; exit 1; }
+          grep -q "static const IconData faRefresh" flutter/lib/common.dart || { echo "[FAIL] v224: faRefresh constant missing in IconFont"; exit 1; }
+          grep -q "IconFont.faSearch" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v224: search magnifier not switched to FA"; exit 1; }
+          grep -q "IconFont.faSort" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v224: sort dropdown not switched to FA"; exit 1; }
+          grep -q "IconFont.faRefresh" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v224: refresh button not switched to FA"; exit 1; }
+          if grep -q "Icons.sort_rounded," flutter/lib/common/widgets/peer_tab_page.dart; then
+            echo "[FAIL] v224: old sort glyph still present"; exit 1
+          fi
+          if grep -q "Icons.refresh," flutter/lib/common/widgets/peer_tab_page.dart; then
+            echo "[FAIL] v224: old refresh glyph still present"; exit 1
+          fi
+          grep -qF "[LnDesk v224 font-awesome icons]" flutter/lib/common.dart || { echo "[FAIL] v224: FA marker not injected"; exit 1; }
+          echo "[OK] v224: Font Awesome 4.7 图标已接入"
+
+      - name: Tab bar chip style + restore screen-wall entry icon (v226b)
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python3 patches/patch_peer_tab_style.py .
+          if grep -q "decoSelected" flutter/lib/common/widgets/peer_tab_page.dart; then
+            echo "[FAIL] v227: tab chip decoration (decoSelected) not removed"; exit 1
+          fi
+          if grep -q "decoBorder" flutter/lib/common/widgets/peer_tab_page.dart; then
+            echo "[FAIL] v225: old bottom-line tab indicator still present"; exit 1
+          fi
+          grep -q "decoration: null" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab container background not removed (decoration:null)"; exit 1; }
+          grep -q "Divider(height: 1, thickness: 1)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab top full-width divider missing"; exit 1; }
+          grep -qF "[LnDesk v227 tab divider]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab divider marker missing"; exit 1; }
+          grep -qF "[LnDesk v227c flat tab strip]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: flat tab strip marker missing"; exit 1; }
+          grep -q "Colors.white" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: explicit white surface missing (flat strip / search)"; exit 1; }
+          grep -q "withOpacity(0.5)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: toolbar icon tint 0.5 missing"; exit 1; }
+          # [LnDesk v246] 这两条断言检查的是 patch_screen_wall.py 的产物，而该补丁受
+          # inputs.screen_wall 门控；screen_wall 关闭时产物本就不存在，断言必须一并门控，
+          # 否则 control_custom + screen_wall!=true 的组合必然 FAIL（v226b 门控缺陷修复）。
+          if [ "${{ inputs.screen_wall }}" = "true" ]; then
+            grep -q "_buildScreenWallButton(context)," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall entry icon call missing (must be restored)"; exit 1; }
+            grep -q "IconFont.faThLarge" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall glyph not FA faThLarge"; exit 1; }
+          fi
+          grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
+          grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
+          echo "[OK] v227: tab bar no background, icons visible, screen-wall icon restored (FA faThLarge)"
+      - name: both-mode gear icon + compliance notice (v225)
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 「控制远程桌面」标题前的产品图标：上游是 Icons.help_outline_outlined，
+          # 这里换成客户提供的 icon_512（蓝齿轮产品图），渲染进 32x32 方框（BoxFit.contain
+          # 自动等比缩小，2x DPI 下 1:1 不再放大糊边）。
+          cp -f patches/assets/icon_512.png flutter/assets/icon_512.png
+          test -s flutter/assets/icon_512.png || { echo "[FAIL] v227-1: icon_512.png missing/empty"; exit 1; }
+          python3 patches/patch_both_gear_and_notice.py .
+          grep -q "assets/icon_512.png" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v227-1: gear image not injected"; exit 1; }
+          if grep -q "Icons.help_outline_outlined" flutter/lib/common/widgets/connection_page_title.dart; then
+            echo "[FAIL] v224: old help glyph still present"; exit 1
+          fi
+                    grep -qF "[LnDesk v225 both gear]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v225: gear marker not injected"; exit 1; }
+          if grep -qF "'assets/logo_v15_cn.png'" flutter/lib/desktop/pages/connection_page.dart; then
+            echo "[FAIL] v244: right-card LOGO container still present"; exit 1
+          fi
+          # V227-1 把两张卡还原到 V227c：卡高从 V245 的 172 回到 256。本版本是 UI 调优
+          # 专用基线，该值后续还会继续调整 —— 所以这里只断言常量存在并打印实际值，
+          # 不再比对具体数值（钉死数值会让每一次 UI 微调都构建失败）。
+          _cardHeightValue=$(grep -oE "_cardHeight = [0-9.]+" flutter/lib/desktop/pages/desktop_home_page.dart | head -1 || true)
+          [ -n "$_cardHeightValue" ] || { echo "[FAIL] v245: _cardHeight constant missing"; exit 1; }
+          echo "[OK] v245: $_cardHeightValue"
+          grep -q 'Official Website' src/lang/en.rs || { echo "[FAIL] v224: Official Website key missing in en.rs"; exit 1; }
+          echo "[OK] v225: 齿轮已移到标题前"
 
       - name: Inject LAN IP direct access board
-        if: fromJson(inputs.extras).ip_direct_board == 'true'
+        if: fromJson(inputs.extras).ip_direct_board == 'true' && (env.UI_VARIANT != 'upstream' || env.CLIENT_TYPE == 'incoming')
         shell: bash
         env:
+          # Windows runner 默认 cp1252，中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内也已 reconfigure，双保险）。
           PYTHONIOENCODING: utf-8
         run: |
-          # 内网 IP 直连看板（左面板显示 本机内网IP:直连端口 + 状态灯 + 复制按钮）
+          # 内网 IP 直连看板（左面板「临时密码」下方显示 本机内网IP:直连端口 + 状态灯 + 复制按钮）：
+          # patch_direct_access.py 对上游 1.4.9 源码做锚点注入（新增 src/direct_access.rs，
+          # 增强 rendezvous_mediator::direct_server 状态写入、flutter_ffi::main_check_connect_status
+          # 强制启用 direct-server + LAN IP 发现、desktop_home_page 内网看板 + 双语 key）。
+          # 任一锚点缺失/歧义即报错退出，构建显式失败。
+          # 是否运行完全取决于是否勾选「内网 IP 直连看板」(ip_direct_board)，与 direction 无关。
+          # 当 direction=both 且同时勾选本项时：desktop_home_page 此时已是 desktop_home_page_both.dart，
+          # 脚本检测到 // UI_MODE_BOTH 标记后仅跑 Rust 侧（写入 lan-ip / lan-ipv6 / direct-access-port
+          # 选项供上部本机信息卡片读取），并自动跳过 Dart 侧注入（避免重复 buildDirectAccessBoard）。
           python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
-          grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
-          echo "[OK] 内网 IP 直连看板注入完成"
+          # 不依赖 env.CLIENT_TYPE（其尚未设置），直接检测当前 desktop_home_page.dart 是否为
+          # desktop_home_page_both.dart 变体（顶部含 // UI_MODE_BOTH 标记）。both 变体已在本机
+          # 信息卡片自渲染网络信息，无需再注入 buildDirectAccessBoard。
+          if grep -q "// UI_MODE_BOTH" flutter/lib/desktop/pages/desktop_home_page.dart; then
+            echo "[OK] desktop_home_page_both.dart: 跳过 buildDirectAccessBoard 校验（网络信息已在上部本机信息卡片自渲染）"
+          else
+            grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
+          fi
+          echo "[OK] 内网 IP 直连注入完成"
 
       - name: Report local IPv6 to API server (v70)
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_udp == 'true'
@@ -405,10 +895,14 @@ jobs:
         if: fromJson(inputs.extras).ip_direct_board == 'true' || fromJson(inputs.extras).ip_direct_e2ee == 'true'
         shell: bash
         env:
+          # Windows runner 默认 cp1252，脚本内中文 print 会 UnicodeEncodeError；
+          # 强制 UTF-8（脚本内已 reconfigure，双保险）。
           PYTHONIOENCODING: utf-8
         run: |
-          # IP 直连端到端加密：失败即断开，不回退明文。
-          # 注意：本工作流【不调用】patch_common_client_disable_e2ee.py，全局 e2ee 保持开启。
+          # IP 直连端到端加密：服务端 direct_server 改以 secure=true 接受（复用上游
+          # create_tcp_connection 的 SignedId+PublicKey+set_key 握手）；客户端新增
+          # secure_direct_connection 并在 is_ip_str（含 IPv6）/is_domain_port_str
+          # 直连分支调用。失败即断开，不回退明文。
           python3 patches/patch_direct_e2ee.py .
           grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
           grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
@@ -425,6 +919,10 @@ jobs:
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
       - name: Patch online devices sync and IP direct menu
+        # [V217-fix] 与 generator-windows.yml 对齐：补上 ip_direct_menu 分支。
+        # 原条件只有 api_device_sync，导致前端单独勾选「IP直连菜单」
+        # (ip_direct_menu) 时该步骤被跳过，patch_online_devices.py 不执行，
+        # 设备菜单里的「IP直连」/「删除设备」入口不会注入 —— 复选框形同虚设。
         if: fromJson(inputs.extras).api_device_sync == 'true' || fromJson(inputs.extras).ip_direct_menu == 'true'
         shell: bash
         run: |
@@ -435,36 +933,57 @@ jobs:
           grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
 
-
+      - name: Move Terminal to standalone connection-page button (v70)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v70: promote the Terminal entry from the connection-page "More" menu to a standalone
+          # icon button below the ID input, named "终端".
+          python3 patches/patch_connection_terminal.py .
+          grep -qF 'onConnect(isTerminal: true)' flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart missing Terminal entry"; exit 1; }
 
       - name: skip custom client
         shell: bash
         run: |
           sed -i '/if (bind\.isCustomClient())/d' flutter/lib/desktop/pages/desktop_home_page.dart
+    
+
+      - name: enable websocket
+        if: ${{ fromJson(inputs.extras || '{}').ws_port != '' }}
+        shell: bash
+        run: |
+           python3 patches/patch_websocket_custom_port.py
 
       - name: fix win_device SetupDi error spam
         shell: bash
         run: |
            python3 patches/patch_win_device_setupdi.py
 
+      - name: disable_e2ee
+        if: fromJson(inputs.extras).disable_e2ee == 'true'
+        shell: bash
+        run: |
+           python3 patches/patch_common_client_disable_e2ee.py
+
       - name: change appname to custom
         if: inputs.appname != 'rustdesk'
         env:
           APP_NAME: ${{ inputs.appname }}
-          FILE_NAME: ${{ inputs.appname }}-quick.exe
+          FILE_NAME: ${{ inputs.filename }}
         shell: bash
         run: |
           # ./Cargo.toml
           sed -i -e "s|description = \"RustDesk Remote Desktop\"|description = \"${APP_NAME}\"|" ./Cargo.toml
           sed -i -e "s|ProductName = \"RustDesk\"|ProductName = \"${APP_NAME}\"|" ./Cargo.toml
           sed -i -e "s|FileDescription = \"RustDesk Remote Desktop\"|FileDescription = \"${APP_NAME}\"|" ./Cargo.toml
-          sed -i -e "s|OriginalFilename = \"rustdesk.exe\"|OriginalFilename = \"${FILE_NAME}\"|" ./Cargo.toml
+          sed -i -e "s|OriginalFilename = \"rustdesk.exe\"|OriginalFilename = \"${APP_NAME}.exe\"|" ./Cargo.toml
 
           # ./libs/portable/Cargo.toml
           sed -i -e "s|description = \"RustDesk Remote Desktop\"|description = \"${APP_NAME}\"|" ./libs/portable/Cargo.toml
           sed -i -e "s|ProductName = \"RustDesk\"|ProductName = \"${APP_NAME}\"|" ./libs/portable/Cargo.toml
           sed -i -e "s|FileDescription = \"RustDesk Remote Desktop\"|FileDescription = \"${APP_NAME}\"|" ./libs/portable/Cargo.toml
-          sed -i -e "s|OriginalFilename = \"rustdesk.exe\"|OriginalFilename = \"${FILE_NAME}\"|" ./libs/portable/Cargo.toml
+          sed -i -e "s|OriginalFilename = \"rustdesk.exe\"|OriginalFilename = \"${APP_NAME}.exe\"|" ./libs/portable/Cargo.toml
 
           # ./flutter/windows/runner/Runner.rc
           sed -i -e "s|\"RustDesk Remote Desktop\"|\"${APP_NAME}\"|" ./flutter/windows/runner/Runner.rc
@@ -473,11 +992,13 @@ jobs:
           sed -i -e "s|\"RustDesk\"|\"${APP_NAME}\"|" ./flutter/windows/runner/Runner.rc
           sed -i -e '/pub static ref APP_NAME/s/"RustDesk"/"'"${APP_NAME}"'"/' ./libs/hbb_common/src/config.rs
 
-          # ./src/lang/*.rs
+          # ./src/lang/en.rs
           find ./src/lang -name "*.rs" -exec sed -i -e 's|RustDesk|${{ inputs.appname }}|' {} \;
           # ./src/client.rs: hardcode the peer display name to APP_NAME so the
           # connection shows the branded name instead of the builtin option.
           sed -i '/let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);/,/\.join(" ");/c\        let display_name = "'"${APP_NAME}"'".to_string();' ./src/client.rs
+          sed -i -e 's|RustDesk|${{ inputs.appname }}|' ./res/msi/Package/License.rtf
+          
 
       - name: fix registry if appname has a space
         if: contains(inputs.appname, ' ')
@@ -489,17 +1010,135 @@ jobs:
           sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\DefaultIcon /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\DefaultIcon\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\" /f|' ./src/platform/windows.rs
-          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\\command|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\\command\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\\command|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\\command\\\"|' ./src/platform/windows.rs
           sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext} /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext}\\\\shell /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\" /f|' ./src/platform/windows.rs
-          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open /f|reg add \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\\shell\\\\open\\\" /f|' ./src/platform/windows.rs
+          sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg add HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open\\\\command /f|reg add \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\\shell\\\\open\\\\command\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|{subkey}|\\\"{subkey}\\\"|' ./src/platform/windows.rs
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\.{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
+          
+      - name: change company name
+        if: fromJson(inputs.extras).compname != 'Purslane Ltd'
+        shell: bash
+        run: |
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e 's|PURSLANE|${{ fromJson(inputs.extras).compname }}|' ./res/msi/preprocess.py
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./res/msi/preprocess.py
+          sed -i -e 's|"Copyright © 2025 Purslane Ltd. All rights reserved."|"Copyright © 2025 ${{ fromJson(inputs.extras).compname }}. All rights reserved."|' ./flutter/windows/runner/Runner.rc
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./flutter/windows/runner/Runner.rc
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./Cargo.toml
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./libs/portable/Cargo.toml
+          sed -i -e 's|Purslane Ltd|${{ fromJson(inputs.extras).compname }}|' ./res/msi/Package/License.rtf
+     
+      - name: change url to custom
+        if: env.URL_LINK != 'https://rustdesk.com' 
+        shell: bash
+        run: |
+          sed -i -e 's|Homepage: https://rustdesk.com|Homepage: ${{ env.URL_LINK }}|' ./build.py
+          sed -i -e "s|launchUrl(Uri.parse('https://rustdesk.com'));|launchUrl(Uri.parse('${{ env.URL_LINK }}'));|" ./flutter/lib/common.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com');|launchUrlString('${{ env.URL_LINK }}');|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/desktop/pages/desktop_setting_page.dart
+          sed -i -e "s|const url = 'https://rustdesk.com/';|const url = '${{ env.URL_LINK }}';|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.URL_LINK }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
+          sed -i -e "s|https://rustdesk.com/privacy.html|${{ env.URL_LINK }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
+          sed -i -e "s|rustdesk.com|${{ env.URL_LINK }}|" ./res/msi/Package/License.rtf
+      
+      - name: change download link to custom
+        if: env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
+        shell: bash
+        run: |
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./flutter/lib/mobile/pages/connection_page.dart
+          sed -i -e 's|https://rustdesk.com/download|${{ env.DOWNLOAD_LINK }}|' ./src/ui/index.tis
+          
+      - name: change update link to custom
+        if: env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest'
+        shell: bash
+        run: |
+          sed -i -e 's|https://api.rustdesk.com/version/latest|${{ env.UPDATE_LINK }}|' ./libs/hbb_common/src/lib.rs     
 
+      - name: change about text
+        if: ${{ fromJson(inputs.extras).Slogan_tip != '' }}
+        env:
+          SLOGAN: ${{ fromJson(inputs.extras).Slogan_tip }}
+        shell: bash
+        run: |
+          ESCAPED=$(printf '%s' "$SLOGAN" | sed "s/'/'\\\\''/g; s/[&/\]/\\&/g")
+          sed -i "s|translate('Slogan_tip')|'${ESCAPED}'|g" flutter/lib/desktop/pages/desktop_setting_page.dart
+
+      
+      - name: Apply patches for custom update
+        if:  env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
+        run: |
+          python3 patches/enable_custom_client_update.py
+          python3 patches/disabled_custom_client.py
+          python3 patches/patch_bool2option.py .
+          grep -qF "[PATCH-bool2option-YN]" flutter/lib/common.dart || { echo "[FAIL] bool2option Y/N fix not applied"; exit 1; }
+          python3 patches/patch_handle_update_url_1.py
+          python3 patches/patch_redirect_update_url.py
+          python3 patches/patch_inject_client_type.py
+          python3 patches/patch_accept_invalid_cert.py
+          python3 patches/patch_filename_based_update.py
+          python3 patches/patch_handle_update_url_2.py
+          python3 patches/patch_custom_client_update_check.py
+          python3 patches/patch_enable_auto_update.py
+          python3 patches/fix_update_tip.py
+
+      - name: Apply patch for auto silent update
+        if: ${{ fromJson(inputs.extras).auto_silent_update == 'true' && (env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') }}
+        run: |
+          python3 patches/patch_auto_silent_update.py
+
+      - name: Auto open main window after silent install (v222)
+        if: fromJson(inputs.extras).auto_open_ui == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 安装包双击 = libs/portable 包装器以内层 --silent-install 安装
+          # （patch_silent_install.py #0011），该路径装完默认不拉 UI。
+          # 本补丁在 core_main.rs 的 --silent-install 分支安装成功后拉起
+          # 安装目录主程序；交互式安装 / 静默更新(update_me) / 卸载均不经过
+          # 此分支，行为不变。win10+ 与 win7 工作流均含本步骤。
+          python3 patches/patch_auto_open_ui.py .
+          grep -q "fn auto_open_main_window_after_install" src/core_main.rs || { echo "[FAIL] core_main.rs missing auto-open hook"; exit 1; }
+
+      - name: Apply patches for fix__updateWindowSize
+        if: ${{(env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != 'https://rustdesk.com/download') && inputs.ui_mode == 'false' }}
+        run: |
+          python3 patches/fix__updateWindowSize.py
+
+      - name: Apply both-mode home window size floor
+        # direction=both 主界面顶部为左右并排两张卡片，右卡 5 个操作按钮
+        # （邀请/查看/摄像头/控制/下拉）需要约 1000px 窗口宽度才能排在一行；
+        # 上游默认 800x600 会把它挤成两行。该补丁只在运行时命中
+        # both 模式时放大窗口并居中（不可用 isCustomClient 做门：定制构建里
+        # disabled_custom_client.py 让它恒为 false），
+        # incoming / outgoing 不受影响。
+        shell: bash
+        run: |
+          python3 patches/patch_home_window_size.py
+          grep -q "kLnDeskHomeWidth" ./flutter/lib/main.dart || { echo "[FAIL] v145: both-mode home window size floor not injected"; exit 1; }
+          grep -q -F '!bind.isIncomingOnly() && !bind.isOutgoingOnly()' ./flutter/lib/main.dart || { echo "[FAIL] v145: size floor guard is not the both-mode test"; exit 1; }
+      
+      
+      #- name: custom Security Alert fontSize
+      #  
+       # shell: bash
+       # run: |
+        #  sed -i 's/^\([[:space:]]*\)color: Colors\.yellow,/\1\/\/ color: Colors.yellow,/' ./flutter/lib/common.dart
+         # sed -i '/style: TextStyle(color: Colors\.red),/a\    textAlign: TextAlign.center,'  ./flutter/lib/common.dart
+          #sed -i 's/\(style: TextStyle(color: Colors\.red\)\([),]\)/\1, fontSize: 18\2/g' ./flutter/lib/common.dart
+          #sed -i '/if (bind\.mainGetBuildinOption(key: kOptionRemovePresetPasswordWarning) !=/,/^  }$/d' ./flutter/lib/common.dart
+        #  sed -i '/fontSize:/ { N; s/18,/16,/; }' ./flutter/lib/common.dart
+            
       - name: Apply domestic STUN fallback (multi-level)
         if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
+        # 国内优先 + 国外兜底的 STUN 注入到客户端（NAT 探测 common.rs + WebRTC ICE webrtc.rs 两条路径），
+        # 修复国内网络下默认国外 STUN 慢/被墙导致 P2P 打洞失败、只能走中继或连接失败的问题。
+        # 必须对所有构建类型生效（原先只在 direction=both && hide_sensitive_ui 时运行，普通构建仍是国外 STUN）。
         shell: bash
         run: |
           python3 patches/hand_stun.py
@@ -511,9 +1150,9 @@ jobs:
 
       - name: Apply compile-time server lock (OVERWRITE_SETTINGS)
         # Compiles ID/key/api/relay servers into the OVERWRITE_SETTINGS static
-        # (highest option priority): locked, overrides saved config, no
-        # sidecar custom_.txt server fields. set_server.py above stays as the
-        # DEFAULT-layer fallback.
+        # (highest option priority): locked, overrides saved RustDesk2.toml,
+        # no sidecar custom_.txt server fields. set_server.py above stays as
+        # the DEFAULT-layer fallback.
         shell: bash
         run: |
           python3 patches/patch_server_lock_compiletime.py
@@ -539,6 +1178,56 @@ jobs:
           grep -qF '61b96c2fddfe8a66adfb8f13b6ae7e530a72bb6f' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
+          grep -qF '61b96c2fddfe8a66adfb8f13b6ae7e530a72bb6f' Cargo.lock || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.lock"; exit 1; }
+
+      - name: Apply AV1 hardware encoding patch (v275)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v275] AV1 used to have no hardware path at all:
+          #   - src/server/video_service.rs::make_encoder() mapped
+          #     CodecFormat::AV1 straight to EncoderCfg::AOM (software libaom)
+          #     while the H264/H265 arm already walked VRAM -> HWRAM -> software.
+          #   - res/vcpkg/ffmpeg/portfile.cmake builds with --disable-everything
+          #     and re-enables codecs one by one, but listed no av1_* hardware
+          #     encoder, so av1_nvenc/av1_qsv simply did not exist in the build.
+          # Both are fixed here; the hwcodec side (registering the encoders and
+          # allowing AV1 through the vram capability filter) rides in with the
+          # fork rev pinned by the v260 step above.
+          # NOTE for this win7 generator specifically: the encoder selection is
+          # runtime, so older machines simply fall back to libaom. Nobody expects
+          # an RTX 40 / Intel Arc here -- this step exists so the binary accepts
+          # codec-preference=av1 instead of silently ignoring it.
+          python3 patches/patch_av1_hw_encode.py .
+          grep -qF 'HwRamEncoder::try_get(CodecFormat::AV1)' src/server/video_service.rs || { echo "[FAIL] v275: AV1 hardware ladder missing from make_encoder()"; exit 1; }
+          grep -qF 'EncoderCfg::AOM(AomEncoderConfig' src/server/video_service.rs || { echo "[FAIL] v275: libaom fallback was dropped, old behaviour lost"; exit 1; }
+          grep -qF -- '--enable-encoder=av1_nvenc' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_nvenc not enabled in ffmpeg build"; exit 1; }
+          grep -qF -- '--enable-encoder=av1_qsv' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_qsv not enabled in ffmpeg build"; exit 1; }
+          echo "[OK] v275: AV1 may use av1_nvenc / av1_qsv, libaom fallback retained"
+
+      - name: Bump vendored ffmpeg overlay to 9.0.2 (v275)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v275] The overlay port was pinned at ffmpeg 7.1. Move to
+          # 9.0.2 and adopt upstream's own patch set -- the 7.1-era patches
+          # target source lines that no longer exist. RustDesk's custom patches
+          # under patch/ are kept (0009 nvenc reconfigure blur and 0010
+          # disable-loading-DLLs matter to us); if this step fails in the patch
+          # phase, run once with LN_FFMPEG_DROP_CUSTOM_PATCHES=1 to separate
+          # "custom patch no longer applies" from "libavcodec moved".
+          # NOTE: changing res/vcpkg/** busts the vcpkg cache key, so this run
+          # rebuilds ffmpeg from source and takes noticeably longer than usual.
+          # This generator uses the x64-windows-static triplet with the win7
+          # Rust target -- that pairing is untested against ffmpeg 9.0.2, so if
+          # this one fails while generator-windows.yml succeeds, the triplet is
+          # the first suspect, not the patch scripts.
+          python3 patches/patch_ffmpeg_902.py .
+          grep -qF '"version": "9.0.2"' res/vcpkg/ffmpeg/vcpkg.json || { echo "[FAIL] v275: ffmpeg port version not bumped"; exit 1; }
+          grep -qF '21bf3fbcdfd2f41ea6edeab40433fecfe362b09ecaa177a652471b54f9357011b4f74dab18245ab1c26f1a473b94205490baecb42289afd2effd603cd0b22b59' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: ffmpeg 9.0.2 digest not applied"; exit 1; }
+          echo "[OK] v275: ffmpeg overlay port at 9.0.2"
 
 
       - name: Apply privacy virtual-display cursor-embedded patch (v261)
@@ -645,7 +1334,7 @@ jobs:
           VER="${{ env.VERSION }}"
           python3 patches/patch_permanent_password_new.py
 
-      - name: Apply QR code payload patch (v139)
+      - name: Apply QR code payload patch (v138)
         if: inputs.ui_mode == 'true' && fromJson(inputs.extras).enableQrCode == 'true'
         shell: bash
         env:
@@ -655,10 +1344,15 @@ jobs:
           # incoming-only home page. Rust encrypts ID / temporary password /
           # network info / iroh NodeId with a key derived from the preset
           # password; Dart renders it with qr_flutter between the security-code
-          # area and the Quit/Copy row, refreshing every 5 s.
+          # area and the Quit/Copy row, refreshing every 5 s (unattended boxes
+          # have no keyboard or mouse to press refresh, and the temporary
+          # password is rotated after every authorized session).
           # Gating: services.py forces ui_mode=False for direction in
-          # (outgoing, both), so ui_mode=true always means incoming; Dart adds
-          # an isIncomingOnly guard on top of that.
+          # (outgoing, both), so ui_mode=true always means incoming; Dart adds an
+          # isIncomingOnly guard on top of that.
+          # The anchor deliberately avoids `buildPasswordBoard(context),`:
+          # patch_direct_access.py inserts the optional IP-direct line right
+          # after it, which would break that anchor when the IP board is enabled.
           python3 patches/patch_qr_code.py .
           test -f src/qr_payload.rs || { echo "[FAIL] src/qr_payload.rs was not created"; exit 1; }
           grep -q "pub mod qr_payload;" src/lib.rs || { echo "[FAIL] src/lib.rs is missing pub mod qr_payload"; exit 1; }
@@ -678,32 +1372,7 @@ jobs:
           grep -q "_kQrSize = 164.0" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR size constant is missing"; exit 1; }
           grep -q "qr_flutter" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart is missing the qr_flutter import"; exit 1; }
           grep -q "prod-line v139" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] QR board background not matched to UI theme"; exit 1; }
-          echo "[OK] v139 QR connection-info band injected"
-
-      - name: Apply hide-ID and QR tip patch (v139)
-        if: fromJson(inputs.extras).hideIdDisplay == 'true' && inputs.ui_mode == 'true'
-        shell: bash
-        env:
-          PYTHONIOENCODING: utf-8
-        run: |
-          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机浏览器扫码获取本机信息」，
-          # 与启用二维码(enableQrCode) 配套。仅在定制 UI(ui_mode) + 被控(incoming) 生效。
-          python3 patches/patch_hide_id_qr_tip.py .
-          grep -q "//       buildIDBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] ID board was not hidden"; exit 1; }
-          grep -q "请使用手机浏览器扫码获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
-          echo "[OK] v139 hide-ID + QR tip applied"
-
-      - name: hide-password_uimode_true
-        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'true'
-        shell: bash
-        run: |
-          sed -i 's|^\([[:space:]]*\)buildPasswordBoard(context),|// \1buildPasswordBoard(context),|' flutter/lib/desktop/pages/desktop_home_page.dart
-
-      - name: hide-password_uimode_false
-        if: fromJson(inputs.extras).hidePassword == 'true' && inputs.ui_mode == 'false'
-        shell: bash
-        run: |
-          python3 patches/hide_password_board_uimode_false.py
+          echo "[OK] v138 QR connection-info band injected"
 
       - name: Apply unlock PIN patch
         shell: bash
@@ -720,7 +1389,7 @@ jobs:
           # UNLOCK_PIN 未配置时补丁自动退化为上游行为。
           python3 patches/patch_lock_settings_always.py
           grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 设置锁定补丁未生效"; exit 1; }
-
+                      
       - name: allow custom_.txt
         shell: bash
         run: |
@@ -728,152 +1397,39 @@ jobs:
           git apply patches/removeSetupServerTip.diff
           python3 patches/patch_inject_build_number.py
 
-      - name: Disable CM window (v99)
-        if: fromJson(inputs.extras).supercm == 'true'
+      - name: Set monitor switch button defaults
         shell: bash
         env:
-          PYTHONIOENCODING: utf-8
+          EXTRAS: '${{ inputs.extras }}'
         run: |
-          # v99 完全禁用 cm（Connection Manager）窗口（勾选"隐藏连接管理窗口"= supercm 时生效）：
-          # 所有 cm 拉起路径（core_main 的 --cm 分支、try_start_cm 的启动参数、sciter --cm 分支）
-          # 全部改走官方无头模式（--cm-no-ui 语义）——连接处理逻辑
-          # （密码/永久密码/OTP 授权）不受影响，但窗口/任务栏图标/控制面板
-          # 永不出现。无凭据连接无人确认 → 超时拒绝（安全默认）。
-          # 取代已删除的 Superhidecm 步骤（patch_hide_cm_1/2 与本补丁功能重复，
-          # 且 cm 窗口不存在后 hide_cm 运行时选项已无意义）。
-          # 锚点为上游 1.4.9 原始状态，不依赖任何其他补丁。
-          python3 patches/patch_cm_disable.py .
-          grep -q "prod-line cm-disable" src/core_main.rs || { echo "[FAIL] core_main.rs 缺少 cm-disable 标记"; exit 1; }
-          grep -q 'vec!\["--cm-no-ui"\]; // \[prod-line cm-disable\]' src/server/connection.rs || { echo "[FAIL] connection.rs 未改为 --cm-no-ui"; exit 1; }
-          grep -q "prod-line cm-disable" src/ui.rs || { echo "[FAIL] ui.rs 缺少 cm-disable 标记"; exit 1; }
-          echo "[OK] v99 cm 窗口禁用注入完成"
+          # 显示器切换按钮构建期默认值注入：官方 1.4.9 已原生实现
+          # 主工具栏/最小化工具栏显示器切换按钮（consts.dart 常量 + desktop_setting_page
+          # 嵌套 UI + remote_toolbar 按钮），本脚本只改 option2bool 对两个 key 的空值默认，
+          # 用户运行时 Settings 勾选仍可覆盖。配置从 inputs.extras JSON 解析。
+          python3 patches/patch_monitor_switch.py .
 
-      - name: Apply no-trace (portable zero-residue) patch
+      # [LnDesk v279-Win7-quick] 禁止安装构建：不再注入 silent-install 补丁
+      # （patch_silent_install.py 把双击安装器默认改为 --silent-install，与本工作流的
+      # 禁止命令行安装运行时守卫直接矛盾；保留 cert 注入以满足签名）。
+      - name: Apply cert patch (#0011, no silent-install in no-install build)
         shell: bash
-        env:
-          PYTHONIOENCODING: utf-8
         run: |
-          # 真·零残留：配置/日志重定向 %TEMP%/<app>-notrace-<pid>，退出自动清理；
-          # 自解压 packer 解压到 %TEMP% 并在子进程退出后删除解压目录。
-          # 仅本工作流使用，切勿注入安装版构建。
-          python3 patches/patch_portable_notrace.py .
-          grep -q "fn no_trace_base()" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缺少 no_trace_base"; exit 1; }
-          grep -q "rustdesk_notrace_cleanup" src/flutter.rs || { echo "[FAIL] flutter.rs 缺少 rustdesk_notrace_cleanup"; exit 1; }
-          grep -q "std::atexit(rustdesk_notrace_cleanup)" flutter/windows/runner/main.cpp || { echo "[FAIL] main.cpp 缺少 atexit 注册"; exit 1; }
-          grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 未改解压目录"; exit 1; }
-          echo "[OK] no-trace 补丁注入完成"
+          python3 patches/patch_install_cert.py .
 
+      - name: Patch install launch retry (fix 0xc0000043 on install)
+        shell: bash
+        run: |
+          python3 patches/patch_install_launch_retry.py .
 
-      - name: input hover fix (v177)
-        shell: bash
-        run: |
-          # [v177] Stop a spurious right-click being sent to the controlled side
-          # right after connect in control mode (some platforms report a non-zero
-          # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
-          # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
-          python3 patches/patch_input_hover_fix.py .
-
-      - name: server_otp (v86)
-        if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
-        shell: bash
-        run: |
-          python3 patches/patch_server_otp.py .
-          # [v120] OTP auto-retry: patch_server_otp.py injects the armOtpRetry()
-          # CALLS into peer_card.dart; patch_otp_autoretry.py DEFINES
-          # armOtpRetry/fireOtpRetry in model.dart. Without this step the
-          # functions are never defined and flutter build fails with
-          # "armOtpRetry isn't defined" (CI run 34956572497, step 'Build rustdesk').
-          python3 patches/patch_otp_autoretry.py .
-          # [v131] Reconcile the duplicate 'as http' alias. patch_online_devices.py
-          # binds '../../utils/http_service.dart' as http and patch_server_otp.py
-          # binds 'package:http/http.dart' as http -- one prefix, two libraries, so
-          # every http.post() in peer_card.dart is ambiguous and the Dart front end
-          # aborts (run #1745: ambiguous_import at peer_card.dart:728 / 1779).
-          # The helper is named *_linux_* because Linux hit this first (v127); its
-          # logic is platform independent. It drops the package:http import --
-          # http_service.dart exposes post/get/put/delete and re-exports Response,
-          # so _requestOtp() compiles unchanged. Gate here, not 40 min into the build.
-          python3 patches/patch_linux_otp_http_alias.py .
-          if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
-             && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
-            echo "[FAIL] v131: peer_card.dart still binds two libraries to 'http' (ambiguous)"; exit 1
-          fi
-          grep -q "http.post(" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v131: no http.post() left in peer_card.dart"; exit 1; }
-          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v131: OTP helper (_requestOtp) missing"; exit 1; }
-          echo "[OK] v131: single 'as http' alias in peer_card.dart"
-          # Gates (mirror generator-windows.yml server_otp). patch_*_otp.py skips
-          # an absent anchor silently, so a drifted anchor would drop the OTP fix
-          # while CI stays green. Assert the pieces that must survive.
-          grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
-          grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
-          grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
-      - name: invite remote assistance (v143)
-        if: fromJson(inputs.extras).addinvite == 'true'
-        shell: bash
-        run: |
-          python3 patches/patch_invite.py .
-          # patch_invite.py installs the Dart module unconditionally but SKIPS a
-          # Rust/Dart anchor that is absent (tolerant), so assert the pieces that
-          # must survive -- otherwise the green Invite button silently does
-          # nothing while CI stays green.
-          grep -q "showInviteDialog" ./flutter/lib/common/invite.dart || { echo "[FAIL] v143: invite.dart not installed"; exit 1; }
-          grep -q "invite_otp" ./src/hbbs_http/sync.rs || { echo "[FAIL] v143: heartbeat invite_otp parsing missing"; exit 1; }
-          grep -q "startInviteWatcher" ./flutter/lib/main.dart || { echo "[FAIL] v143: invite watcher not started in main.dart"; exit 1; }
-          grep -q "common/invite.dart" ./flutter/lib/main.dart || { echo "[FAIL] v143: main.dart does not import invite.dart"; exit 1; }
-          # [LnDesk v148] invite nickname + system toast gates
-          grep -q "from_nickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: invite nickname attach/parse missing"; exit 1; }
-          grep -q "_myNickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: _myNickname helper missing"; exit 1; }
-          grep -q "_showSystemNotification" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: system toast helper missing"; exit 1; }
-          grep -q "local_notifier" ./flutter/pubspec.yaml || { echo "[FAIL] v148: local_notifier dependency missing"; exit 1; }
-          echo "[OK] v143: invite module wired"
-      - name: invite watch (v150)
-        if: fromJson(inputs.extras).addinvite == 'true'
-        shell: bash
-        run: |
-          python3 patches/patch_invite_watch.py .          # [LnDesk v150] brand name for the toast, injected from the
-          # workflow input (RustDesk default for stock builds).
-          APPNAME="${{ inputs.appname }}"
-          if [ -z "$APPNAME" ] || [ "$APPNAME" = "rustdesk" ]; then APPNAME="RustDesk"; fi
-          echo "// [LnDesk v150] brand name injected from the workflow input." > flutter/lib/common/brand.dart
-          echo "const kBrandAppName = '$APPNAME';" >> flutter/lib/common/brand.dart
-          # v150: the tray process owns the last-resort invitation poll and
-          # wakes the connection manager; the main window must hide instead
-          # of destroying its engine. Assert what must survive - a silent
-          # skip leaves invitations dead while CI stays green.
-          grep -q "pub mod invite_watch" ./src/lib.rs || { echo "[FAIL] v150: invite_watch module not declared"; exit 1; }
-          test $(grep -c "start_invite_watch_blocking" ./src/tray.rs) -eq 2 || { echo "[FAIL] v150: tray watcher call sites != 2"; exit 1; }
-          grep -q "get_option_from_file" ./src/invite_watch.rs || { echo "[FAIL] v150: fresh token read missing"; exit 1; }
-          grep -q "/api/invitation/incoming" ./src/invite_watch.rs || { echo "[FAIL] v150: incoming poll missing"; exit 1; }
-          grep -q "windowManager.hide()" ./flutter/lib/desktop/pages/server_page.dart || { echo "[FAIL] v150: main window must hide on close"; exit 1; }
-          test $(grep -c "gFFI.close()" ./flutter/lib/desktop/pages/server_page.dart) -eq 1 || { echo "[FAIL] v150: engine teardown must remain macOS-only"; exit 1; }
-          grep -q "_runWithInviteDialogWidth" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window widen helper missing"; exit 1; }
-          grep -q "inviteDialogWindowLocked" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window lock missing"; exit 1; }
-          grep -q "inviteDialogWindowLocked" ./patches/desktop_home_page_new.dart || { echo "[FAIL] v150: home page auto-size guard missing"; exit 1; }
-          grep -q "setResizable(true)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: resizable lift missing"; exit 1; }
-          grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
-          test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 2 || { echo "[FAIL] v150: iroh preference must be applied on the main-window accept path"; exit 1; }
-          # [V216] connection_page_both.dart 仅 both 模式(control_custom)被 cp 使用。
-          # [v240] 分享/邀请按键回归（onShare/onInvite），官网字符码域名随方法移除；
-          # 原 hydesk.cn 断言（v227c 字符码化后已失真）改为校验分享与邀请处理器；
-          # 并分发右卡顶部 LOGO 资产。
-          if [ "$UI_VARIANT" = "control_custom" ]; then
-            grep -q "onShare" ./patches/connection_page_both.dart || { echo "[FAIL] v240: share handler missing in both-mode connection page"; exit 1; }
-            grep -q "onInvite" ./patches/connection_page_both.dart || { echo "[FAIL] v240: invite handler missing in both-mode connection page"; exit 1; }
-            cp -f patches/assets/logo_v15_cn.png flutter/assets/logo_v15_cn.png
-            test -s flutter/assets/logo_v15_cn.png || { echo "[FAIL] v240: logo_v15_cn.png missing/empty"; exit 1; }
-          fi
-          grep -q "ShareApi" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: device share api missing"; exit 1; }
-          grep -q "kBrandAppName" ./flutter/lib/common/brand.dart || { echo "[FAIL] v150: brand.dart not injected"; exit 1; }
-          grep -q "kBrandAppName" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: brand name not used by the toast"; exit 1; }
-          grep -q "main_write_log" ./src/flutter_ffi.rs || { echo "[FAIL] v150: dart log bridge missing"; exit 1; }
-          echo "[OK] v150: invite watch wired"
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v1
         with:
           version: ${{ env.LLVM_VERSION }}
 
+
+
       - name: Install flutter
-        uses: subosito/flutter-action@v2.12.0
+        uses: subosito/flutter-action@v2.12.0 #https://github.com/subosito/flutter-action/issues/277
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -912,202 +1468,140 @@ jobs:
             exit 1
           fi
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: 1.75
-          targets: ${{ matrix.job.target }}
-          components: "rustfmt"
-      - name: cargo fetch (resolve lockfile)
+      - name: input hover fix (v177)
         shell: bash
         run: |
-          cargo fetch
+          # [v177] Stop a spurious right-click being sent to the controlled side
+          # right after connect in control mode (some platforms report a non-zero
+          # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
+          # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
+          python3 patches/patch_input_hover_fix.py .
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: ${{ matrix.job.os }}
-          # [v232-perf] 失败运行也保存缓存，避免失败后连续双倍冷启动。
-          cache-on-failure: true
-
-      - name: Setup vcpkg with Github Actions binary cache
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: C:\vcpkg
-          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
-          doNotCache: false
-
-      - name: Cache vcpkg installed tree + source downloads
-        id: vcpkg-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            C:/vcpkg/installed
-            C:/vcpkg/downloads
-          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
-          restore-keys: |
-            vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
-
-      - name: magick stuff
-        if: ${{ inputs.iconlink == 'true' }}
-        shell: pwsh
-        env:
-          GENURL: ${{ secrets.GENURL }}
-          UUID: ${{ inputs.uuid }}
-        run: |
-          $url = "${env:GENURL}/png/${env:UUID}/icon.png"
-          Write-Host "Downloading icon from: $url"
-          Invoke-WebRequest -Uri $url -OutFile ./res/icon.png -ErrorAction Stop
-
-          magick ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/icon.ico
-          Copy-Item ./res/icon.ico ./res/tray-icon.ico
-          magick ./res/icon.png -resize 32x32 ./res/32x32.png
-          magick ./res/icon.png -resize 64x64 ./res/64x64.png
-          magick ./res/icon.png -resize 128x128 ./res/128x128.png
-          magick ./res/128x128.png -resize 200% ./res/128x128@2x.png
-
-      - name: ui.rs icon
-        if: ${{ inputs.iconlink == 'true' }}
+      - name: server_otp (v86)
+        if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
         shell: bash
         run: |
-          if [ ! -f "./res/icon.png" ]; then
-            echo "::error::icon.png missing after magick step"
+          python3 patches/patch_server_otp.py .
+          python3 patches/patch_otp_autoretry.py .
+          # [v131] Reconcile the duplicate 'as http' alias. patch_online_devices.py
+          # binds '../../utils/http_service.dart' as http and patch_server_otp.py
+          # binds 'package:http/http.dart' as http -- one prefix, two libraries, so
+          # every http.post() in peer_card.dart is ambiguous and the Dart front end
+          # aborts (run #1745: ambiguous_import at peer_card.dart:728 / 1779).
+          # The helper is named *_linux_* because Linux hit this first (v127); its
+          # logic is platform independent. It drops the package:http import --
+          # http_service.dart exposes post/get/put/delete and re-exports Response,
+          # so _requestOtp() compiles unchanged. Gate here, not 40 min into the build.
+          python3 patches/patch_linux_otp_http_alias.py .
+          if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
+             && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v131: peer_card.dart still binds two libraries to 'http' (ambiguous)"; exit 1
+          fi
+          grep -q "http.post(" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v131: no http.post() left in peer_card.dart"; exit 1; }
+          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v131: OTP helper (_requestOtp) missing"; exit 1; }
+          echo "[OK] v131: single 'as http' alias in peer_card.dart"
+          # Gates. patch_server_otp.py skips an edit whose anchor is absent
+          # (SKIP-ABSENT) instead of failing, so a drifted anchor silently
+          # drops the OTP fix while CI stays green. Assert the pieces that
+          # must survive.
+          grep -q "looks_like_otp" ./src/server/connection.rs || { echo "[FAIL] controlled-side OTP wait window missing (v113)"; exit 1; }
+          grep -q "from_secs(20)" ./src/server/connection.rs || { echo "[FAIL] OTP wait deadline is not 20s (cold-start fix)"; exit 1; }
+          # [v117-revert] Device cards connect OTP-first again (no
+          # saved-password-first). Assert the OTP helper is present and the
+          # removed logic is GONE, otherwise a stale saved password silently
+          # wins and the connect feels frozen.
+          grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v117-revert: OTP helper (_requestOtp) missing in peer_card.dart"; exit 1; }
+          # [v118] After the API mints the code, wait kOtpDeliverySettleMs
+          # (1000ms) before dialing, so the controlled side's 500ms poll has
+          # already picked the code up and the first attempt authenticates.
+          # patch_server_otp.py skips an absent anchor silently, so assert both
+          # the constant and its value.
+          grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle (kOtpDeliverySettleMs) missing in peer_card.dart"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 3000" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v177: OTP delivery settle is not 3000ms"; exit 1; }
+          # [v177] Hover must only move the remote cursor, never synthesize a
+          # down/up from a stale button mask. The hover handler used to route
+          # through _getMouseEvent (which infers a press from evt.buttons), so
+          # assert the marker is present and that exactly ONE _getMouseEvent
+          # move call survives (the onPointMoveImage one) -- the hover one must
+          # be gone, otherwise a spurious right-click is sent on first hover.
+          grep -q "LnDesk v177] Hover must only move the remote cursor" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v177: input hover fix marker missing in input_model.dart"; exit 1; }
+          _hover_count=$(grep -c "_getMouseEvent(e, _kMouseEventMove)" ./flutter/lib/models/input_model.dart)
+          [ "$_hover_count" = "1" ] || { echo "[FAIL] v177: _getMouseEvent move count is $_hover_count (expect 1: only onPointMoveImage)"; exit 1; }
+          grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
+          if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
+            echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
             exit 1
           fi
-          b64=$(base64 -w0 ./res/icon.png)
-          perl -i.bak -pe '
-            BEGIN { $b64 = shift @ARGV }
-            s/iVBORw0KGgo[A-Za-z0-9+\/=]{100,}/$b64/g;
-          ' "$b64" ./src/ui.rs
-
-      - name: Cache Dart/Flutter pub cache
-        uses: actions/cache@v4
-        with:
-          path: ~/AppData/Local/Pub/Cache
-          key: pub-${{ matrix.job.os }}-${{ hashFiles('flutter/pubspec.yaml') }}
-          restore-keys: |
-            pub-${{ matrix.job.os }}-
-
-      - name: replace flutter icons
-        if: ${{ inputs.iconlink != 'false' }}
-        run: |
-          cd ./flutter
-          flutter pub get
-          flutter pub run flutter_launcher_icons
-          cd ..
-
-      - name: Install vcpkg dependencies
-        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        env:
-          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
+          # [v120] OTP auto-retry wiring. The control-side re-dials once on a
+          # wrong-password OTP session (cold-start race). Assert the armed/fired
+          # helpers are present in model.dart, otherwise the retry silently no-ops.
+          grep -q "armOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: armOtpRetry missing in model.dart"; exit 1; }
+          grep -q "fireOtpRetry" ./flutter/lib/models/model.dart || { echo "[FAIL] v120: fireOtpRetry missing in model.dart"; exit 1; }
+          # [v120] peer_card.dart must import model.dart so the OTP auto-retry
+          # helpers (armOtpRetry/fireOtpRetry, defined in model.dart) resolve.
+          # Without it, flutter analyze fails with "armOtpRetry isn't defined".
+          grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
+          # [v117] The controlled side polls the server-issued OTP on its own
+          # interval (TIME_OTP_POLL). No other gate covers it, so a drifted
+          # anchor would silently keep the old interval while CI stays green.
+          # Assert the constant and echo the real line for searchable proof.
+          grep -q "TIME_OTP_POLL" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll constant missing in sync.rs"; exit 1; }
+          grep -q "from_millis(500)" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll interval is not 500ms"; exit 1; }
+          grep -n "TIME_OTP_POLL" ./src/hbbs_http/sync.rs
+      - name: Invite feature (v143 remote assistance + v150 watch)
+        # [V218] 合并 addinvite 控制的 2 个邀请步骤（v143 邀请 + v150 托盘监听），
+        # 与 generator-windows.yml 保持一致：两者条件完全相同、相邻、均为 bash。
+        if: fromJson(inputs.extras).addinvite == 'true'
         shell: bash
         run: |
-          $VCPKG_ROOT/vcpkg install \
-            --triplet ${{ matrix.job.vcpkg-triplet }} \
-            --x-install-root="$VCPKG_ROOT/installed"
-
-      - name: Verify vcpkg deps (cache-hit path)
-        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
-        shell: bash
-        run: |
-          test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
-          echo "vcpkg deps restored from cache OK"
-
-      - name: session-tab connection mode always visible (v94)
-        shell: bash
-        run: |
-          # v94 (REQ-v94-001, design D): keep the secure/direct shield hover but
-          # show only the fingerprint; insert an always-visible connection-mode
-          # Text (msgConn) between the shield and the peerId label in
-          # flutter/lib/desktop/pages/remote_tab_page.dart so the mode is no
-          # longer hover-only (touch / quick-glance observability). Idempotent
-          # via the 'prod-line v94 tab-conn-badge' marker.
-          # [v170] add-to-ab auto rename + desktop toolbar toggles
-          python3 patches/patch_add_to_ab_rename.py .
-          python3 patches/patch_peer_card_alias.py .
-          python3 patches/patch_desktop_toolbar_toggles.py .
-          python3 patches/patch_add_address_book.py .
-          python3 patches/iroh/iroh_badge.py .
-      - name: Login timeout watchdog + stale saved-password self-heal (V105)
-        shell: bash
-        run: |
-          # 1) A stale saved password used to hang the session at "Connecting..."
-          #    forever (peer never answers, no prompt, no picture) - the exact
-          #    "stuck at the password dialog / frozen picture" symptom reported on
-          #    the portable-quick build. This patch (a) clears the persisted copy
-          #    when the failed attempt carried exactly that saved password, so the
-          #    next attempt prompts, and (b) arms a 20s watchdog that swaps the
-          #    endless spinner for a visible login-error dialog when no first
-          #    image ever arrives - turning every future silent hang into a
-          #    diagnosable "connection vs render" verdict.
-          # 2) The script auto-selects the no-iroh variant of the self-heal when
-          #    src/iroh_transport.rs is absent (v121: iroh removed from quick,
-          #    toolchain is 1.75).
-          python3 patches/patch_login_timeout.py .
-          grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
-          grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
-          echo "[OK] V105 login watchdog + stale-password self-heal"
-      # ---- V219: high-priority patches aligned with generator-windows.yml ----
-      - name: Inject TCP keepalive + DNS cache (v98)
-        shell: bash
-        env:
-          PYTHONIOENCODING: utf-8
-        run: |
-          # v98 网络加固（移植自 HopToDesk 官方 1.46.40）：
-          # 1) patch_tcp_keepalive.py：所有出站纯 TCP 连接（rendezvous/hbbs_http/直连/中继）
-          #    与 direct_server 入站连接启用内核级 keepalive（30s 空闲/10s 间隔），
-          #    解决 NAT 网关静默丢空闲会话导致的"假在线"。
-          # 2) patch_dns_cache.py：hbbs 域名解析结果缓存 300s + 多地址轮询回退，
-          #    全部失败时自动清缓存强制重解析。
-          # 二者均锚定上游 1.4.9 原始状态，必须先于其他补丁运行；锚点缺失即构建失败。
-          python3 patches/patch_tcp_keepalive.py .
-          grep -q "pub fn set_tcp_keepalive" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 set_tcp_keepalive"; exit 1; }
-          grep -q "prod-line keepalive" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs 缺少 keepalive 标记"; exit 1; }
-          python3 patches/patch_dns_cache.py .
-          grep -q "pub async fn resolve_cached" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 resolve_cached"; exit 1; }
-          grep -q "prod-line dns-cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs 缺少 dns-cache 标记"; exit 1; }
-          echo "[OK] v98 TCP keepalive + DNS cache 注入完成"
-
-      - name: Inject happy-eyeballs concurrent connect (V101)
-        shell: bash
-        env:
-          PYTHONIOENCODING: utf-8
-        run: |
-          # V101: FramedStream::new RFC 6555 并发连接竞速。
-          # 修复双栈域名(A+AAAA)下顺序迭代、每个地址死等 CONNECT_TIMEOUT(18s) 的卡顿：
-          # 解析出的所有地址并发 connect（250ms 探测），先通者胜、其余取消；
-          # 全失败时回退传统顺序连接（保留单地址慢路径语义）。
-          # 锚定上游 1.4.9 原始状态，标记缺失即构建失败。
-          # 注意：当前 connect_tcp_local 仍逐个传单 IP 给 FramedStream::new，
-          # 故 race 退化为单次 connect（V102 会把 race 上提到 connect_tcp_local 层）。
-          python3 patches/patch_FramedStream_happy_eyeballs.py .
-          grep -q "race_connect_all" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing race_connect_all"; exit 1; }
-          grep -q "prod-line v101 happy-eyeballs" libs/hbb_common/src/tcp.rs || { echo "[FAIL] tcp.rs missing v101 marker"; exit 1; }
-          echo "[OK] V101 happy-eyeballs concurrent connect injected"
-
-      - name: Inject happy-eyeballs lift + DNS timeout + split metrics (V102)
-        shell: bash
-        env:
-          PYTHONIOENCODING: utf-8
-        run: |
-          # V102: lift happy-eyeballs race to connect_tcp_local (V101's inner race
-          # degenerates when fed a single IP) + cap DNS lookups with a 5s timeout
-          # (a dead resolver could otherwise stall connect past CONNECT_TIMEOUT) +
-          # log DNS-resolve time and connect-race time separately for diagnosis.
-          # Requires V101 already injected (FramedStream::new present). Anchors are
-          # unique single-occurrence strings; marker missing -> build fails.
-          python3 patches/patch_V102_happy_eyeballs_lift.py .
-          grep -q "prod-line v102 happy-eyeballs-lift" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v102 marker"; exit 1; }
-          grep -q "DNS_LOOKUP_TIMEOUT_SEC" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DNS_LOOKUP_TIMEOUT_SEC"; exit 1; }
-          # [LnDesk dns-flush] A DDNS host that moved to a new IP stays pinned inside
-          # the OS resolver cache (Windows Dnscache honours the A-record TTL), so the
-          # client keeps dialling the dead address and never reconnects. Verify the
-          # flush hook actually shipped -- at patch time, not 40 minutes into the build.
-          grep -q "pub fn flush_os_dns_cache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing flush_os_dns_cache"; exit 1; }
-          grep -q "DnsFlushResolverCache" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DnsFlushResolverCache FFI"; exit 1; }
-          grep -qF "[dns-flush] OS resolver cache flushed" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing the dns-flush log marker"; exit 1; }
-          grep -q "flush_os_dns_cache();" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs: the dns-flush hook is defined but never called"; exit 1; }
-          echo "[OK] V102 happy-eyeballs lift + DNS timeout injected"
-          echo "[OK] dns-flush hook verified (OS resolver cache cleared once all addrs fail)"
+          python3 patches/patch_invite.py .
+          # patch_invite.py installs the Dart module unconditionally but SKIPS a
+          # Rust/Dart anchor that is absent (tolerant), so assert the pieces that
+          # must survive -- otherwise the green Invite button silently does
+          # nothing while CI stays green.
+          grep -q "showInviteDialog" ./flutter/lib/common/invite.dart || { echo "[FAIL] v143: invite.dart not installed"; exit 1; }
+          grep -q "invite_otp" ./src/hbbs_http/sync.rs || { echo "[FAIL] v143: heartbeat invite_otp parsing missing"; exit 1; }
+          grep -q "startInviteWatcher" ./flutter/lib/main.dart || { echo "[FAIL] v143: invite watcher not started in main.dart"; exit 1; }
+          grep -q "common/invite.dart" ./flutter/lib/main.dart || { echo "[FAIL] v143: main.dart does not import invite.dart"; exit 1; }
+          # [LnDesk v148] invite nickname + system toast gates
+          grep -q "from_nickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: invite nickname attach/parse missing"; exit 1; }
+          grep -q "_myNickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: _myNickname helper missing"; exit 1; }
+          grep -q "_showSystemNotification" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: system toast helper missing"; exit 1; }
+          grep -q "local_notifier" ./flutter/pubspec.yaml || { echo "[FAIL] v148: local_notifier dependency missing"; exit 1; }
+          echo "[OK] v143: invite module wired"
+          # ---- v150 invite watch ----
+          python3 patches/patch_invite_watch.py .          # [LnDesk v150] brand name for the toast, injected from the
+          # workflow input (RustDesk default for stock builds).
+          APPNAME="${{ inputs.appname }}"
+          if [ -z "$APPNAME" ] || [ "$APPNAME" = "rustdesk" ]; then APPNAME="RustDesk"; fi
+          echo "// [LnDesk v150] brand name injected from the workflow input." > flutter/lib/common/brand.dart
+          echo "const kBrandAppName = '$APPNAME';" >> flutter/lib/common/brand.dart
+          # v150: the tray process owns the last-resort invitation poll and
+          # wakes the connection manager; the main window must hide instead
+          # of destroying its engine. Assert what must survive - a silent
+          # skip leaves invitations dead while CI stays green.
+          grep -q "pub mod invite_watch" ./src/lib.rs || { echo "[FAIL] v150: invite_watch module not declared"; exit 1; }
+          test $(grep -c "start_invite_watch_blocking" ./src/tray.rs) -eq 2 || { echo "[FAIL] v150: tray watcher call sites != 2"; exit 1; }
+          grep -q "get_option_from_file" ./src/invite_watch.rs || { echo "[FAIL] v150: fresh token read missing"; exit 1; }
+          grep -q "/api/invitation/incoming" ./src/invite_watch.rs || { echo "[FAIL] v150: incoming poll missing"; exit 1; }
+          grep -q "windowManager.hide()" ./flutter/lib/desktop/pages/server_page.dart || { echo "[FAIL] v150: main window must hide on close"; exit 1; }
+          test $(grep -c "gFFI.close()" ./flutter/lib/desktop/pages/server_page.dart) -eq 1 || { echo "[FAIL] v150: engine teardown must remain macOS-only"; exit 1; }
+          grep -q "_runWithInviteDialogWidth" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window widen helper missing"; exit 1; }
+          grep -q "inviteDialogWindowLocked" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite dialog window lock missing"; exit 1; }
+          grep -q "inviteDialogWindowLocked" ./patches/desktop_home_page_new.dart || { echo "[FAIL] v150: home page auto-size guard missing"; exit 1; }
+          grep -q "setResizable(true)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: resizable lift missing"; exit 1; }
+          grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
+          test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 2 || { echo "[FAIL] v150: iroh preference must be applied on the main-window accept path"; exit 1; }
+          # [V216] connection_page_both.dart 仅 both 模式(control_custom)被 cp 使用；分享按钮已改为直接打开官网，
+          # 原 showShareDialog 断言改为校验 hydesk.cn。incoming/upstream 不使用该文件，跳过此门禁。
+          if [ "$UI_VARIANT" = "control_custom" ]; then
+            grep -q "hydesk.cn" ./patches/connection_page_both.dart || { echo "[FAIL] v216: official website link missing in both-mode connection page"; exit 1; }
+          fi
+          grep -q "ShareApi" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: device share api missing"; exit 1; }
+          grep -q "kBrandAppName" ./flutter/lib/common/brand.dart || { echo "[FAIL] v150: brand.dart not injected"; exit 1; }
+          grep -q "kBrandAppName" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: brand name not used by the toast"; exit 1; }
+          grep -q "main_write_log" ./src/flutter_ffi.rs || { echo "[FAIL] v150: dart log bridge missing"; exit 1; }
+          echo "[OK] v150: invite watch wired"
 
       - name: winp dxgi fix (v116)
         shell: bash
@@ -1131,39 +1625,650 @@ jobs:
           grep -q "slider3/value1/label2" ./flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] v118: sharpening row layout not restyled"; exit 1; }
           if grep -q "Image sharpening tip" ./flutter/lib/common/widgets/dialog.dart; then echo "[FAIL] v118: sharpening tip paragraph must be removed"; exit 1; fi
 
-      - name: Rendezvous family-match DNS probe (v100, IPv6 preferred, default-on)
-        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe' || fromJson(inputs.extras).enable_iroh_direct == 'true'
+      - name: video tile-diff (v243)
         shell: bash
         run: |
-          # Default-on client-side DNS probe: when enable-dual-stack-lookup is
-          # set (or absent, because the "enable-" prefix defaults to enabled) AND
-          # the local host has a usable IPv6 stack, resolve AAAA first (500ms
-          # ceiling) before falling back to the legacy IPv4 happy-eyeballs path.
-          # Set enable-dual-stack-lookup=N to disable.
-          python3 patches/patch_rendezvous_family_match.py .
-          grep -qF "prod-line v100 family-match" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v100 family-match probe"; exit 1; }
-          echo "[OK] V100 rendezvous family-match (IPv6 preferred, default-on DNS probe)"
+          python3 patches/patch_video_tile_diff.py .
+          grep -q "convert_to_yuv_tiled" ./libs/scrap/src/common/convert.rs || { echo "[FAIL] v243 tiled conversion missing"; exit 1; }
+          grep -qF "convert_to_yuv_tiled(&pixelbuffer" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 tiled call site missing"; exit 1; }
+          grep -q "sampled_equal" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 sampled compare missing"; exit 1; }
 
-      - name: Rendezvous family-match settings toggle (v100 UI)
-        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe' || fromJson(inputs.extras).enable_iroh_direct == 'true'
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.job.target }}
+          components: "rustfmt"
+
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.job.os }}
+          # [v232-perf] 失败运行也保存缓存，避免失败后连续双倍冷启动。
+          cache-on-failure: true
+
+      - name: Setup vcpkg with Github Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: C:\vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+          
+      - name: magick stuff
+        if: ${{ inputs.iconlink == 'true' }}
+        shell: pwsh
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        run: |
+          $url = "${env:GENURL}/png/${env:UUID}/icon.png"
+          Write-Host "Downloading icon from: $url"
+          Invoke-WebRequest -Uri $url -OutFile ./res/icon.png -ErrorAction Stop
+          
+          magick ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/icon.ico
+          Copy-Item ./res/icon.ico ./res/tray-icon.ico
+          magick ./res/icon.png -resize 32x32 ./res/32x32.png
+          magick ./res/icon.png -resize 64x64 ./res/64x64.png
+          magick ./res/icon.png -resize 128x128 ./res/128x128.png
+          magick ./res/128x128.png -resize 200% ./res/128x128@2x.png
+
+
+      - name: ui.rs icon
+        if: ${{ inputs.iconlink == 'true' }}
         shell: bash
         run: |
-          # Adds a Settings > Network switch ("DNS resolve by address family
-          # (IPv6 preferred)") that writes the local config key
-          # enable-dual-stack-lookup, which the Rust probe above reads. The
-          # "enable-" prefix makes it default-on.
-          python3 patches/patch_family_match_setting.py .
-          grep -qF "prod-line v100 family-match-ui" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing v100 family-match toggle"; exit 1; }
-          # [v175] switchWidget() funnels the title and the tooltip through
-          # listTile() -> translate(), so the row stays English unless cn.rs
-          # carries both strings byte-for-byte. Asserted only when the
-          # customized cn.rs is in play: the upstream-only variant compiles the
-          # stock upstream file and must not be forced to use ours.
-          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
-            grep -qF '("DNS resolve by address family (IPv6 preferred)"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match toggle title"; exit 1; }
-            grep -qF '("Enable IPv6-first DNS resolution for P2P connections.' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match tooltip"; exit 1; }
+          if [ ! -f "./res/icon.png" ]; then
+            echo "::error::icon.png missing after magick step"
+            exit 1
           fi
-          echo "[OK] V100 rendezvous family-match UI toggle"
+          b64=$(base64 -w0 ./res/icon.png)
+          perl -i.bak -pe '
+            BEGIN { $b64 = shift @ARGV }
+            s/iVBORw0KGgo[A-Za-z0-9+\/=]{100,}/$b64/g;
+          ' "$b64" ./src/ui.rs
+
+# === 用户附加功能（Custom Enhancements）===
+      
+      - name: fix connection delay  
+        if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
+        shell: bash
+        run: |
+          python3 patches/patch_delay_fix.py .
+          grep -qF '// [LnDesk v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
+
+
+      
+      - name: Apply hide-ID and QR tip patch (v139)
+        if: fromJson(inputs.extras).hideIdDisplay == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 被控端首页：隐藏明文 ID 面板，并把 desk_tip 改为「请使用手机浏览器扫码获取本机信息」，
+          # 与启用二维码(enableQrCode) 配套。仅在定制 UI(ui_mode) + 被控(incoming) 生效。
+          python3 patches/patch_hide_id_qr_tip.py .
+          grep -q "//       buildIDBoard(context)," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] ID board was not hidden"; exit 1; }
+          grep -q "请使用手机浏览器扫码获取本机信息" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desk_tip was not relabeled"; exit 1; }
+          echo "[OK] v139 hide-ID + QR tip applied"
+
+      - name: hide-password_uimode_true
+        if: fromJson(inputs.extras).hidePassword == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: | 
+          sed -i 's|^\([[:space:]]*\)buildPasswordBoard(context),|// \1buildPasswordBoard(context),|' flutter/lib/desktop/pages/desktop_home_page.dart
+          
+      - name: hide-password_uimode_false
+        if: fromJson(inputs.extras).hidePassword == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: | 
+          python3  patches/hide_password_board_uimode_false.py
+      
+      - name: hide menu
+        if: fromJson(inputs.extras).hideMenuBar == 'true'
+        shell: bash
+        run: |
+          sed -i '/^[[:space:]]*buildPopupMenu(context)$/d' flutter/lib/desktop/pages/desktop_home_page.dart
+          python3  patches/dis_setting.py
+
+      - name:  Remove Quit Button_uimode_true  
+        if: fromJson(inputs.extras).hideQuit == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: |
+            sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart       
+     
+      - name:  Remove Quit Button_uimode_false  
+        if: fromJson(inputs.extras).hideQuit == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
+        shell: bash
+        run: |
+            python3 patches/hide_quit_button_uimode_false.py
+      
+      - name:  Add Copy key
+        if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: |
+          # [LnDesk v167] Anchor the address to the marker line that owns the whole
+          # line and only comment the early return right after it. The baseline
+          # file also *mentions* the marker inside prose comments (e.g. the SHARE
+          # block says "// step (mirrors COPY_BUTTON_CONTROL) ..."), so a loose
+          # address would also mangle those comment lines.
+          # Address body {n;/^\/\//!s|^|//|;}: n pulls the next line, and the
+          # /^\/\//! guard keeps the step idempotent (no double "//" stacking).
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # The gate is anchored to the very same marker line and only accepts a
+          # commented line right below it: copy / share / invite produce byte-identical
+          # lines, so the old "whole-file ^//  return" search could be satisfied by a
+          # sibling button's line and pass even when this step did nothing.
+          grep -A1 "^[[:space:]]*//[[:space:]]*COPY_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] COPY_BUTTON_CONTROL early return not commented"; exit 1; }
+          echo "[OK] copy button enabled (COPY_BUTTON_CONTROL early return removed)"
+          
+      - name:  Enable share button
+        if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: |
+          # [LnDesk v151] Share button shares the polarity of the copy button: the
+          # base file disables it with an early return.
+          #   // SHARE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # sed comments out the line after the marker, which kills the early
+          # return and lets the button render.
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # Share and Quit occupy the SAME slot, so they are mutually exclusive:
+          # unhide the QUIT early return in the same pass to hide Quit.
+          # addshare always implies hideQuit (front-end linkage + back-end
+          # guard), so this is a no-op when the hideQuit step already ran.
+          sed -i 's|// QUIT:\(return const SizedBox\.shrink();\)|\1|' flutter/lib/desktop/pages/desktop_home_page.dart
+          grep -A1 "^[[:space:]]*//[[:space:]]*SHARE_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] SHARE_BUTTON_CONTROL early return not commented"; exit 1; }
+          grep -q "_buildShareButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildShareButton missing"; exit 1; }
+          ! grep -q "// QUIT:return" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] quit button not hidden (same slot as share)"; exit 1; }
+          echo "[OK] share button enabled (quit button hidden in the same slot)"
+          
+      - name:  Enable invite button
+        if: fromJson(inputs.extras).addinvite == 'true' && env.UI_VARIANT == 'incoming_custom'
+        shell: bash
+        run: |
+          # [LnDesk v160] Invite button shares the polarity of copy/share: the base
+          # file disables it with an early return.
+          #   // INVITE_BUTTON_CONTROL
+          #   return const SizedBox.shrink();
+          # sed comments out the line after the marker, which kills the early
+          # return and lets the button render. Custom UI reveals it via this sed
+          # driven by the addinvite checkbox; upstream uses
+          # patch_invite_button_uimode_false.py instead.
+          sed -i '/^[[:space:]]*\/\/[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
+          # [LnDesk v167] The old gate was
+          #   grep -A1 "INVITE_BUTTON_CONTROL" ... | grep -q "//return"
+          # which failed for two independent reasons:
+          #   1) sed writes "//" at column 0 followed by the original indentation,
+          #      i.e. "//  return const SizedBox.shrink();" - the literal "//return"
+          #      (no space) can never match it;
+          #   2) the marker word occurs twice (prose comment at L472 + the real
+          #      marker at L477), so grep -A1 emits two groups split by "--".
+          # Replaced by the anchored two-stage gate used for copy/share.
+          grep -A1 "^[[:space:]]*//[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$" flutter/lib/desktop/pages/desktop_home_page.dart | grep -q "^//[[:space:]]*return const SizedBox\.shrink();" || { echo "[FAIL] INVITE_BUTTON_CONTROL early return not commented"; exit 1; }
+          grep -q "_buildInviteButton" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] _buildInviteButton missing"; exit 1; }
+          echo "[OK] invite button enabled (INVITE_BUTTON_CONTROL early return removed)"
+          
+      - name: Disable CM window (v99)
+        if: fromJson(inputs.extras).supercm == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # v99 与 generator-windows.yml 对齐：不再用 patch_hide_cm_1/2（仅强制
+          # hide_cm 运行时选项），改为完全禁用 cm（Connection Manager）窗口——
+          # 所有 cm 拉起路径（core_main 的 --cm 分支、try_start_cm 启动参数、
+          # sciter --cm 分支）改走官方无头模式（--cm-no-ui 语义）。连接处理逻辑
+          # （密码/永久密码/OTP 授权）不受影响，窗口/任务栏图标/控制面板永不出现。
+          # 无凭据连接无人确认 → 超时拒绝（安全默认）。锚点为上游 1.4.9 原始状态。
+          python3 patches/patch_cm_disable.py .
+          grep -q "prod-line cm-disable" src/core_main.rs || { echo "[FAIL] core_main.rs missing cm-disable marker"; exit 1; }
+          grep -q 'vec!\["--cm-no-ui"\]; // \[prod-line cm-disable\]' src/server/connection.rs || { echo "[FAIL] connection.rs not switched to --cm-no-ui"; exit 1; }
+          grep -q "prod-line cm-disable" src/ui.rs || { echo "[FAIL] ui.rs missing cm-disable marker"; exit 1; }
+          echo "[OK] v99 cm window disabled"
+
+      - name: Passpolicy
+        if: fromJson(inputs.extras).passpolicy  == 'true'
+        shell: bash
+        run: |
+          chmod +x patches/passpolicy_1.sh
+          bash patches/passpolicy_1.sh
+          python3 patches/passpolicy_2.py
+      
+      - name: Privacy
+        if: fromJson(inputs.extras).applyprivacy  == 'true'
+        shell: bash
+        run: |
+          #python3 patches/apply_privacy1.py &&  python3 patches/apply_privacy2.py
+           python3 patches/patch_privacy_block_input.py
+           python3 patches/patch_win7_privacy_degrade.py
+          # V213: switch the physical panel backlight off over DDC/CI when
+          # privacy mode 2 (virtual display) is turned on. No-op on hardware
+          # whose driver does not implement the brightness IOCTLs.
+          python3 patches/patch_privacy_physical_backlight_off.py
+
+      - name: TurnOffMonitor
+        # [LnDesk v223] 独立构建开关「启用关闭显示器」：默认启用（!= 'false'，
+        # 兼容不带该键的旧 dispatch / 手动 API），显式 false 才跳过。与
+        # applyprivacy 完全解耦。
+        if: fromJson(inputs.extras).turn_off_monitor != 'false'
+        shell: bash
+        run: |
+          # V214: independent "Turn off monitor" switch in the session
+          # toolbar. Detaches the physical panel from the desktop so the
+          # backlight really goes off, and falls back to a DDC/CI brightness
+          # write when the driver refuses the topology change.
+          #
+          # Deliberately NOT gated on applyprivacy: this is a standalone
+          # toolbar switch with its own protobuf message, unrelated to privacy
+          # mode. Gating it here would hide the menu from any build that does
+          # not enable privacy mode. It carries its own DDC/CI fallback
+          # internally, so it does not depend on V213 above running.
+          python3 patches/patch_turn_off_monitor.py
+          grep -q "v214_display_off_active" src/server/connection.rs || { echo "[FAIL] v214.14: wakelock suppressor hook missing"; exit 1; }
+          grep -q "set_v214_display_off" src/privacy_mode.rs || { echo "[FAIL] v214.14: display-off flag missing"; exit 1; }
+          grep -q "mccs::set_power_off_all" src/privacy_mode/win_input.rs || { echo "[FAIL] v214.16: MCCS real power-off hook missing"; exit 1; }
+          grep -q "v214_start_off_watchdog" src/privacy_mode.rs || { echo "[FAIL] v230: off watchdog missing"; exit 1; }
+
+      - name: Apply source-level obfuscation (v227c)
+        if: fromJson(inputs.extras).turn_off_monitor != 'false'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v227c] C 路线源码级轻混淆：obfstr 依赖 + --v214-ccd 成对字面量
+          # 编译期隐藏（Rust 侧）。服务器/key 已由 server-lock XOR 覆盖、
+          # 日志标记刻意保留明文（现场排障依赖）。锚定 TurnOffMonitor 注入
+          # 的文本，故门控条件与其一致；真正的 OLLVM 级混淆 = 独立工具链
+          # 项目，另行立项。
+          python3 patches/patch_obfstr.py .
+          grep -q 'obfstr = "=0.4.4"' Cargo.toml || { echo "[FAIL] v227c: obfstr dep missing (pinned 0.4.4 for cargo 1.75 win7)"; exit 1; }
+          grep -q "obfstr::obfstr!" src/core_main.rs || { echo "[FAIL] v227c: obfstr literal missing"; exit 1; }
+
+      - name: hide_chat_voice
+        if: fromJson(inputs.extras).hide_chat_voice  == 'true'
+        shell: bash
+        run: |
+          python3 patches/hide_chat_voice.py
+
+      - name: No_uninstall
+        if: fromJson(inputs.extras).no_uninstall == 'true'
+        shell: bash
+        run: |
+          python3 patches/no_uninstall.py
+
+      - name: Disable_install
+        if: fromJson(inputs.extras).disable_install == 'true'
+        shell: bash
+        run: |
+          python3 patches/disable_install.py
+      
+      # [LnDesk v278] 可选：编译期移除「通过命令行安装」的入口。
+      - name: No_install_command
+        if: fromJson(inputs.extras).no_install_command == 'true'
+        shell: bash
+        run: |
+          # 官方 disable-installation(custom_.txt) 只守住三处：core_main.rs:123 的
+          # click_setup 自动补参、:225 --update、:262 --silent-install。以下三条仍然
+          # 敞开，一条终端命令就能把便携客户端装进系统：
+          #   --install          -> flutter/lib/main.dart:110 runInstallPage()
+          #                        （UI「Install」按钮也走它：ui_interface.rs:101）
+          #   --install-service  -> core_main.rs:380 platform::install_service()
+          #   --after-install    -> core_main.rs:251 platform::run_after_install()
+          #
+          # 本补丁在 core_main() 的 init_log 之后插入拦截器：命中四个命令之一即写
+          # 一行 error 日志并 return None —— 不写程序文件、不建服务、不建快捷方式。
+          # --portable-service 刻意不拦（portable_service.rs 内部自拉起，封掉会废掉
+          # 提权直连）；卸载类命令保持可用。
+          python3 patches/patch_no_install_command.py .
+          grep -q "LnDesk v278 no-install-command" src/core_main.rs || { echo "[FAIL] core_main.rs 缺少 no-install-command 标记"; exit 1; }
+          grep -Fq '"--install" | "--silent-install" | "--install-service" | "--after-install"' src/core_main.rs || { echo "[FAIL] core_main.rs 未注入禁止命令清单"; exit 1; }
+          echo "[OK] 命令行安装入口已禁用"
+
+      # [LnDesk v279-Win7-quick] 真·零残留（portable zero-residue）+ 禁止命令行安装
+      # 的合体构建。仅本工作流注入 no-trace（切勿注入安装版构建，见 patch_portable_notrace.py
+      # 顶部警告）。本工作流只在「禁止命令行安装」勾选时由前端派发，故此处不另设 if 门控。
+      - name: Apply no-trace (portable zero-residue) patch
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 真·零残留：配置/日志重定向 %TEMP%/<app>-notrace-<pid>，退出自动清理；
+          # 自解压 packer 解压到 %TEMP% 并在子进程退出后删除解压目录。
+          # 仅本工作流使用，切勿注入安装版构建。
+          python3 patches/patch_portable_notrace.py .
+          grep -q "fn no_trace_base()" libs/hbb_common/src/config.rs || { echo "[FAIL] config.rs 缺少 no_trace_base"; exit 1; }
+          grep -q "rustdesk_notrace_cleanup" src/flutter.rs || { echo "[FAIL] flutter.rs 缺少 rustdesk_notrace_cleanup"; exit 1; }
+          grep -q "std::atexit(rustdesk_notrace_cleanup)" flutter/windows/runner/main.cpp || { echo "[FAIL] main.cpp 缺少 atexit 注册"; exit 1; }
+          grep -q -- "-notrace-" libs/portable/src/main.rs || { echo "[FAIL] portable main.rs 未改解压目录"; exit 1; }
+          echo "[OK] no-trace 补丁注入完成"
+
+      - name: Hide_general_server and tray_stop_service.py
+        if: fromJson(inputs.extras).hideService_Start_Stop == 'true'
+        shell: bash
+        run: |
+          python3 patches/hide_general_server.py
+          python3 patches/hide_tray_stop_service.py
+
+      - name: hide account
+        if: fromJson(inputs.extras).hide_account == 'true'
+        shell: bash
+        run: |
+          python3 patches/hide_account.py
+
+      - name: restart_srver
+        if: fromJson(inputs.extras).restart_server == 'true' 
+        shell: bash
+        run: |
+           python3 patches/patch_restart_service.py
+           # [v121] The Service button / tray label is translate("Restart service").
+           # When ui_mode == 'false' the "Replace custom patch files" step is
+           # skipped, so the stock upstream src/lang/cn.rs is compiled in and the
+           # key is absent -> a Chinese UI renders the English source string.
+           # patch_restart_service.py inserts the key (idempotent: a branded
+           # patches/cn.rs already carries it and is left untouched). Assert it is
+           # there either way, otherwise the button silently shows English again.
+           grep -q '"Restart service"' ./src/lang/cn.rs || { echo "[FAIL] restart_srver: cn.rs lacks the Restart service key (button will show English)"; exit 1; }
+           echo "[OK] cn.rs carries the localized Restart service key"
+
+
+      
+      # - name: run as admin
+      #   
+      #   if: ${{ fromJson(inputs.extras).runasadmin == 'true' }}
+      #   shell: bash
+      #   run: |
+      #     sed -i '/<\/compatibility>/a \
+      #           <security> \
+      #             <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/> \
+      #           </security>' ./flutter/windows/runner/runner.exe.manifest
+
+      - name: Cache Dart/Flutter pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/Pub/Cache
+          key: pub-${{ matrix.job.os }}-${{ hashFiles('flutter/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ matrix.job.os }}-
+
+      - name: replace flutter icons
+        if: ${{ inputs.iconlink != 'false' }}
+        
+        run: |
+          cd ./flutter
+          #flutter pub upgrade win32
+          flutter pub get
+          flutter pub run flutter_launcher_icons
+          cd ..
+
+     
+      - name: Cache vcpkg installed tree + source downloads
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/downloads
+          key: vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('res/vcpkg/**') }}
+          restore-keys: |
+            vcpkg-${{ env.VCPKG_COMMIT_ID }}-${{ matrix.job.vcpkg-triplet }}-
+
+      - name: Install vcpkg dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
+        shell: bash
+        run: |
+          ok=0
+          for i in 1 2 3 4 5; do
+            echo "::group::vcpkg install attempt $i"
+            if $VCPKG_ROOT/vcpkg install \
+              --triplet ${{ matrix.job.vcpkg-triplet }} \
+              --x-install-root="$VCPKG_ROOT/installed"; then
+              ok=1
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            echo "attempt $i failed, retrying in 30s (vcpkg resumes completed ports)"
+            sleep 30
+          done
+          if [ "$ok" -ne 1 ]; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+
+      - name: Verify vcpkg deps (cache-hit path)
+        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          test -d "$VCPKG_ROOT/installed" || { echo "::error::vcpkg installed tree missing after cache restore"; exit 1; }
+          echo "vcpkg deps restored from cache OK"
+
+      - name: session-tab connection mode always visible (v94)
+        shell: bash
+        run: |
+          # v94 (REQ-v94-001, design D): keep the secure/direct shield hover but
+          # show only the fingerprint; insert an always-visible connection-mode
+          # Text (msgConn) between the shield and the peerId label in
+          # flutter/lib/desktop/pages/remote_tab_page.dart so the mode is no
+          # longer hover-only (touch / quick-glance observability). Idempotent
+          # via the 'prod-line v94 tab-conn-badge' marker.
+          # [v170] add-to-ab auto rename + desktop toolbar toggles
+          python3 patches/patch_add_to_ab_rename.py .
+          python3 patches/patch_peer_card_alias.py .
+          python3 patches/patch_desktop_toolbar_toggles.py .
+          python3 patches/patch_add_address_book.py .
+          python3 patches/iroh/iroh_badge.py .
+
+      - name: Both-mode peer-tab sidebar collapsed by default (V258)
+        if: env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V258 (both-mode only): the "Address book" tags panel and the
+          # "Accessible devices" (MyGroup) left list start COLLAPSED; the
+          # shared sidebar button in the peer-tab toolbar expands them with a
+          # single shared state (confirmed scope). The tab glyph bump
+          # 18 -> 22 comes from patch_peer_tab_style.py above.
+          # peer_tab_page.dart / address_book.dart / my_group.dart are SHARED
+          # files, so this stays gated on UI_VARIANT == 'control_custom'.
+          # MUST run after patch_add_address_book.py (V256/V257 ab toolbar).
+          python3 patches/patch_both_sidebar.py .
+          grep -q "offstage: hideAbTagsPanel.value," flutter/lib/common/widgets/my_group.dart || { echo "[FAIL] v258: MyGroup left list is not collapsible"; exit 1; }
+          grep -q "final hideAbTagsPanel = true.obs;" flutter/lib/common/widgets/address_book.dart || { echo "[FAIL] v258: ab tags panel is not collapsed by default"; exit 1; }
+          grep -q "PeerTabIndex.group.index," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v258: sidebar toggle not reachable from the devices tab"; exit 1; }
+          grep -q "size: 22," flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v258: tab glyphs not enlarged to 22"; exit 1; }
+          grep -q "Toggle Sidebar" src/lang/cn.rs || { echo "[FAIL] v258: cn.rs is missing the Toggle Sidebar key"; exit 1; }
+          echo "[OK] V258: both-mode sidebars collapsed by default, tab glyphs enlarged"
+      # === [V217] 以下步骤自 generator-windows.yml 对齐，此前 win7 工作流完全缺失 ===
+
+      - name: Drag local files into remote session (V104)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V104: 主控机文件直接拖入已连接的远程会话即传输到远端当前目录。
+          # 远程会话 body 挂 DropTarget（desktop_drop 已是正式依赖），拖入后经现有
+          # kWindowConnect IPC 把路径交给主窗口，主窗口打开该文件传输会话（FT 窗口
+          # 保持可见，用其原生缩小版进度卡），由文件传输页复用「发送」按钮链路
+          # 自动上传（静默，无授权弹窗）。
+          # 必须放在所有 *_both / _new / _old 布局文件 cp 覆盖之后，否则注入被覆盖。
+          # 已离线干跑验证（纯净 1.4.9）exit 0，8 条断言全绿；重复运行幂等 [SKIP]。
+          python3 patches/patch_remote_drop_file.py .
+          grep -q "_onDropFilesToRemote" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing drop handler"; exit 1; }
+          # Fallback entry: UIPI blocks drag-drop into elevated (admin) windows, so the
+          # "Send File" button is the path that always works. Do not drop this.
+          grep -q "_buildSendFileButton" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing send-file fallback button"; exit 1; }
+          grep -q "sendLocalPathsToRemote" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing auto-send"; exit 1; }
+          # Files must be forwarded through IPC all the way to the FT sub-window's
+          # own isolate map (Dart isolates do NOT share static globals).
+          grep -qF "params['files'] = files" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart missing files forwarding"; exit 1; }
+          grep -q "pendingFiles" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing pendingFiles field"; exit 1; }
+          grep -q "pendingFiles" flutter/lib/desktop/pages/file_manager_tab_page.dart || { echo "[FAIL] file_manager_tab_page.dart missing pendingFiles forwarding"; exit 1; }
+          # FT window is opened visible (native progress card) by the drop handler; the
+          # injected [V104-drop] marker confirms the drop -> FT-window wiring landed.
+          grep -q "\[V104-drop\]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart missing drop -> FT window wiring"; exit 1; }
+          # Sub-window plugin registration is what actually makes DropTarget work
+          # inside the remote session window (a separate FlutterEngine).
+          grep -q "DesktopDropPluginRegisterWithRegistrar" flutter/windows/runner/flutter_window.cpp || { echo "[FAIL] flutter_window.cpp missing desktop_drop sub-window registration"; exit 1; }
+          echo "[OK] V104 remote-session drop-file transfer (visible FT window + silent upload)"
+
+      - name: Controlled-side desktop redirection-aware drop target (V107 desktop-redirect)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
+        shell: bash
+        run: |
+          # [V107-desktop-redirect] Feature ABANDONED (eighth round): the user
+          # dropped desktop-redirection to cut code bloat. patch_desktop_redirect.py
+          # is now an intentional no-op (it only prints SKIP and exits 0); it does
+          # NOT inject any marker into connection.rs / flutter_ffi.rs. The old
+          # ReadDir marker resolution + SYSTEM-impersonation logic was all removed.
+          # Keep the call so the file is still exercised, but DO NOT assert the
+          # removed markers here or the gate fails every build.
+          python3 patches/patch_desktop_redirect.py .
+          echo "[OK] V107 desktop-redirect patch (intentionally no-op — feature abandoned)"
+
+      - name: Auto-overwrite for headless file transfer (V104-fix)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
+        shell: bash
+        run: |
+          # Headless drag-drop transfers must NOT show the overwrite confirmation
+          # dialog (the FT window is hidden, user cannot click it). This patch
+          # auto-overwrites when isHeadlessTransfer=true, while keeping the dialog
+          # for manual (non-drop) transfers from the FT window UI.
+          # Must run AFTER patch_remote_drop_file.py (anchors on its output).
+          python3 patches/patch_file_transfer_auto.py .
+          grep -q "isHeadlessTransfer" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing headless flag"; exit 1; }
+          grep -q "V104-fix-auto: headless" flutter/lib/models/file_model.dart || { echo "[FAIL] file_model.dart missing auto-overwrite logic"; exit 1; }
+          echo "[OK] V104-fix headless auto-overwrite + consistent destination"
+
+      - name: Headless file transfer without peer confirmation (V105 headless-drop)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Unattended drag-drop: the control side opens a brand-new FILE TRANSFER
+          # connection per drop and does NOT carry a password, so the peer fell
+          # into the empty-password branch of handle_login_request() and raised
+          # the Connection Manager dialog - which nobody can click on an
+          # unattended host, so the transfer never started.
+          # This patch (a) remembers peers that authenticated recently and
+          # auto-approves their file-transfer sessions inside the grace window
+          # (default 30 min, headless-ft-grace-minutes=0 disables), and (b) forces
+          # msg.enable_file_transfer=Yes on the control side, which previously
+          # depended on the "enable-file-copy-paste" toggle (off by default) and
+          # otherwise left the peer's file channel gated off.
+          # Scope: file-transfer sessions only. Desktop remote sessions still
+          # require the normal password / click approval.
+          # Must run AFTER patch_file_transfer_auto.py (independent anchors, but
+          # keep the drop-file patch group together).
+          python3 patches/patch_headless_ft_auth.py .
+          grep -qF "V105 headless drop-file: auto-approving" src/server/connection.rs || { echo "[FAIL] connection.rs missing headless FT auto-approve"; exit 1; }
+          grep -qF "V105 headless drop-file: force-enable" src/client.rs || { echo "[FAIL] client.rs missing forced file-transfer option"; exit 1; }
+          echo "[OK] V105 headless file transfer (no peer confirmation)"
+
+      - name: Drop-initiated FT window shrinks to mini transfer card (V107-mini)
+        if: fromJson(inputs.extras || '{}').enhanced_file_transfer != 'false'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V107-mini: the drag-drop FT window is resized to a 240x480
+          # progress-only card (native per-file progress, native cancel) and
+          # auto-closes when all jobs finish. The full manager is one click away.
+          # Must run AFTER patch_remote_drop_file.py + patch_file_transfer_auto.py
+          # (re-anchors the _enterMiniTransferMode() call on the [V104-drop] block
+          # those patches inject). Patch asserts its own anchors; we gate the
+          # two structural markers that prove the mini window landed.
+          python3 patches/patch_drop_progress_v2.py .
+          grep -qF "_enterMiniTransferMode" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer mode entry"; exit 1; }
+          grep -qF "_buildMiniTransferView" flutter/lib/desktop/pages/file_manager_page.dart || { echo "[FAIL] file_manager_page.dart missing mini transfer view"; exit 1; }
+          echo "[OK] V107 mini transfer window (240x480 native progress card)"
+
+      - name: Login timeout watchdog + stale saved-password self-heal (V105)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # 1) A stale saved password on a direct connect used to hang at
+          #    "Connecting..." forever (peer never answers, no prompt, no picture).
+          #    This patch (a) clears the persisted copy when the failed attempt
+          #    carried exactly that saved password, so the next attempt prompts,
+          #    and (b) arms a 20s watchdog that swaps the endless spinner for a
+          #    visible login-error dialog when no first image ever arrives.
+          # 2) Runs AFTER the drop/transfer patches (independent anchors).
+          # 3) 本工作流不启用 iroh，脚本会自动走 no-iroh self-heal 变体
+          #    （离线干跑已确认输出 "[INFO] iroh transport ABSENT -> using no-iroh self-heal variant"）。
+          python3 patches/patch_login_timeout.py .
+          grep -qF "stale-saved-password" src/client.rs || { echo "[FAIL] client.rs missing stale-password self-heal"; exit 1; }
+          grep -qF "login-watchdog" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] remote_page.dart missing login watchdog"; exit 1; }
+          echo "[OK] V105 login watchdog + stale-password self-heal"
+
+      - name: Settings page survives theme-change rebuilds (V104)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Changing the theme calls Get.changeThemeMode which rebuilds the whole
+          # app. The desktop settings page must keep its selected tab and not leak
+          # its GetX singleton (wrong-type dispose was resetting it). See patch.
+          python3 patches/patch_settings_theme.py .
+          grep -q "settings page resilient to theme-change" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] desktop_setting_page.dart missing theme-rebuild resilience"; exit 1; }
+          echo "[OK] settings page immune to theme-change rebuilds"
+
+      - name: Crisp settings section outlines (v227c)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v227c] 设置页分区卡片加 1px 明确边框 + elevation 0（默认阴影太淡
+          # 看不出板块轮廓——客户要求轮廓清晰）。
+          python3 patches/patch_settings_card_border.py .
+          grep -qF "[LnDesk v227c settings outline]" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings outline marker missing"; exit 1; }
+          grep -q "elevation: 0," flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings card elevation 0 missing"; exit 1; }
+          echo "[OK] settings section outlines applied"
+
+      - name: Disable_desktop_icon
+        if: fromJson(inputs.extras).disable_desktop_icon == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # V216: never create Desktop / Start Menu / Startup-folder shortcuts.
+          #
+          # The primary fix lives in windows.rs::get_silent_install_options(),
+          # which upstream hard-codes to "desktopicon startmenu [printer]".
+          # Neutralizing only the copy blocks inside install_me() is NOT enough:
+          # the installer runs --silent-install (patch #0011) and that options
+          # string arrives straight from get_silent_install_options().
+          python3 patches/disable_desktop_icon.py .
+          # Gate: both silent-install return branches must no longer carry the
+          # shortcut flags, otherwise a silent install recreates the icons.
+          grep -q 'silent install: no shortcut at all' src/platform/windows.rs \
+            || { echo "[FAIL] v216: get_silent_install_options not stripped"; exit 1; }
+          # Gate: install_service() has its own Startup-folder shortcut block
+          # that never passes through install_me().
+          grep -q 'install_service: no Startup tray shortcut' src/platform/windows.rs \
+            || { echo "[FAIL] v216: install_service Startup shortcut not neutralized"; exit 1; }
+          # Gate: the interactive wizard checkboxes must be gone.
+          grep -q "// Option(desktopicon, label: 'Create desktop icon')" \
+            flutter/lib/desktop/pages/install_page.dart \
+            || { echo "[FAIL] v216: install_page desktopicon option not hidden"; exit 1; }
+          echo "[OK] v216 desktop / start-menu / startup shortcuts disabled"
+
+      # === [V217] 质量门禁：把「20 分钟后才炸」提前到「3 分钟内失败」 ===
+      # win7 此前没有任何 Dart/Rust 静态门禁，所有补丁错误都要等 build.py 真正
+      # 编译（vcpkg + flutter engine + 全量构建 ≈ 20 分钟）才暴露。以下两道门禁
+      # 在编译前 fail fast，并给出带文件名/行号的可读错误。
+      # 已离线验证：hbb_common 在打完全部网络补丁后可编译通过（rustc 语法级）。
 
       - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
         # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
@@ -1207,18 +2312,131 @@ jobs:
           # because super_p2p is currently applied only in this windows workflow.
           python3 patches/patch_remove_test_nat_type.py .
           python3 patches/patch_quality_monitor_c.py .
+      - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
+        # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
+        # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
+        # hbb_common crate. A typo there only surfaces at `cargo build` time,
+        # which is reached only after vcpkg install + flutter engine + full build
+        # (~20 min wasted on a guaranteed-fail). Compile-check hbb_common right
+        # after the lock is fetched so a bad patch fails the run within minutes,
+        # with a readable error, instead of deep in the build step.
+        shell: bash
+        run: |
+          echo ">> cargo check -p hbb_common (gate: catch patch compile errors early)"
+          cargo check -p hbb_common --message-format short
+
+      - name: Relax upstream lint noise for analyze gate
+        shell: bash
+        run: |
+          # [LnDesk v160] Upstream rustdesk ships many cosmetic lint issues
+          # (constant_identifier_names / camel_case_types / unnecessary_import /
+          # unused_import / unnecessary_this / unused_element) in web-platform
+          # files we never patch (lib/web/**, lib/models/web_model.dart,
+          # lib/utils/multi_window_manager.dart). They are infos/warnings, but
+          # to keep the analyze gate focused on REAL compile errors only, drop a
+          # scoped analysis_options that silences exactly those rules while
+          # inheriting the repo's own settings. Compile errors (undefined names,
+          # type mismatches) are NOT in this set and remain fatal.
+          cat > flutter/analysis_options.yaml <<'YAML'
+          include: ../analysis_options.yaml
+          linter:
+            rules:
+              constant_identifier_names: false
+              camel_case_types: false
+              unnecessary_import: false
+              unused_import: false
+              unnecessary_this: false
+              unused_element: false
+          YAML
+          echo "[OK] suppressed upstream cosmetic lint rules for analyze gate"
+
+      - name: Guard - IconFont FA glyph references must be defined (v225)
+        shell: bash
+        run: |
+          # [v225] both 模板（connection_page_both / desktop_home_page_both）引用 IconFont.faXxx，
+          # 这些常量由 patch_font_awesome_icons.py 注入 flutter/lib/common.dart。若某工作流只 cp
+          # 模板、没跑 FA 步骤（win7 曾缺该步骤 -> undefined_getter），analyze 只会在 200+ 条
+          # info/warning 里冒出 4 行 error，定位成本很高。这里做一次廉价的符号对账，
+          # 直接在步骤日志里点名缺失的字形。
+          cd ./flutter
+          missing=0
+          for sym in $(grep -rhoE 'IconFont\.fa[A-Za-z0-9]+' lib | sed 's/IconFont\.//' | sort -u); do
+            if ! grep -q "static const IconData ${sym} " lib/common.dart; then
+              echo "[FAIL] v225-guard: IconFont.${sym} 未在 flutter/lib/common.dart 定义（FA 图标步骤未执行？）"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          echo "[OK] v225-guard: 所有 IconFont FA 字形引用均已在 common.dart 定义"
+          cd ..
+
+      - name: Gate - flutter analyze (fail fast on Dart compile errors)
+        shell: bash
+        run: |
+          # Catch Dart semantic/compile errors (e.g. non-constant expression,
+          # int passed where double is required) HERE with file:line, instead of
+          # burying them inside MSB8066 during 'flutter build'.
+          # Only ERRORS are fatal: upstream carries many lint infos/warnings
+          # that must not block the build. 'lib' only (test/ often noisy).
+          # [LnDesk v160] cosmetic rules already silenced via flutter/analysis_options.yaml.
+          cd ./flutter
+          flutter pub get
+          set +e
+          flutter analyze lib --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### flutter analyze: Dart errors (fatal)"
+              echo '```'
+              grep -iE 'error' analyze.log | head -40 || echo '(no error line matched)'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "[FAIL] flutter analyze reported Dart errors - see the job summary"
+            exit 1
+          fi
+          echo "[OK] flutter analyze clean (no Dart errors)"
 
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
-          # 恢复 --hwcodec --vram：portable 黑屏根因是 notrace 下 _hwcodec 落盘失败，已由
-          # patch_portable_notrace.py 的 SHARED 例外（patches f68ce3c）修复，故 hwcodec 可恢复。
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+ 
+          # Download usbmmidd_v2.zip and extract it to ./rustdesk
+          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
+          Expand-Archive usbmmidd_v2.zip -DestinationPath . -Force
+          Remove-Item -Path usbmmidd_v2\Win32 -Recurse
+          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
+          mv -Force .\usbmmidd_v2 ./rustdesk   
 
-          # v121: usbmmidd_v2 (privacy-mode virtual display) no longer bundled -
-          # privacy mode is stripped from this build.
+          # Download printer driver files and extract them to ./rustdesk
+           try {
+             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip
+             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/printer_driver_adapter.zip -OutFile printer_driver_adapter.zip
+             Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/sha256sums -OutFile sha256sums
 
+             # Check and move the files
+             $checksum_driver = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*rustdesk_printer_driver_v4-1.4\.zip$').Matches.Groups[1].Value
+             $downloadsum_driver = Get-FileHash -Path rustdesk_printer_driver_v4-1.4.zip -Algorithm SHA256
+             $checksum_adapter = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*printer_driver_adapter\.zip$').Matches.Groups[1].Value
+             $downloadsum_adapter = Get-FileHash -Path printer_driver_adapter.zip -Algorithm SHA256
+             if ($checksum_driver -eq $downloadsum_driver.Hash -and $checksum_adapter -eq $downloadsum_adapter.Hash) {
+                 Write-Output "rustdesk_printer_driver_v4-1.4, checksums match, extract the file."
+                 Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath .
+                 mkdir ./rustdesk/drivers
+                 mv -Force .\rustdesk_printer_driver_v4-1.4 ./rustdesk/drivers/RustDeskPrinterDriver
+                 Expand-Archive printer_driver_adapter.zip -DestinationPath .
+                 mv -Force .\printer_driver_adapter.dll ./rustdesk
+             } elseif ($checksum_driver -ne $downloadsum_driver.Hash) {
+                 Write-Output "rustdesk_printer_driver_v4-1.4, checksums do not match, ignore the file."
+             } else {
+                 Write-Output "printer_driver_adapter.dll, checksums do not match, ignore the file."
+             }
+           } catch {
+               Write-Host "Ingore the printer driver error."
+           }
+          
       - name: icon stuff
         if: ${{ inputs.iconlink == 'true' }}
         shell: bash
@@ -1231,7 +2449,7 @@ jobs:
           ICON_SVG="$ASSET_DIR/icon.svg"
           [ -f "$ICON_SVG" ] && mv "$ICON_SVG" "$ICON_SVG.bak"
           magick ./res/icon.png "$ICON_SVG"
-
+      
       - name: Download logo.png
         if: ${{ inputs.logolink == 'true' }}
         env:
@@ -1245,8 +2463,10 @@ jobs:
           }
           $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
           Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
-
+      
       - name: find Runner.res
+        # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res
+        # Runner.rc does not contain actual version, but Runner.res does
         shell: bash
         run: |
           runner_res=$(find . -name "Runner.res");
@@ -1255,6 +2475,7 @@ jobs:
           else
             echo "Runner.res: $runner_res";
             cp $runner_res ./libs/portable/Runner.res;
+            echo "list ./libs/portable/Runner.res";
             ls -l ./libs/portable/Runner.res;
           fi
 
@@ -1264,13 +2485,72 @@ jobs:
         with:
           name: topmostwindow-artifacts-x64
           path: "./rustdesk"
-
+                      
+      
       - name: Create custom_.txt file
         shell: bash
         run: |
           echo -n "${{ inputs.custom }}" | cat > ./rustdesk/custom_.txt
 
-      - name: Build single-file portable-quick executable (appname-quick.exe)
+      - name: Stage code-signing public cert into package
+        if: env.UPLOAD_ARTIFACT == 'true'
+        shell: bash
+        run: |
+          cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
+          echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
+
+      - name: Pack payload binaries with UPX (before packaging & signing)
+        if: env.UPLOAD_ARTIFACT == 'true'
+        shell: bash
+        run: |
+          # [v227c] 签名前对负载二进制加壳：压缩主程序与核心 DLL（体积约省 50-60%）。
+          # 顺序必须保证：先加壳、后自解压打包与签名（加壳会使既有签名失效）。
+          # 只压 rustdesk.exe + librustdesk.dll；flutter_windows.dll（引擎）与
+          # WindowInjection.dll（注入 DLL）不压，规避加载兼容与杀软误报放大。
+          # [V279] choco 社区源偶发 504 / NuGetResolverInputException（upx 安装 0/0 仍返 0）：
+          #   1) 重试 3 次；2) 仍失败则直下 GitHub Release 的 upx-<ver>-win64.zip；
+          #   3) 两者皆失败则降级为「不加壳」并告警，绝不因取不到 UPX 而让 CI 挂掉（产物更大但可用）。
+          set +e
+          UPX_BIN=""
+          for attempt in 1 2 3; do
+            echo "[upx] choco install attempt ${attempt}/3"
+            choco install upx -y --no-progress --limit-output
+            if command -v upx >/dev/null 2>&1; then UPX_BIN="$(command -v upx)"; break; fi
+            sleep 10
+          done
+          if [ -z "$UPX_BIN" ]; then
+            echo "[upx] choco source unavailable, fallback to GitHub Release direct download"
+            UPX_DIR="${RUNNER_TEMP:-/tmp}/upx-direct"
+            mkdir -p "$UPX_DIR"
+            if command -v python >/dev/null 2>&1; then PY=python; else PY=python3; fi
+            # 用 releases/latest 的重定向 URL 拿 tag（api.github.com 在 runner 上可能 403/限流）
+            TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/upx/upx/releases/latest | sed -E 's#.*/releases/tag/##')"
+            for CAND in "$TAG" v5.2.1 v5.0.2 v5.0.1; do
+              [ -n "$CAND" ] || continue
+              VER="${CAND#v}"
+              echo "[upx] try ${CAND} (ver=${VER})"
+              if curl -fsSL -o "$UPX_DIR/upx.zip" "https://github.com/upx/upx/releases/download/${CAND}/upx-${VER}-win64.zip"; then
+                "$PY" -m zipfile -e "$UPX_DIR/upx.zip" "$UPX_DIR"
+                UPX_BIN="$(find "$UPX_DIR" -name upx.exe | head -1)"
+                [ -n "$UPX_BIN" ] && break
+              fi
+            done
+          fi
+          if [ -z "$UPX_BIN" ] || [ ! -f "$UPX_BIN" ]; then
+            echo "::warning::UPX unavailable (choco 504 + GitHub fallback failed) - skip packing, artifact will be larger"
+            ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+            exit 0
+          fi
+          echo "[upx] using ${UPX_BIN}"
+          "$UPX_BIN" --version
+          for f in ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll; do
+            echo "[upx] packing ${f}"
+            "$UPX_BIN" -9 --lzma "$f" || "$UPX_BIN" -9 "$f" || echo "::warning::UPX failed on ${f}, keep it unpacked"
+          done
+          ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+          echo "[OK] payload packed with UPX"
+
+      - name: Build self-extracted executable
         shell: bash
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
@@ -1283,10 +2563,29 @@ jobs:
           mkdir -p ./SignOutput
           PACKER=$(find ./target -name "rustdesk-portable-packer.exe" | head -1)
           if [ -z "$PACKER" ]; then echo "::error::rustdesk-portable-packer.exe not found"; exit 1; fi
+          APP_TAG=$(echo "${{ inputs.appname }}" | tr ' ' '_' | tr -cd 'A-Za-z0-9._-')
           mv "$PACKER" "./SignOutput/${APP_TAG}-quick.exe"
-          ls -l ./SignOutput
 
-      - name: Sign Windows binary (EXE only)
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build msi
+
+        if: false # [V280] 禁止安装构建无安装形态，跳过 MSI
+        # MSI 是附带产物（分发主力是 -install.exe）：MSI 编译失败仅告警跳过，不阻断工作流
+        continue-on-error: true
+        run: |
+          $myappname = "${{ inputs.appname }}" -replace '\s','_'
+          cp "rustdesk/${{ inputs.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
+          pushd ./res/msi
+          python preprocess.py --app-name "$myappname" --arp -d ../../rustdesk
+          nuget restore msi.sln
+          msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+          cp ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi
+          mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
+          sha256sum ../../SignOutput/rustdesk.msi
+
+      - name: Sign Windows binaries (EXE and MSI)
         if: env.UPLOAD_ARTIFACT == 'true' && (success() || failure())
         shell: powershell
         env:
@@ -1309,21 +2608,22 @@ jobs:
                       Where-Object { $_.Directory.FullName -like "*x64*" } |
                       Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
                       Select-Object -First 1
-
+      
           if (-not $signtool) {
             $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" -ErrorAction SilentlyContinue |
                         Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
                         Select-Object -First 1
           }
-
+      
           if (-not $signtool) {
             Write-Error "signtool.exe not found in Windows SDK paths."
             exit 1
           }
           Write-Host "Using signtool: $($signtool.FullName)"
-
+      
           $exePath = ".\SignOutput\${{ inputs.appname }}-quick.exe"
-
+          $msiPath = ".\SignOutput\rustdesk.msi"
+      
           if (Test-Path $exePath) {
             Write-Host "Signing EXE: $exePath"
             & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $exePath
@@ -1331,21 +2631,48 @@ jobs:
           } else {
             Write-Host "EXE not found at $exePath, skipping."
           }
+      
+          if (Test-Path $msiPath) {
+            Write-Host "Signing MSI: $msiPath"
+            & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $msiPath
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host "MSI not found at $msiPath, skipping."
+          }
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" | ForEach-Object { Write-Host "Found: $($_.FullName)" }
 
-      - name: Extract first 4 chars of UUID + build filename
+      - name: Extract first 4 chars of UUID
         id: tag
         shell: bash
         run: |
           RAW_UUID="${{ github.event.inputs.uuid }}"
           CLEAN_UUID=$(echo "$RAW_UUID" | tr -d '-')
           SHORT_UUID=${CLEAN_UUID:0:4}
-          APP_TAG=$(echo "${{ inputs.appname }}" | tr ' ' '_' | tr -cd 'A-Za-z0-9._-')
-          NAME="${APP_TAG}-quick"
           echo "tag=$SHORT_UUID" >> "$GITHUB_OUTPUT"
-          echo "release_tag=portable-quick-${APP_TAG}-${SHORT_UUID}" >> "$GITHUB_OUTPUT"
+          
+      - name: Set build filename
+        id: build_name
+        shell: bash
+        run: |
+          VER="${{ env.VERSION }}"
+          W="${{ env.RUSTDESK_BUILD_NUMBER }}"
+          # 始终带第4段构建号（W，即使 0 -> .0）：保证构建文件名与下载链接一致，且始终显示4段版本号
+          VER_SUFFIX=".${W:-0}"
+          NAME="${{ inputs.filename }}-${VER}${VER_SUFFIX}-win-${{ steps.conn.outputs.conn }}-x86_64-${{ steps.tag.outputs.tag }}"
           echo "BUILD_FILENAME=$NAME" >> "$GITHUB_ENV"
+          # [V280] 便携零残留构建：产物对齐 portable-quick 命名（<app>-quick.exe，双击直接跑 UI 不走安装）
+          QUICK_TAG=$(echo "${{ inputs.appname }}" | tr ' ' '_' | tr -cd 'A-Za-z0-9._-')
+          echo "QUICK_FILENAME=${QUICK_TAG}-quick" >> "$GITHUB_ENV"
           echo "value=$NAME" >> "$GITHUB_OUTPUT"
           echo "✅ Build filename set to: $NAME"
+      
+      - name: Rename MSI (optional)
+        shell: bash
+        run: |
+          test -f "./SignOutput/rustdesk.msi" && \
+            mv "./SignOutput/rustdesk.msi" "./SignOutput/${BUILD_FILENAME}.msi" && \
+            echo "✅ MSI renamed to ${BUILD_FILENAME}.msi" || \
+            echo "⚠️ MSI not found, skipping rename."
 
       - name: Create GitHub Release and Upload Assets
         if: success()
@@ -1354,27 +2681,76 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.tag.outputs.release_tag }}
-          name: Release ${{ steps.tag.outputs.release_tag }}
+          tag_name: ${{ steps.build_name.outputs.value }}
+          name: Release ${{ steps.build_name.outputs.value }}
           prerelease: true
           files: |
-            ./SignOutput/${{ steps.tag.outputs.value }}.exe
-
+            ./SignOutput/${{ env.QUICK_FILENAME }}.exe
+            ./SignOutput/${{ steps.build_name.outputs.value }}.msi
+      
       - name: Send to file server
         if: ${{ fromJson(inputs.extras).gdpro == 'true' }}
         shell: bash
         run: |
-          EXE="./SignOutput/${BUILD_FILENAME}.exe"
+          EXE="./SignOutput/${QUICK_FILENAME}.exe"
+          MSI="./SignOutput/${BUILD_FILENAME}.msi"
           URL="${{ secrets.GENURL }}/save_custom_client"
           TOKEN="${{ fromJson(inputs.extras).token }}"
           UUID="${{ inputs.uuid }}"
-          curl -i -X POST \
-            -H "Content-Type: multipart/form-data" \
-            -H "Authorization: Bearer $TOKEN" \
-            -F "file=@$EXE" \
-            -F "uuid=$UUID" \
-            "$URL"
-
+          # [LnDesk v169] Cross-border upload resilience.
+          # Healthy link: 9-18s (~2.4MB/s). Degraded: 8-40KB/s and then the
+          # connection is reset (curl 55/56) - run 35582468723 died at 30%
+          # after 11m48s, while run 35583260254 crawled the same way for 626s
+          # and only happened to finish.
+          # --retry alone does NOT retry 55/56; --retry-all-errors is required.
+          # --retry-delay is deliberately unset so curl keeps its built-in
+          # exponential backoff (1s,2s,4s,8s), which suits a congested link
+          # better than a fixed delay.
+          # --speed-limit is a conservative STALL guard only: the observed
+          # "slow" (8-47KB/s) and "dead" (4-15KB/s) ranges overlap, so a more
+          # aggressive valve would abort transfers that do finish.
+          # -f turns an HTTP error (401/413/500) into a real failure. Without
+          # it curl exits 0 and the step silently passes with no file saved.
+          # EXE and MSI are attempted independently: under `set -e` the old
+          # `&&` chain stopped at the first failure and never tried the MSI.
+          CURL_OPTS=(
+            -X POST
+            -H "Content-Type: multipart/form-data"
+            -H "Authorization: Bearer $TOKEN"
+            --connect-timeout 30
+            --retry 4
+            --retry-all-errors
+            --max-time 1800
+            --speed-limit 1024
+            --speed-time 180
+          )
+          STAT='\n[upload] http=%{http_code} sent=%{size_upload}B in %{time_total}s\n'
+          rc_exe=0
+          rc_msi=0
+          echo "== [1/2] EXE =="
+          if curl -f "${CURL_OPTS[@]}" -w "$STAT" \
+              -F "file=@$EXE" -F "uuid=$UUID" "$URL"; then
+            echo "[OK] EXE uploaded"
+          else
+            rc_exe=$?
+            echo "[FAIL] EXE upload rc=$rc_exe"
+          fi
+          echo "== [2/2] MSI =="
+          if [ ! -f "$MSI" ]; then
+            echo "[SKIP] MSI not found, skipping upload."
+          elif curl -f "${CURL_OPTS[@]}" -w "$STAT" \
+              -F "file=@$MSI" -F "uuid=$UUID" "$URL"; then
+            echo "[OK] MSI uploaded"
+          else
+            rc_msi=$?
+            echo "[FAIL] MSI upload rc=$rc_msi"
+          fi
+          if [ "$rc_exe" -ne 0 ] || [ "$rc_msi" -ne 0 ]; then
+            echo "[FAIL] file server upload failed (EXE rc=$rc_exe, MSI rc=$rc_msi)"
+            exit 1
+          fi
+          echo "[OK] both artifacts uploaded to file server"
+           
       - name: Report Status
         continue-on-error: true
         shell: bash
@@ -1386,7 +2762,6 @@ jobs:
             -H "Authorization: Bearer ${{ fromJson(inputs.extras).token }}" \
             -d '{"uuid": "${{ inputs.uuid }}", "status": "Success"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
-
       - name: failed
         if: failure()
         continue-on-error: true
@@ -1399,7 +2774,7 @@ jobs:
             -d '{"uuid": "${{ inputs.uuid }}", "status": "\u65e0\u826f\u8001\u677f\u628a\u725b\u9a6c\u7d2f\u574f\u4e86\uff0c\u5df2\u7ecf\u5ba3\u5e03\u7f62\u5de5"}' \
             "${{ env.STATUS_URL }}" || echo "Report status ping failed (non-fatal)"
 
-      - name: cancelled
+      - name: failed
         if: cancelled()
         continue-on-error: true
         shell: bash
