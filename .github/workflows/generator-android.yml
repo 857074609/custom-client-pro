@@ -1139,7 +1139,13 @@ jobs:
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           rustup target add ${{ matrix.job.target }}
-          cargo install cargo-ndk --version ${{ env.CARGO_NDK_VERSION }} --locked
+          # [LnDesk] --force is REQUIRED: this step runs unconditionally on every
+          # build, so if a cargo-ndk binary is already present (runner image, or a
+          # re-run in the same environment) cargo aborts with
+          # "error: binary `cargo-ndk` already exists in destination" (exit 101).
+          # --force keeps the pinned CARGO_NDK_VERSION authoritative and costs
+          # nothing extra here (the tool was being rebuilt every run anyway).
+          cargo install cargo-ndk --version ${{ env.CARGO_NDK_VERSION }} --locked --force
           case ${{ matrix.job.target }} in
             aarch64-linux-android)
             ./flutter/ndk_arm64.sh
