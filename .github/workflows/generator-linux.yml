@@ -504,10 +504,10 @@ jobs:
           python3 patches/patch_fps240.py .
           grep -qF "kMaxFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kMaxFps not 240"; exit 1; }
           grep -qF "kDefaultFps = 60" flutter/lib/consts.dart || { echo "[FAIL] v289: kDefaultFps not 60"; exit 1; }
-          grep -qF "get_num_string(key, 240.0, 5.0, 240.0)" libs/hbb_common/src/config.rs || { echo "[FAIL] v270: config.rs fps clamp not 240"; exit 1; }
+          grep -qF "get_num_string(key, 60.0, 5.0, 240.0)" libs/hbb_common/src/config.rs || { echo "[FAIL] v289: config.rs fps fallback not 60 (ceiling stays 240)"; exit 1; }
           grep -qF "MAX_FPS: u32 = 240" src/server/video_qos.rs || { echo "[FAIL] v270: MAX_FPS not 240"; exit 1; }
           grep -qF "FPS: u32 = 60" src/server/video_qos.rs || { echo "[FAIL] v289: FPS baseline not 60"; exit 1; }
-          echo "[OK] v270 fps240: full chain opened to 240 (default + clamp + baseline)"
+          echo "[OK] v270+v289 fps: ceiling 240 kept, effective default 60 (kDefaultFps / config fallback / encoder baseline)"
 
       - name: Apply qmax guard patch (v289)
         shell: bash
