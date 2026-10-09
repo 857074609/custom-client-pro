@@ -141,8 +141,14 @@ jobs:
         if: steps.cache-frb.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          cargo install cargo-expand --version ${{ env.CARGO_EXPAND_VERSION }} --locked
-          cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid" --locked
+          # [LnDesk] --force is REQUIRED: the ubuntu-24.04 runner image can ship a
+          # prebuilt cargo-expand in ~/.cargo/bin. Without it cargo aborts with
+          # "error: binary `cargo-expand` already exists in destination" (exit 101)
+          # and the whole bridge job fails. --force keeps the pinned version
+          # authoritative (overwrites whatever the image/cache left behind) and is
+          # idempotent, so a cache hit + re-run is still safe.
+          cargo install cargo-expand --version ${{ env.CARGO_EXPAND_VERSION }} --locked --force
+          cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid" --locked --force
 
       - name: Verify bridge codegen binaries
         shell: bash
