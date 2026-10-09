@@ -1930,10 +1930,14 @@ jobs:
           grep -q "setResizable(true)" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: resizable lift missing"; exit 1; }
           grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
           test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 2 || { echo "[FAIL] v150: iroh preference must be applied on the main-window accept path"; exit 1; }
-          # [V216] connection_page_both.dart 仅 both 模式(control_custom)被 cp 使用；分享按钮已改为直接打开官网，
-          # 原 showShareDialog 断言改为校验 hydesk.cn。incoming/upstream 不使用该文件，跳过此门禁。
+          # [V216] connection_page_both.dart 仅 both 模式(control_custom)被 cp 使用。
+          # [LnDesk v288] V240 起「官网」按键退役、改回「分享」(onShare -> showShareDialog)，
+          # 原 hydesk.cn 断言随之失效（明文域名已被 V227c 字符码化并随按键一并移除）；
+          # 改为断言分享入口本身。此前该门禁从未执行（both 的 addinvite 恒 false，整步
+          # 跳过），故长期隐身；v288 放开 both 邀请后才会跑到。
+          # incoming/upstream 不使用该文件，跳过此门禁。
           if [ "$UI_VARIANT" = "control_custom" ]; then
-            grep -q "hydesk.cn" ./patches/connection_page_both.dart || { echo "[FAIL] v216: official website link missing in both-mode connection page"; exit 1; }
+            grep -q "showShareDialog" ./patches/connection_page_both.dart || { echo "[FAIL] v288: share entry missing in both-mode connection page"; exit 1; }
           fi
           grep -q "ShareApi" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: device share api missing"; exit 1; }
           grep -q "kBrandAppName" ./flutter/lib/common/brand.dart || { echo "[FAIL] v150: brand.dart not injected"; exit 1; }
