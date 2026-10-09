@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: 23ed2977aa9d19bbc18cbd2ff4b13190cb0401db
+      patches_sha: 3fe2c94de2d5801fd84710070091974371b92031
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 23ed2977aa9d19bbc18cbd2ff4b13190cb0401db
+          ref: 3fe2c94de2d5801fd84710070091974371b92031
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -832,6 +832,15 @@ jobs:
           ! grep -q "__IROH_RELAY_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_3 placeholder not substituted"; exit 1; }
           ! grep -q "__IROH_DNS_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL_3 placeholder not substituted"; exit 1; }
           grep -q "CUSTOM_IROH_RELAY_URL_3" ./src/iroh_transport.rs || { echo "[FAIL] iroh third backup relay constant missing"; exit 1; }
+          # [LnDesk v290] pkarr publish size guard. Each published attribute
+          # is its own DNS TXT record and pkarr hard-caps the compressed
+          # packet at 1000 bytes; a multi-homed host used to overflow it
+          # ("expected max 1000 bytes but got: 1083") so EVERY self-hosted
+          # pkarr publish failed and auto-iroh burned its full 10s direct
+          # dial timeout. Guarded by: addr prune+cap and a relay-only retry.
+          grep -q "PKARR_MAX_DIRECT_ADDRS: usize = 12" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr direct-addr cap missing"; exit 1; }
+          grep -q "fn pkarr_select_direct_addrs" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr addr prune helper missing"; exit 1; }
+          grep -q "retrying relay-only" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr relay-only overflow fallback missing"; exit 1; }
 
       - name: iroh direct prewarm (v215)
         if: fromJson(inputs.extras).enable_iroh_direct == 'true'
