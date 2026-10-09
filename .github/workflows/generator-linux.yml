@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 3c54c3ccc952e045be228774dc02b691181b1201
+      patches_sha: 23ed2977aa9d19bbc18cbd2ff4b13190cb0401db
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -260,7 +260,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 3c54c3ccc952e045be228774dc02b691181b1201
+          ref: 23ed2977aa9d19bbc18cbd2ff4b13190cb0401db
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -389,7 +389,7 @@ jobs:
           python3 patches/patch_server_lock_compiletime.py
           # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
           python3 patches/patch_keyframe_interval.py
-          grep -q "else { Some(60) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
+          grep -q "else { Some(15) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
 
       - name: Apply hwcodec zerolatency fork patch (v260)
         shell: bash
@@ -406,7 +406,7 @@ jobs:
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
           python3 patches/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF '61b96c2fddfe8a66adfb8f13b6ae7e530a72bb6f' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '49152b248b8ea170d8fe326a426d49933d512531' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
 
@@ -503,11 +503,33 @@ jobs:
           # and legacy peer-compat cap (client.rs).
           python3 patches/patch_fps240.py .
           grep -qF "kMaxFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kMaxFps not 240"; exit 1; }
-          grep -qF "kDefaultFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kDefaultFps not 240"; exit 1; }
+          grep -qF "kDefaultFps = 60" flutter/lib/consts.dart || { echo "[FAIL] v289: kDefaultFps not 60"; exit 1; }
           grep -qF "get_num_string(key, 240.0, 5.0, 240.0)" libs/hbb_common/src/config.rs || { echo "[FAIL] v270: config.rs fps clamp not 240"; exit 1; }
           grep -qF "MAX_FPS: u32 = 240" src/server/video_qos.rs || { echo "[FAIL] v270: MAX_FPS not 240"; exit 1; }
-          grep -qF "FPS: u32 = 240" src/server/video_qos.rs || { echo "[FAIL] v270: FPS baseline not 240"; exit 1; }
+          grep -qF "FPS: u32 = 60" src/server/video_qos.rs || { echo "[FAIL] v289: FPS baseline not 60"; exit 1; }
           echo "[OK] v270 fps240: full chain opened to 240 (default + clamp + baseline)"
+
+      - name: Apply qmax guard patch (v289)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v289] Quality guardrail on top of the VBR rate control
+          # introduced by v260/v274:
+          #   - qmin/qmax flow through the hwcodec FFI (ram + vram) into the
+          #     vendor SDKs: NVENC enableMinQP/enableMaxQP (qmin is a PAIRED
+          #     requirement -- qmax alone is a silent no-op), QSV reads the
+          #     GLOBAL avctx->qmin/qmax, AMF hevc/av1 set MAX_QP_I/_P.
+          #     AMF H.264 has no max-qp property at all -> guard skipped (V289
+          #     accepted that vendor gap explicitly).
+          #   - QP ceilings: H.264 = 28, H.265 = 32 (qmin = 10 both).
+          #   - IDR bitrate boost x1.25 (calc_bitrate choke point) so the
+          #     now-4x-more-frequent IDRs (GOP 60 -> 15) are not starved
+          #     against a fixed budget -- the V273 full-screen mosaic lesson.
+          python3 patches/patch_qmax_guard.py .
+          grep -qF "CodecFormat::H265 => (10, 32)," src/server/video_service.rs || { echo "[FAIL] v289: qmin/qmax policy table missing"; exit 1; }
+          grep -qF "let ratio = ratio * 1.25;" libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v289: IDR bitrate boost missing"; exit 1; }
+          echo "[OK] v289: qmax guard (H264=28 / H265=32) + IDR bitrate boost active"
 
       - name: Apply permanent password patch
         shell: bash
