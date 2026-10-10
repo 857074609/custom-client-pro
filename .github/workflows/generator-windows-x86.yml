@@ -566,6 +566,7 @@ jobs:
           # empty = baked default from extras.low_latency_mode.
           python3 patches/patch_low_latency_pipeline.py .
           python3 patches/patch_v304_low_latency_default.py .
+          python3 patches/patch_v305_latency_toggle_fix.py .
           grep -qF '[LnDesk v269 low-latency]' src/server/video_qos.rs || { echo "[FAIL] v269: video_qos helper missing"; exit 1; }
           grep -qF 'framerate: config.fps.unwrap_or(30)' libs/scrap/src/common/vram.rs || { echo "[FAIL] v269: vram fps missing"; exit 1; }
           grep -qF 'fps: Some(VIDEO_QOS.lock().unwrap().highest_fps())' src/server/video_service.rs || { echo "[FAIL] v269: video_service fps feed missing"; exit 1; }
