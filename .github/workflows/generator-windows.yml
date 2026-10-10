@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: be4d98f4c35f5993324c71bfd1ad8e2b3e068c9d
+      patches_sha: 936f62b16b4fbb8013452bd26e06ed2b9477858e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: be4d98f4c35f5993324c71bfd1ad8e2b3e068c9d
+          ref: 936f62b16b4fbb8013452bd26e06ed2b9477858e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1148,14 +1148,30 @@ jobs:
           #sed -i '/if (bind\.mainGetBuildinOption(key: kOptionRemovePresetPasswordWarning) !=/,/^  }$/d' ./flutter/lib/common.dart
         #  sed -i '/fontSize:/ { N; s/18,/16,/; }' ./flutter/lib/common.dart
             
-      - name: Apply domestic STUN fallback (multi-level)
+      - name: Apply domestic STUN fallback (domestic-only)
         if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
-        # 国内优先 + 国外兜底的 STUN 注入到客户端（NAT 探测 common.rs + WebRTC ICE webrtc.rs 两条路径），
+        # 国内 STUN 注入到客户端（NAT 探测 common.rs + WebRTC ICE webrtc.rs 两条路径），
         # 修复国内网络下默认国外 STUN 慢/被墙导致 P2P 打洞失败、只能走中继或连接失败的问题。
         # 必须对所有构建类型生效（原先只在 direction=both && hide_sensitive_ui 时运行，普通构建仍是国外 STUN）。
+        #
+        # [LnDesk v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
+        # cloudflare / nextcloud / google 三个境外项在 2026-10-10 现场双端日志里
+        # 每一项都 timeout（reason_code=timeout, error=io: stun timeout），既拿不到
+        # 映射又白占 select_ok 的探测名额。口径与 super_p2p 侧 V298 的
+        # STUN_TARGETS 一致。下面的断言把"表内不允许出现境外域名"钉死。
         shell: bash
         run: |
           python3 patches/hand_stun.py
+          echo ">> assert domestic-only STUN (common.rs STUNS_V4 + webrtc.rs ICE)"
+          # 每条 STUN 表体单独取出来检查：注释里会提到被删掉的主机名，
+          # 整体 grep 会误报（与 V298 的 STUN_TARGETS 断言同一个坑）。
+          grep -qF 'stun.miwifi.com' src/common.rs \
+            || { echo "[FAIL] v298-followup: common.rs STUNS_V4 not injected"; exit 1; }
+          ! sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qE 'cloudflare|nextcloud|google|twilio' \
+            || { echo "[FAIL] v298-followup: foreign STUN still in STUNS_V4"; exit 1; }
+          ! sed -n '/^static DEFAULT_ICE_SERVERS/,/^\];/p' libs/hbb_common/src/webrtc.rs | grep -qE 'cloudflare|nextcloud|google|twilio' \
+            || { echo "[FAIL] v298-followup: foreign STUN still in DEFAULT_ICE_SERVERS"; exit 1; }
+          echo "[OK] v298-followup: STUNS_V4 + DEFAULT_ICE_SERVERS are domestic-only"
 
       - name: Set server
         shell: bash

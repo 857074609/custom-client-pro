@@ -446,11 +446,25 @@ jobs:
           python3 patches/patch_auto_open_ui.py .
           grep -q "fn auto_open_main_window_after_install" src/core_main.rs || { echo "[FAIL] core_main.rs missing auto-open hook"; exit 1; }
 
-      - name: Apply domestic STUN fallback (multi-level)
+      - name: Apply domestic STUN fallback (domestic-only)
         if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
+        # [LnDesk v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
+        # cloudflare / nextcloud / google 三个境外项在 2026-10-10 现场双端日志里
+        # 每一项都 timeout，既拿不到映射又白占 select_ok 的探测名额。口径与
+        # super_p2p 侧 V298 的 STUN_TARGETS 一致。
         shell: bash
         run: |
           python3 patches/hand_stun.py
+          echo ">> assert domestic-only STUN (common.rs STUNS_V4 + webrtc.rs ICE)"
+          # 每条 STUN 表体单独取出来检查：注释里会提到被删掉的主机名，
+          # 整体 grep 会误报（与 V298 的 STUN_TARGETS 断言同一个坑）。
+          grep -qF 'stun.miwifi.com' src/common.rs \
+            || { echo "[FAIL] v298-followup: common.rs STUNS_V4 not injected"; exit 1; }
+          ! sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qE 'cloudflare|nextcloud|google|twilio' \
+            || { echo "[FAIL] v298-followup: foreign STUN still in STUNS_V4"; exit 1; }
+          ! sed -n '/^static DEFAULT_ICE_SERVERS/,/^\];/p' libs/hbb_common/src/webrtc.rs | grep -qE 'cloudflare|nextcloud|google|twilio' \
+            || { echo "[FAIL] v298-followup: foreign STUN still in DEFAULT_ICE_SERVERS"; exit 1; }
+          echo "[OK] v298-followup: STUNS_V4 + DEFAULT_ICE_SERVERS are domestic-only"
 
       - name: Set server
         shell: bash
