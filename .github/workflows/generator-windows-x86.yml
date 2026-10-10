@@ -698,18 +698,27 @@ jobs:
         shell: bash
         run: |
           set -e
-          cargo fetch --locked 2>/dev/null || true
           # hwcodec 是 feature-gated 的 git 依赖：普通 cargo fetch（默认特性）不会
           # 检出它，导致下面 glob 找不到 checkout、补丁被静默跳过（E0061）。
-          # 用特性感知的解析命令强制把 hwcodec 的 git checkout 先落下来。
-          cargo metadata --locked --features hwcodec,vram,flutter --format-version 1 >/dev/null 2>&1 \
-            || cargo build --locked -p hwcodec 2>&1 | tail -2 || true
+          # 快路径：特性感知解析强制物化 checkout；若失败再用真实构建命令预拉取
+          # （cargo 在编译前必先 checkout 该 git 依赖，即便因未打补丁而在 scrap 处
+          #  E0061 失败也无妨，checkout 已落地），兜底保障补丁能打上。
+          cargo metadata --features hwcodec,vram,flutter --format-version 1 >/dev/null \
+            || echo "::warning::[v302b] cargo metadata 失败，将用 cargo build 预拉取"
           CO=""
           for d in "$HOME"/.cargo/git/checkouts/hwcodec-*/*; do
             [ -f "$d/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" ] && CO="$d" && break
           done
           if [ -z "$CO" ]; then
-            echo "::warning::[v302b] hwcodec fork checkout not found under ~/.cargo/git/checkouts; forced-IDR will NOT reach the hardware paths on this run (software AV1 is still fixed by v302)"
+            echo "::warning::[v302b] checkout 未物化，尝试 cargo build 预拉取 hwcodec"
+            cargo build --features hwcodec,vram,flutter 2>&1 | tail -5 || true
+            CO=""
+            for d in "$HOME"/.cargo/git/checkouts/hwcodec-*/*; do
+              [ -f "$d/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" ] && CO="$d" && break
+            done
+          fi
+          if [ -z "$CO" ]; then
+            echo "::warning::[v302b] hwcodec fork checkout STILL not found under ~/.cargo/git/checkouts; forced-IDR will NOT reach the hardware paths on this run (software AV1 is still fixed by v302)"
             exit 0
           fi
           echo ">> patching hwcodec fork at $CO"
