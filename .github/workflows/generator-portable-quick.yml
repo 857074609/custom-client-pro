@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 197dc28f0afdf7f790df463a306527c8762f2776
+      patches_sha: d215ef97c31f0fe89fb4baa704db74e9c7093599
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 197dc28f0afdf7f790df463a306527c8762f2776
+          ref: d215ef97c31f0fe89fb4baa704db74e9c7093599
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2454,9 +2454,25 @@ jobs:
           # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
           # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
           # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
-          # super_p2p command above (which adds the module). Only wired here
-          # because super_p2p is currently applied only in this windows workflow.
+          # super_p2p command above (which adds the module).
           python3 patches/patch_remove_test_nat_type.py .
+          # [V296] SoonDesk 复刻：候选池拆分 + 有界兜底。断言补丁确实把三处
+          # 新符号写进了 checkout（patches 侧只做写入，编译由下面的 cargo check 兜底；
+          # 这里先做存在性断言，让符号缺失在几分钟内失败而不是等到完整构建）。
+          echo ">> assert V296 super_p2p candidate split + bounded fallback"
+          grep -qF 'pub fn exact_candidates' src/super_p2p/predict.rs \
+            || { echo "[FAIL] v296: predict.rs exact_candidates missing"; exit 1; }
+          grep -qF 'pub fn fixed_endpoint_fallback' src/super_p2p/predict.rs \
+            || { echo "[FAIL] v296: predict.rs fixed_endpoint_fallback missing"; exit 1; }
+          grep -qF 'let mut out = exact_candidates(advertised, additional);' src/super_p2p/predict.rs \
+            || { echo "[FAIL] v296: predict.rs build_candidates not split (exact not hoisted)"; exit 1; }
+          grep -qF 'FALLBACK_PORT_RADIUS: i32 = 24' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v296: mod.rs FALLBACK_PORT_RADIUS missing"; exit 1; }
+          grep -qF 'predict::fixed_endpoint_fallback(primary, FALLBACK_PORT_RADIUS)' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v296: mod.rs bounded fallback not wired into probe_direct"; exit 1; }
+          grep -qF 'EXACT_RESEND_ROUNDS' src/super_p2p/probe.rs \
+            || { echo "[FAIL] v296: probe.rs exact resend not throttled"; exit 1; }
+          echo "[OK] v296: exact/predicted split + fixed_endpoint_fallback + resend throttle all present"
           # [V298] STUN 池去境外：现场双端日志里 stun.l.google.com:19302 /
           # stun.cloudflare.com:3478 每轮吃 200~500ms 后返回 io: stun timeout
           # （与我们的 public mapping 发现无关，纯浪费预算），已删除，只保留

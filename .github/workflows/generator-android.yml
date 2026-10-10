@@ -1252,6 +1252,82 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
+        # [LnDesk port] Windows-only historically; now wired on Android too so
+        # the authenticated port-prediction stack ships on mobile. The module
+        # tree is std-only and compiles cleanly for aarch64-linux-android /
+        # i686-linux-android (win_udp.rs no-ops on POSIX, route_lock.rs returns
+        # "not implemented" on non-Windows, crypto.rs uses /dev/urandom) - so
+        # the same injector runs unchanged. direct-e2ee (v88) already ran
+        # above, which is the V189 TOFU route prerequisite.
+        #
+        # Gating: `!= 'observe'` keeps the historical backward-compatible
+        # default-on behavior (a missing key => default enabled). Unchecking
+        # skips super-p2p AND V200 together, leaving the upstream native
+        # test_nat_type in place - there is no compile risk of calling a
+        # removed module.
+        if: fromJson(inputs.extras || '{}').super_p2p_enforcement != 'observe'
+        env:
+          SUPER_P2P_DEFAULT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement == 'observe' && 'false' || 'true' }}
+          SUPER_P2P_ENFORCEMENT: ${{ fromJson(inputs.extras || '{}').super_p2p_enforcement || 'on' }}
+          SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
+        shell: bash
+        run: |
+          python3 patches/patch_super_p2p.py .
+          # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
+          # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
+          # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
+          # super_p2p command above (which adds the module).
+          python3 patches/patch_remove_test_nat_type.py .
+          # [V296] SoonDesk 复刻：候选池拆分 + 有界兜底。断言补丁确实把三处
+          # 新符号写进了 checkout（patches 侧只做写入，编译由下面的 Build
+          # rustdesk lib 兜底；这里先做存在性断言，让符号缺失在几分钟内失败
+          # 而不是等到完整 Gradle 构建）。
+          echo ">> assert V296 super_p2p candidate split + bounded fallback"
+          grep -qF 'pub fn exact_candidates' src/super_p2p/predict.rs \
+            || { echo "[FAIL] v296: predict.rs exact_candidates missing"; exit 1; }
+          grep -qF 'pub fn fixed_endpoint_fallback' src/super_p2p/predict.rs \
+            || { echo "[FAIL] v296: predict.rs fixed_endpoint_fallback missing"; exit 1; }
+          grep -qF 'let mut out = exact_candidates(advertised, additional);' src/super_p2p/predict.rs \
+            || { echo "[FAIL] v296: predict.rs build_candidates not split (exact not hoisted)"; exit 1; }
+          grep -qF 'FALLBACK_PORT_RADIUS: i32 = 24' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v296: mod.rs FALLBACK_PORT_RADIUS missing"; exit 1; }
+          grep -qF 'predict::fixed_endpoint_fallback(primary, FALLBACK_PORT_RADIUS)' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v296: mod.rs bounded fallback not wired into probe_direct"; exit 1; }
+          grep -qF 'EXACT_RESEND_ROUNDS' src/super_p2p/probe.rs \
+            || { echo "[FAIL] v296: probe.rs exact resend not throttled"; exit 1; }
+          echo "[OK] v296: exact/predicted split + fixed_endpoint_fallback + resend throttle all present"
+          # [V298] STUN 池去境外：现场双端日志里 stun.l.google.com:19302 /
+          # stun.cloudflare.com:3478 每轮吃 200~500ms 后返回 io: stun timeout
+          # （与我们的 public mapping 发现无关，纯浪费预算），已删除，只保留
+          # 国内可达目标（SoonDesk 同款口径）。断言三个境外目标确实不在了。
+          python3 patches/patch_stun_pool_domestic.py .
+          grep -qF 'stun.miwifi.com' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v298: domestic STUN list missing"; exit 1; }
+          ! sed -n '/^const STUN_TARGETS/,/^];/p' src/super_p2p/mod.rs | grep -qF 'stun.l.google.com' \
+            || { echo "[FAIL] v298: foreign STUN (google) still in pool"; exit 1; }
+          ! sed -n '/^const STUN_TARGETS/,/^];/p' src/super_p2p/mod.rs | grep -qF 'stun.cloudflare.com' \
+            || { echo "[FAIL] v298: foreign STUN (cloudflare) still in pool"; exit 1; }
+          echo "[OK] v298: STUN pool is domestic-only (google/cloudflare removed)"
+          # [V299] 删除 NAT 类型检测，无条件尝试打洞：原先 hbbs 把中继的
+          # peer_nat_type 下发，对端 client.rs 一旦判为 SYMMETRIC 就直接放弃
+          # 打洞改走 relay race。现场该判定频繁误伤（打洞本来能成），改为
+          # 不再分类、不再据此短路，一律尝试。
+          python3 patches/patch_remove_nat_type_gate.py .
+          grep -qF 'v299: classification removed' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v299: NAT classification still runs in refresh_my_nat_type"; exit 1; }
+          echo "[OK] v299: NAT-type detection removed, punching is unconditional"
+          # [V300] probe 短路：已有 validated 候选时压缩 predicted 预算。
+          # 现场 predicted 候选动辄上百个、每轮 batch 全部尝试，而真正打通
+          # 的往往是 exact；V300 在 validated 出现后把 predicted 的发送上限
+          # 压到 SHORT_CIRCUIT_PREDICTED_CAP（16），exact 永不裁剪。
+          python3 patches/patch_probe_short_circuit.py .
+          grep -qF 'SHORT_CIRCUIT_PREDICTED_CAP' src/super_p2p/probe.rs \
+            || { echo "[FAIL] v300: probe.rs predicted cap missing"; exit 1; }
+          grep -qF 'short_circuit_on_validated' src/super_p2p/probe.rs \
+            || { echo "[FAIL] v300: probe.rs short-circuit switch missing"; exit 1; }
+          echo "[OK] v300: probe short-circuits predicted once a candidate is validated"
+
       - name: replace flutter icons
         if: ${{ inputs.iconlink != 'false' }}
         run: |
