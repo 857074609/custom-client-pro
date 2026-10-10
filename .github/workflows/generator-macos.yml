@@ -508,6 +508,25 @@ jobs:
           grep -qF '[LnDesk v269 low-latency]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop gates missing"; exit 1; }
           echo "[OK] v269: low-latency pipeline applied"
 
+      - name: Apply QoS ratio asymmetry patch (v297)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v297] Asymmetric ratio recovery, low-latency mode only.
+          # Sustained full-motion scenes (spin a window) pushed avg_delay past
+          # 150ms; upstream's UP path is proportional AND gated on
+          # dynamic_screen, so once motion stops the gate closes and the ratio
+          # never climbs back -- the 150 kbps limiter then throttles what does
+          # get through. Fix: fixed +0.5 up-step, no dynamic_screen gate,
+          # +1000 kbps allowance; DOWN path untouched. Requires the v269
+          # is_low_latency_mode() helper, so it MUST run after the step above.
+          python3 patches/patch_qos_ratio_asymmetry.py .
+          grep -qF '[LnDesk v297 qos-ratio-asymmetry]' src/server/video_qos.rs || { echo "[FAIL] v297: ratio asymmetry marker missing"; exit 1; }
+          grep -qF 'current_ratio + 0.5' src/server/video_qos.rs || { echo "[FAIL] v297: fixed up-step missing"; exit 1; }
+          grep -qF 'let up_kbps = if is_low_latency_mode() {' src/server/video_qos.rs || { echo "[FAIL] v297: limiter relaxation missing"; exit 1; }
+          echo "[OK] v297: QoS ratio asymmetry (fixed up-step, gate removed, allowance raised)"
+
       - name: Apply cursor prediction patch (v269)
         shell: bash
         env:
