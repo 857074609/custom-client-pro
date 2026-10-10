@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: ea5c599660bbf8246b4904cb9d5f39c5b5a3604d
+      patches_sha: f66dfe08d723996dc35acad70c634efb4e22a61e
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: ea5c599660bbf8246b4904cb9d5f39c5b5a3604d
+          ref: f66dfe08d723996dc35acad70c634efb4e22a61e
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -722,7 +722,7 @@ jobs:
             || { echo "[FAIL] v302: aom force-keyframe flag missing"; exit 1; }
           grep -qF 'pub fn request_keyframe_next()' libs/scrap/src/common/codec.rs \
             || { echo "[FAIL] v302: codec.rs one-shot keyframe request missing"; exit 1; }
-          grep -qF 'crate::codec::request_keyframe_next();' src/server/video_service.rs \
+          grep -qF 'scrap::codec::request_keyframe_next();' src/server/video_service.rs \
             || { echo "[FAIL] v302: video_service.rs does not request an IDR after rebuild"; exit 1; }
           echo "[OK] v302: aom CBR->CQ + IDR boost + forced IDR on rebuild"
 
