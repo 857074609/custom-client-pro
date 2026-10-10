@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d215ef97c31f0fe89fb4baa704db74e9c7093599
+      patches_sha: 817f91524ee197804161ad893a9fc1e17500b05e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d215ef97c31f0fe89fb4baa704db74e9c7093599
+          ref: 817f91524ee197804161ad893a9fc1e17500b05e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1304,6 +1304,7 @@ jobs:
           # is_low_latency_mode(): option low-latency-mode Y/N explicit,
           # empty = baked default from extras.low_latency_mode.
           python3 patches/patch_low_latency_pipeline.py .
+          python3 patches/patch_v304_low_latency_default.py .
           grep -qF '[LnDesk v269 low-latency]' src/server/video_qos.rs || { echo "[FAIL] v269: video_qos helper missing"; exit 1; }
           grep -qF 'framerate: config.fps.unwrap_or(30)' libs/scrap/src/common/vram.rs || { echo "[FAIL] v269: vram fps missing"; exit 1; }
           grep -qF 'fps: Some(VIDEO_QOS.lock().unwrap().highest_fps())' src/server/video_service.rs || { echo "[FAIL] v269: video_service fps feed missing"; exit 1; }
