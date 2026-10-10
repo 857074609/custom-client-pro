@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 5e69f6243458ed0397a58529d7f546244e5d9a32
+      patches_sha: ea5c599660bbf8246b4904cb9d5f39c5b5a3604d
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 5e69f6243458ed0397a58529d7f546244e5d9a32
+          ref: ea5c599660bbf8246b4904cb9d5f39c5b5a3604d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1205,7 +1205,7 @@ jobs:
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
           python3 patches/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF 'a20f302c6d836582afa29b394cce978d7dbf0a11' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          grep -qF '944e5e8c4f384d89fe6931528fe30fdef17f0df7' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
 
@@ -1436,11 +1436,11 @@ jobs:
           echo "[OK] v302: aom CBR->CQ + IDR boost + forced IDR on rebuild"
 
       # [LnDesk v302b] force_i 3-arg encode now ships NATIVELY in the hwcodec
-      # fork @ a20f302 (pinned by the v260 step via patch_hwcodec_zerolatency.py
+      # fork @ 944e5e8 (pinned by the v260 step via patch_hwcodec_zerolatency.py
       # REV). The build-time patch of the cargo git checkout below was removed:
       # cargo caches git deps by rev and ignores in-place checkout edits, so it
       # was a no-op (E0061 persisted across ac735476/b83497be). No per-build
-      # patch is needed -- cargo re-resolves to a20f302 and recompiles hwcodec
+      # patch is needed -- cargo re-resolves to 944e5e8 and recompiles hwcodec
       # with the force_i API that libs/scrap::encode(yuv, ms, force_i) expects.
       - name: Apply permanent password patch
         shell: bash
@@ -2310,8 +2310,8 @@ jobs:
         shell: bash
         run: |
           grep -qF '857074609/hwcodec' ./Cargo.lock || { echo "[FAIL] v260 hwcodec zerolatency fork missing from lock"; exit 1; }
-          grep -qF 'a20f302c6d836582afa29b394cce978d7dbf0a11' ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to a20f302"; exit 1; }
-          echo "[OK] v260 hwcodec fork materialized in lock @ a20f302"
+          grep -qF '944e5e8c4f384d89fe6931528fe30fdef17f0df7' ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to 944e5e8"; exit 1; }
+          echo "[OK] v260 hwcodec fork materialized in lock @ 944e5e8"
       - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
         # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
         # 「启用P2P增强」(super_p2p_enforcement) 一个复选框。
