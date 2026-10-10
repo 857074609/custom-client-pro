@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 936f62b16b4fbb8013452bd26e06ed2b9477858e
+      patches_sha: 197dc28f0afdf7f790df463a306527c8762f2776
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 936f62b16b4fbb8013452bd26e06ed2b9477858e
+          ref: 197dc28f0afdf7f790df463a306527c8762f2776
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1418,14 +1418,13 @@ jobs:
           #   (a1) 软件 AV1 补上 1.25x 码率补偿（AomEncoder::bitrate）
           #   (a2) **rc_end_usage CBR -> CQ**（载荷性修复：CQ 允许把一个 GOP 的
           #        预算不均匀地花在 IDR 上，长期均值仍由 rc_target_bitrate 约束）
-          #   (a3) rc_max_rate 峰值上限 2.5x（librc 只在 VBR/CQ 读该字段）
+          #   (a3) [rc_max_rate peak cap dropped: CI libaom's aom_codec_enc_cfg lacks the field; the CBR->CQ switch (a2) is the load-bearing fix]
           #   (b)  重建后的第一帧强制 IDR
           python3 patches/patch_gop_continuity.py .
           test -f libs/scrap/src/common/aom.rs || { echo "[FAIL] v302: aom.rs not found"; exit 1; }
           grep -qF 'aom_rc_mode::AOM_CQ' libs/scrap/src/common/aom.rs \
             || { echo "[FAIL] v302: rc_end_usage not switched to CQ (the load-bearing fix)"; exit 1; }
-          grep -qF 'c.rc_max_rate =' libs/scrap/src/common/aom.rs \
-            || { echo "[FAIL] v302: rc_max_rate peak cap missing"; exit 1; }
+          # [rc_max_rate assert dropped: field absent in CI libaom; covered by the CQ switch (a2)]
           grep -qF 'IDR_BITRATE_BOOST' libs/scrap/src/common/aom.rs \
             || { echo "[FAIL] v302: software AV1 IDR bitrate boost missing"; exit 1; }
           grep -qF 'AOM_EFLAG_FORCE_KF' libs/scrap/src/common/aom.rs \
@@ -1434,7 +1433,7 @@ jobs:
             || { echo "[FAIL] v302: codec.rs one-shot keyframe request missing"; exit 1; }
           grep -qF 'crate::codec::request_keyframe_next();' src/server/video_service.rs \
             || { echo "[FAIL] v302: video_service.rs does not request an IDR after rebuild"; exit 1; }
-          echo "[OK] v302: aom CBR->CQ + IDR boost + rc_max_rate + forced IDR on rebuild"
+          echo "[OK] v302: aom CBR->CQ + IDR boost + forced IDR on rebuild"
 
       - name: Patch hwcodec fork source (v302b force_i)
         # [LnDesk v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
@@ -1448,6 +1447,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          cargo fetch --locked --features hwcodec,vram,flutter
           CO=""
           for d in "$HOME"/.cargo/git/checkouts/hwcodec-*/*; do
             [ -f "$d/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" ] && CO="$d" && break
