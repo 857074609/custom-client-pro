@@ -672,6 +672,77 @@ jobs:
           grep -qF "let ratio = ratio * 1.25;" libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v289: IDR bitrate boost missing"; exit 1; }
           echo "[OK] v289: qmax guard (H264=28 / H265=32) + IDR bitrate boost active"
 
+      - name: Apply GOP continuity patch (v302)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v302] 隐私模式切换后保持 GOP 连续 —— AV1 errcode=7 根因修复。
+          #
+          # 链条：V289 把 live IDR 间隔压到 15 帧（4 IDR/s），同一次改动只给
+          # **硬件**路径加了 1.25x 码率补偿（patch_qmax_guard.py 注释写明
+          # "Software VP8/VP9/AV1 encoders are untouched ... not the low-latency
+          # main line"），但现场跑的是 **AV1（软件 libaom）**。
+          #
+          # 更关键的是 aom.rs 一直用 rc_end_usage = AOM_CBR：CBR 的每片码率
+          # 上限只给一个 IDR 约 7.7% 的 GOP 预算，而一个干净 IDR + 其后 14 个
+          # P 帧需要 22.2%（4/18）—— 结构性 ~2.9x 缺口，QP 被压到帧内预测自身
+          # 崩坏，客户端拿到解不了的帧 -> AOM_CODEC_CORRUPT_FRAME (errcode=7)
+          # -> 解码器 reset 循环。隐私模式切换会重建编码器，新编码器 gop_counter
+          # 从 0 起算、立刻要一个 IDR，正好撞在 QOS 刚复位、预算最紧的时刻。
+          #
+          # 修复（三处协同 + 一次强制 IDR）：
+          #   (a1) 软件 AV1 补上 1.25x 码率补偿（AomEncoder::bitrate）
+          #   (a2) **rc_end_usage CBR -> CQ**（载荷性修复：CQ 允许把一个 GOP 的
+          #        预算不均匀地花在 IDR 上，长期均值仍由 rc_target_bitrate 约束）
+          #   (a3) rc_max_rate 峰值上限 2.5x（librc 只在 VBR/CQ 读该字段）
+          #   (b)  重建后的第一帧强制 IDR
+          python3 patches/patch_gop_continuity.py .
+          test -f libs/scrap/src/common/aom.rs || { echo "[FAIL] v302: aom.rs not found"; exit 1; }
+          grep -qF 'aom_rc_mode::AOM_CQ' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: rc_end_usage not switched to CQ (the load-bearing fix)"; exit 1; }
+          grep -qF 'c.rc_max_rate =' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: rc_max_rate peak cap missing"; exit 1; }
+          grep -qF 'IDR_BITRATE_BOOST' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: software AV1 IDR bitrate boost missing"; exit 1; }
+          grep -qF 'AOM_EFLAG_FORCE_KF' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: aom force-keyframe flag missing"; exit 1; }
+          grep -qF 'pub fn request_keyframe_next()' libs/scrap/src/common/codec.rs \
+            || { echo "[FAIL] v302: codec.rs one-shot keyframe request missing"; exit 1; }
+          grep -qF 'crate::codec::request_keyframe_next();' src/server/video_service.rs \
+            || { echo "[FAIL] v302: video_service.rs does not request an IDR after rebuild"; exit 1; }
+          echo "[OK] v302: aom CBR->CQ + IDR boost + rc_max_rate + forced IDR on rebuild"
+
+      - name: Patch hwcodec fork source (v302b force_i)
+        # [LnDesk v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
+        # channel) 的 force_i 贯通：v302 的强制 IDR 只有真正落到 FFI 才有
+        # 意义，否则硬编路径只是记录了请求却没强制。
+        #
+        # hwcodec 是通过根 Cargo.toml 的 [patch.".../hwcodec"] 表从
+        # 857074609/hwcodec@rev 解析的**源码依赖**，cargo 会解包到
+        # ~/.cargo/git/checkouts/hwcodec-* 下 —— workspace 里没有 hwcodec/。
+        # 找不到 checkout 就 [SKIP] 并显式告警（宁可漏改也不静默编到未改的 fork）。
+        shell: bash
+        run: |
+          set -e
+          CO=""
+          for d in "$HOME"/.cargo/git/checkouts/hwcodec-*/*; do
+            [ -f "$d/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" ] && CO="$d" && break
+          done
+          if [ -z "$CO" ]; then
+            echo "::warning::[v302b] hwcodec fork checkout not found under ~/.cargo/git/checkouts; forced-IDR will NOT reach the hardware paths on this run (software AV1 is still fixed by v302)"
+            exit 0
+          fi
+          echo ">> patching hwcodec fork at $CO"
+          python3 patches/patch_hwcodec_force_i.py "$CO"
+          grep -qF 'force_i' "$CO/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" \
+            || { echo "[FAIL] v302b: hwcodec ram FFI missing force_i"; exit 1; }
+          grep -qF 'AV_PICTURE_TYPE_I' "$CO/cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp" \
+            || { echo "[FAIL] v302b: hwcodec ram encode does not force I-frame"; exit 1; }
+          grep -qF 'force_i' "$CO/cpp/ffmpeg_vram/ffmpeg_vram_ffi.h" \
+            || { echo "[FAIL] v302b: hwcodec vram FFI missing force_i"; exit 1; }
+          echo "[OK] v302b: hwcodec force_i plumbed through ram + vram FFI"
+
       - name: set permanent password (preset, via patches/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
         shell: bash
@@ -996,6 +1067,21 @@ jobs:
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
+          # ----------------------------------------------------------------------
+          # [LnDesk v301] mixed-ok: auto-iroh 的 8 秒白等
+          # ----------------------------------------------------------------------
+          # [v223] "Direct-first hold" 把 `mixed(udp+relay)` 也当作"还没直连"，
+          # 于是握手成功（249ms）后仍钻进 10s 迁移等待，吃掉 client.rs 的
+          # 8000ms auto-iroh 预算，白等 8 秒才回落。v301 把等待条件收紧为
+          # 「纯 Relay」，mixed 直接放行；等待上限 10s -> 3s。
+          python3 patches/patch_iroh_mixed_ok.py .
+          grep -qF 'HOLD_MS_DIRECT_FIRST: u64 = 3_000' ./src/iroh_transport.rs \
+            || { echo "[FAIL] v301: iroh hold not bounded to 3s"; exit 1; }
+          grep -qF 'ConnectionType::Relay { .. }' ./src/iroh_transport.rs \
+            || { echo "[FAIL] v301: iroh mixed-ok gate missing (mixed must not wait)"; exit 1; }
+          ! grep -qF 'Some(iroh::endpoint::ConnectionType::Direct { .. })' ./src/iroh_transport.rs \
+            || { echo "[FAIL] v301: v223 Direct-only hold condition still present"; exit 1; }
+          echo "[OK] v301: auto-iroh treats mixed(udp+relay) as usable (hold only for relay-only, 3s)"
 
       - name: iroh first connection (v149) - android enablement
         # Turns on the desktop "Iroh first connection" machinery for Android:

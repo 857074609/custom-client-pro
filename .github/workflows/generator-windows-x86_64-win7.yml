@@ -1348,6 +1348,77 @@ jobs:
           grep -qF "let ratio = ratio * 1.25;" libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v289: IDR bitrate boost missing"; exit 1; }
           echo "[OK] v289: qmax guard (H264=28 / H265=32) + IDR bitrate boost active"
 
+      - name: Apply GOP continuity patch (v302)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v302] 隐私模式切换后保持 GOP 连续 —— AV1 errcode=7 根因修复。
+          #
+          # 链条：V289 把 live IDR 间隔压到 15 帧（4 IDR/s），同一次改动只给
+          # **硬件**路径加了 1.25x 码率补偿（patch_qmax_guard.py 注释写明
+          # "Software VP8/VP9/AV1 encoders are untouched ... not the low-latency
+          # main line"），但现场跑的是 **AV1（软件 libaom）**。
+          #
+          # 更关键的是 aom.rs 一直用 rc_end_usage = AOM_CBR：CBR 的每片码率
+          # 上限只给一个 IDR 约 7.7% 的 GOP 预算，而一个干净 IDR + 其后 14 个
+          # P 帧需要 22.2%（4/18）—— 结构性 ~2.9x 缺口，QP 被压到帧内预测自身
+          # 崩坏，客户端拿到解不了的帧 -> AOM_CODEC_CORRUPT_FRAME (errcode=7)
+          # -> 解码器 reset 循环。隐私模式切换会重建编码器，新编码器 gop_counter
+          # 从 0 起算、立刻要一个 IDR，正好撞在 QOS 刚复位、预算最紧的时刻。
+          #
+          # 修复（三处协同 + 一次强制 IDR）：
+          #   (a1) 软件 AV1 补上 1.25x 码率补偿（AomEncoder::bitrate）
+          #   (a2) **rc_end_usage CBR -> CQ**（载荷性修复：CQ 允许把一个 GOP 的
+          #        预算不均匀地花在 IDR 上，长期均值仍由 rc_target_bitrate 约束）
+          #   (a3) rc_max_rate 峰值上限 2.5x（librc 只在 VBR/CQ 读该字段）
+          #   (b)  重建后的第一帧强制 IDR
+          python3 patches/patch_gop_continuity.py .
+          test -f libs/scrap/src/common/aom.rs || { echo "[FAIL] v302: aom.rs not found"; exit 1; }
+          grep -qF 'aom_rc_mode::AOM_CQ' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: rc_end_usage not switched to CQ (the load-bearing fix)"; exit 1; }
+          grep -qF 'c.rc_max_rate =' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: rc_max_rate peak cap missing"; exit 1; }
+          grep -qF 'IDR_BITRATE_BOOST' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: software AV1 IDR bitrate boost missing"; exit 1; }
+          grep -qF 'AOM_EFLAG_FORCE_KF' libs/scrap/src/common/aom.rs \
+            || { echo "[FAIL] v302: aom force-keyframe flag missing"; exit 1; }
+          grep -qF 'pub fn request_keyframe_next()' libs/scrap/src/common/codec.rs \
+            || { echo "[FAIL] v302: codec.rs one-shot keyframe request missing"; exit 1; }
+          grep -qF 'crate::codec::request_keyframe_next();' src/server/video_service.rs \
+            || { echo "[FAIL] v302: video_service.rs does not request an IDR after rebuild"; exit 1; }
+          echo "[OK] v302: aom CBR->CQ + IDR boost + rc_max_rate + forced IDR on rebuild"
+
+      - name: Patch hwcodec fork source (v302b force_i)
+        # [LnDesk v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
+        # channel) 的 force_i 贯通：v302 的强制 IDR 只有真正落到 FFI 才有
+        # 意义，否则硬编路径只是记录了请求却没强制。
+        #
+        # hwcodec 是通过根 Cargo.toml 的 [patch.".../hwcodec"] 表从
+        # 857074609/hwcodec@rev 解析的**源码依赖**，cargo 会解包到
+        # ~/.cargo/git/checkouts/hwcodec-* 下 —— workspace 里没有 hwcodec/。
+        # 找不到 checkout 就 [SKIP] 并显式告警（宁可漏改也不静默编到未改的 fork）。
+        shell: bash
+        run: |
+          set -e
+          CO=""
+          for d in "$HOME"/.cargo/git/checkouts/hwcodec-*/*; do
+            [ -f "$d/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" ] && CO="$d" && break
+          done
+          if [ -z "$CO" ]; then
+            echo "::warning::[v302b] hwcodec fork checkout not found under ~/.cargo/git/checkouts; forced-IDR will NOT reach the hardware paths on this run (software AV1 is still fixed by v302)"
+            exit 0
+          fi
+          echo ">> patching hwcodec fork at $CO"
+          python3 patches/patch_hwcodec_force_i.py "$CO"
+          grep -qF 'force_i' "$CO/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" \
+            || { echo "[FAIL] v302b: hwcodec ram FFI missing force_i"; exit 1; }
+          grep -qF 'AV_PICTURE_TYPE_I' "$CO/cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp" \
+            || { echo "[FAIL] v302b: hwcodec ram encode does not force I-frame"; exit 1; }
+          grep -qF 'force_i' "$CO/cpp/ffmpeg_vram/ffmpeg_vram_ffi.h" \
+            || { echo "[FAIL] v302b: hwcodec vram FFI missing force_i"; exit 1; }
+          echo "[OK] v302b: hwcodec force_i plumbed through ram + vram FFI"
+
       - name: Apply permanent password patch
         shell: bash
         run: |
@@ -2307,6 +2378,38 @@ jobs:
           # super_p2p command above (which adds the module). Only wired here
           # because super_p2p is currently applied only in this windows workflow.
           python3 patches/patch_remove_test_nat_type.py .
+          # [V298] STUN 池去境外：现场双端日志里 stun.l.google.com:19302 /
+          # stun.cloudflare.com:3478 每轮吃 200~500ms 后返回 io: stun timeout
+          # （与我们的 public mapping 发现无关，纯浪费预算），已删除，只保留
+          # 国内可达目标（SoonDesk 同款口径）。断言三个境外目标确实不在了。
+          python3 patches/patch_stun_pool_domestic.py .
+          grep -qF 'stun.miwifi.com' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v298: domestic STUN list missing"; exit 1; }
+          # 注意：注释里会提到被删掉的主机名，所以不能整体 grep；只检查
+          # STUN_TARGETS 表体内部是否还有 ("host", port) 形式的条目。
+          ! sed -n '/^const STUN_TARGETS/,/^];/p' src/super_p2p/mod.rs | grep -qF 'stun.l.google.com' \
+            || { echo "[FAIL] v298: foreign STUN (google) still in pool"; exit 1; }
+          ! sed -n '/^const STUN_TARGETS/,/^];/p' src/super_p2p/mod.rs | grep -qF 'stun.cloudflare.com' \
+            || { echo "[FAIL] v298: foreign STUN (cloudflare) still in pool"; exit 1; }
+          echo "[OK] v298: STUN pool is domestic-only (google/cloudflare removed)"
+          # [V299] 删除 NAT 类型检测，无条件尝试打洞：原先 hbbs 把中继的
+          # peer_nat_type 下发，对端 client.rs 一旦判为 SYMMETRIC 就直接放弃
+          # 打洞改走 relay race。现场该判定频繁误伤（打洞本来能成），改为
+          # 不再分类、不再据此短路，一律尝试。
+          python3 patches/patch_remove_nat_type_gate.py .
+          grep -qF 'v299: classification removed' src/super_p2p/mod.rs \
+            || { echo "[FAIL] v299: NAT classification still runs in refresh_my_nat_type"; exit 1; }
+          echo "[OK] v299: NAT-type detection removed, punching is unconditional"
+          # [V300] probe 短路：已有 validated 候选时压缩 predicted 预算。
+          # 现场 predicted 候选动辄上百个、每轮 batch 全部尝试，而真正打通
+          # 的往往是 exact；V300 在 validated 出现后把 predicted 的发送上限
+          # 压到 SHORT_CIRCUIT_PREDICTED_CAP（16），exact 永不裁剪。
+          python3 patches/patch_probe_short_circuit.py .
+          grep -qF 'SHORT_CIRCUIT_PREDICTED_CAP' src/super_p2p/probe.rs \
+            || { echo "[FAIL] v300: probe.rs predicted cap missing"; exit 1; }
+          grep -qF 'short_circuit_on_validated' src/super_p2p/probe.rs \
+            || { echo "[FAIL] v300: probe.rs short-circuit switch missing"; exit 1; }
+          echo "[OK] v300: probe short-circuits predicted once a candidate is validated"
           python3 patches/patch_quality_monitor_c.py .
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
