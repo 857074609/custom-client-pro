@@ -649,7 +649,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          cargo fetch --locked --features hwcodec,vram,flutter
+          cargo fetch --locked
           CO=""
           for d in "$HOME"/.cargo/git/checkouts/hwcodec-*/*; do
             [ -f "$d/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" ] && CO="$d" && break
