@@ -543,7 +543,11 @@ jobs:
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
           python3 patches/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF '944e5e8c4f384d89fe6931528fe30fdef17f0df7' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
+          # [LnDesk v307a-rev-single-source] read the pinned hwcodec rev from its single
+          # definition point instead of hard-coding a hash that goes
+          # stale on every REV bump.
+          HWC_REV="$(python3 -c 'import importlib.util as u; s=u.spec_from_file_location("p","patches/patch_hwcodec_zerolatency.py"); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.REV)')"
+          grep -qF "rev = \"$HWC_REV\"" Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
           echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
 
