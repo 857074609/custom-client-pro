@@ -1186,11 +1186,20 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_lock_compiletime.py
-          # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
+
+      - name: Apply keyframe interval patch (v259)
+        # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear.
+        # [LnDesk v308] This is an image-quality change, so it is gated behind the
+        # builder's "image quality optimisation" checkbox -- unchecking it must
+        # leave the upstream keyframe behaviour untouched for A/B isolation.
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
+        shell: bash
+        run: |
           python3 patches/patch_keyframe_interval.py
           grep -q "else { Some(15) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
 
       - name: Apply hwcodec zerolatency fork patch (v260)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           # [LnDesk v260] Root fix for the H264/H265 hardware-encoder mouse
@@ -1215,6 +1224,7 @@ jobs:
 
 
       - name: Apply AV1 hardware encoding patch (v275)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1241,6 +1251,7 @@ jobs:
           echo "[OK] v275: AV1 may use av1_nvenc / av1_qsv, libaom fallback retained"
 
       - name: Bump vendored ffmpeg overlay to 9.0.2 (v275)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1261,6 +1272,7 @@ jobs:
 
 
       - name: Apply privacy virtual-display cursor-embedded patch (v261)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1280,6 +1292,7 @@ jobs:
           echo "[OK] v261: virtual-display privacy reports cursor_embedded=true"
 
       - name: Apply privacy cursor-by-encoder patch (v263)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1303,6 +1316,7 @@ jobs:
 
 
       - name: Apply low-latency pipeline patch (v269)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           EXTRAS: '${{ inputs.extras }}'
@@ -1346,6 +1360,7 @@ jobs:
           echo "[OK] v297: QoS ratio asymmetry (fixed up-step, gate removed, allowance raised)"
 
       - name: Apply cursor prediction patch (v269)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1363,6 +1378,7 @@ jobs:
           grep -qF '[LnDesk v269 cursor-prediction]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop hooks missing"; exit 1; }
           echo "[OK] v269: cursor prediction applied"
       - name: Apply fps240 patch (v270)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1380,6 +1396,7 @@ jobs:
           echo "[OK] v270+v289 fps: ceiling 240 kept, effective default 60 (kDefaultFps / config fallback / encoder baseline)"
 
       - name: Apply qmax guard patch (v289)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1408,6 +1425,7 @@ jobs:
           echo "[OK] v305b: qmax guard (H264 base 28 / H265 base 32, scales with ratio) + IDR bitrate boost active"
 
       - name: Apply GOP continuity patch (v302)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1448,6 +1466,7 @@ jobs:
           echo "[OK] v302: aom CBR->CQ + IDR boost + forced IDR on rebuild"
 
       - name: Apply rebuild-window qmax floor (v306 R1)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1493,6 +1512,7 @@ jobs:
           echo "[OK] v306 R1: both setup_encoder args floored at 0.55 (H264 qmax 24 / H265 qmax 28)"
 
       - name: Apply decoder rebuild guard (v306 R3)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1528,6 +1548,7 @@ jobs:
           echo "[OK] v306 R3: decode livelock escape (mark_unsupported after 5 rebuild+fail cycles)"
 
       - name: Apply VRAM force-IDR wiring (v307a)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -1600,6 +1621,7 @@ jobs:
           echo "[OK] v307a: rebuilt VRAM encoders now emit an IDR (kills the refresh livelock)"
 
       - name: Throttle refresh on decode failure (v307b)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           # [LnDesk v307b] V307a killed the big loop (server rebuilt the whole
@@ -2483,6 +2505,7 @@ jobs:
           fi
 
       - name: video tile-diff (v243)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/patch_video_tile_diff.py .
@@ -2520,6 +2543,7 @@ jobs:
             cargo fetch
           fi
       - name: gate hwcodec zerolatency fork IS in lock (v260)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         # [LnDesk v260] INVERTS the v116 NOT-in-lock gate: hwcodec is now
         # rerouted to our zerolatency fork (H264/H265 mouse-smear root fix)
         # via a root-Cargo.toml [patch] + a rewritten Cargo.lock source line
