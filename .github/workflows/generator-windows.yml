@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: fb3bc1fc716e1c2d567e32954b4891ea30255d19
+      patches_sha: c28ba8ac8882ded47a61f38e48418eed1ed2087e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: fb3bc1fc716e1c2d567e32954b4891ea30255d19
+          ref: c28ba8ac8882ded47a61f38e48418eed1ed2087e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1523,13 +1523,88 @@ jobs:
           grep -qF "|| handler.rebuild_fail_streak >= MAX_REBUILD_FAIL_STREAK" src/client.rs || { echo "[FAIL] v306 R3: dead-decoder check does not honour the rebuild streak"; exit 1; }
           echo "[OK] v306 R3: decode livelock escape (mark_unsupported after 5 rebuild+fail cycles)"
 
-      # [LnDesk v302b] force_i 3-arg encode now ships NATIVELY in the hwcodec
-      # fork @ 944e5e8 (pinned by the v260 step via patch_hwcodec_zerolatency.py
-      # REV). The build-time patch of the cargo git checkout below was removed:
+      - name: Apply VRAM force-IDR wiring (v307a)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v307a] 让重建后的 VRAM 编码器真正发出 IDR。
+          #
+          # 症状（2026-10-11 现场两份日志，1457 + 1963 行）：
+          #   H264/H265 硬件编码卡到无法使用，隐私模式与非隐私模式**都卡**。
+          #   用户怀疑网络问题，实测排除（见下）。
+          #
+          # 实测计数：
+          #   服务端  new video service / new encoder          66
+          #   服务端  switch to refresh                        58   <- 主因
+          #   服务端  Error of monitor0 service: SWITCH        64
+          #   服务端  VRAM backend cannot force an IDR yet     66
+          #   服务端  switch due to privacy mode changed        5   <- 只占少数
+          #   客户端  Could not find ref with POC             102
+          #   客户端  handle video frame error, -2            102
+          #   客户端  reset video handler                      64
+          #
+          # 死循环（周期 0.45~0.67s）：
+          #   编码器重建 -> force_keyframe() -> VRAM 空实现 -> 不发 IDR
+          #   -> 客户端 reset 后的解码器收不到参考帧
+          #   -> ffmpeg.rs "Could not find ref with POC" / "frame RPS"
+          #   -> client.rs Err(-2) -> session.refresh_video()
+          #   -> 服务端 video_service.rs:708 "switch to refresh"
+          #   -> bail!("SWITCH") -> service.rs:308 -> stop + new video service
+          #   -> 回到起点。
+          #
+          # 根因：V302 的强制 IDR 链条在 VRAM 路径上是断的。
+          #   video_service.rs request_keyframe_next()   [OK]
+          #   codec.rs         take_keyframe_request()   [OK]
+          #   hwcodec.rs       HwRamEncoder 已接线       [OK]
+          #   vram.rs          VRamEncoder::force_keyframe() 只有一行日志  [断]
+          #   vram.rs          take_keyframe_request() 被 `let _ =` 丢弃  [断]
+          #   vram.rs          encode() 没有 force_i 参数                  [断]
+          #   hwcodec-fork     Encoder::encode 硬编码 `0 as c_int`         [断]
+          #   ---- 以下 V302b 已完成，无需改 ----
+          #   ffmpeg_vram_ffi.h   6 参（含 force_i）                       [OK]
+          #   ffmpeg_vram_encode.cpp  frame->pict_type = I                 [OK]
+          #
+          # V302 当时不改 VRAM 的理由（写在 inner.rs）是"4 套独立 C 入口，
+          # 逐套加参数风险大"。**该理由已被 V302b 消除**：EncodeCall 共享签名
+          # 统一成 6 参，amf/mfx/nv 接受并忽略，只有 ffmpeg_vram 消费它。
+          # 现场日志 driver=FFMPEG、[FFMPEG_VRAM_ENC] hevc_nvenc —— 正是唯一
+          # 兑现 force_i 的那条路径。剩下的只是 Rust 侧没有把参数传下去。
+          #
+          # 关键：不是网络问题。全程 conn_type unchanged: direct (26 次)，
+          # 零次中继；P2P validated elapsed_ms=34，send_errors=0，
+          # late_stun_packets=0。网络故障会表现为冻结/花屏/逐步降质，而不是
+          # 每 0.5 秒一次的服务端 service 销毁重建。
+          #
+          # 改动（scrap 侧由本步骤注入；hwcodec 侧随 REV 升级）：
+          #   VRamEncoder 新增 pending_force_kf: bool（对齐 HwRamEncoder）
+          #   force_keyframe()     置位它，不再只打日志
+          #   encode_to_message()  消费 take_keyframe_request() 到它
+          #   encode()             透传到 Encoder::encode(texture, ms, force_i)
+          # 稳态 force_i = false -> C 层收到 0 -> 与改动前逐字节一致。
+          python3 patches/patch_vram_force_idr.py .
+          test -f libs/scrap/src/common/vram.rs || { echo "[FAIL] v307a: vram.rs not found"; exit 1; }
+          grep -qF "    pending_force_kf: bool," libs/scrap/src/common/vram.rs || { echo "[FAIL] v307a: VRamEncoder is missing the pending_force_kf field"; exit 1; }
+          grep -qF "        self.pending_force_kf = true;" libs/scrap/src/common/vram.rs || { echo "[FAIL] v307a: force_keyframe does not set the flag"; exit 1; }
+          grep -qF "        if crate::codec::take_keyframe_request() {" libs/scrap/src/common/vram.rs || { echo "[FAIL] v307a: the cross-layer one-shot is still discarded"; exit 1; }
+          grep -qF "self.encoder.encode(texture, ms, force_i)" libs/scrap/src/common/vram.rs || { echo "[FAIL] v307a: force_i does not reach Encoder::encode"; exit 1; }
+          ! grep -qF "VRAM backend cannot force an IDR yet" libs/scrap/src/common/vram.rs || { echo "[FAIL] v307a: the V302 log-only stub survived"; exit 1; }
+          ! grep -qF "let _ = crate::codec::take_keyframe_request();" libs/scrap/src/common/vram.rs || { echo "[FAIL] v307a: the V302 discard survived"; exit 1; }
+          # hwcodec side must actually be the rev that carries the 4th argument.
+          grep -qF '11f1b3a156f26947054f72923e21e673465a065f' Cargo.toml || { echo "[FAIL] v307a: hwcodec fork not pinned to 11f1b3a (force_i not forwarded)"; exit 1; }
+          grep -qF '11f1b3a156f26947054f72923e21e673465a065f' Cargo.lock || { echo "[FAIL] v307a: Cargo.lock hwcodec rev is stale"; exit 1; }
+          echo "[OK] v307a: rebuilt VRAM encoders now emit an IDR (kills the refresh livelock)"
+
+
+      # [LnDesk v302b -> v307a] the hwcodec fork now carries force_i all the way
+      # down: 944e5e8 widened EncodeCall to 6 args, 11f1b3a made
+      # Encoder::encode actually forward the value instead of a literal 0.
+      # Both are pinned by the v260 step via patch_hwcodec_zerolatency.py REV.
+      # The build-time patch of the cargo git checkout below was removed:
       # cargo caches git deps by rev and ignores in-place checkout edits, so it
       # was a no-op (E0061 persisted across ac735476/b83497be). No per-build
-      # patch is needed -- cargo re-resolves to 944e5e8 and recompiles hwcodec
-      # with the force_i API that libs/scrap::encode(yuv, ms, force_i) expects.
+      # patch is needed -- cargo re-resolves to 11f1b3a and recompiles hwcodec
+      # with the force_i API that libs/scrap::{encode(yuv, ms, force_i)} expects.
       - name: Apply permanent password patch
         shell: bash
         run: |
