@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: e5f1136a7c8c882d9edc6529e447fb896107f63d
+      patches_sha: fb3bc1fc716e1c2d567e32954b4891ea30255d19
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: e5f1136a7c8c882d9edc6529e447fb896107f63d
+          ref: fb3bc1fc716e1c2d567e32954b4891ea30255d19
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1466,14 +1466,27 @@ jobs:
           #      那个 IDR 正是客户端唯一能重新同步的帧 —— 用最差的 QP 编出来，
           #      客户端解不了 -> POC 错误 -> 解码器重建 -> 再触发 SWITCH。
           #
-          # 修复：只给**重建时**观察到的 ratio 夹一个下限，不改 V305b 公式本体。
-          #   let quality = quality.max(REBUILD_RATIO_FLOOR);   // 0.55
+          # 修复：只夹 setup_encoder 的**实参**，不改 V305b 公式本体。
+          #   quality.max(REBUILD_RATIO_FLOOR),   // 0.55
           # 保底天花板变为 H264 24 / H265 28，比现场 45% 稳态（23/27）松一档。
-          # 夹取只会抬高 ratio、绝不降低，稳态画质与 VP8/VP9/AV1 路径不受影响。
+          #
+          # 注意：**不要**写成 `let quality = quality.max(...)` 遮蔽原变量。
+          # quality 在帧循环里传给 check_qos(&mut quality)，后者靠
+          # `if *ratio != video_qos.ratio()` 检测 QoS 变化并回写；遮蔽会把
+          # 循环里的副本钉在 0.55 而控制器仍是 0.45，比较恒为真 -> 每帧重设
+          # 编码器质量，与 V305b 稳态逻辑打架。而且遮蔽会丢掉 mut，CI 报 E0596。
+          # 内联夹取只改变 setup_encoder 收到的值，quality 绑定与循环语义不动。
           python3 patches/patch_rebuild_qmax_floor.py .
           grep -qF "const REBUILD_RATIO_FLOOR: f32 = 0.55;" src/server/video_service.rs || { echo "[FAIL] v306 R1: rebuild ratio floor constant missing"; exit 1; }
-          grep -qF "let quality = quality.max(REBUILD_RATIO_FLOOR);" src/server/video_service.rs || { echo "[FAIL] v306 R1: rebuild ratio floor not applied at the encoder-construction site"; exit 1; }
-          echo "[OK] v306 R1: rebuild-window ratio floored at 0.55 (H264 qmax 24 / H265 qmax 28)"
+          # Exactly two clamps: the main construction and the VP9 fallback. The
+          # VpxEncoderConfig { quality, .. } field must stay unclamped.
+          test "$(grep -cF 'quality.max(REBUILD_RATIO_FLOOR)' src/server/video_service.rs)" = "2" || { echo "[FAIL] v306 R1: expected exactly 2 clamped setup_encoder args"; exit 1; }
+          grep -qF "        quality.max(REBUILD_RATIO_FLOOR)," src/server/video_service.rs || { echo "[FAIL] v306 R1: main setup_encoder arg not clamped"; exit 1; }
+          grep -qF "                quality.max(REBUILD_RATIO_FLOOR)," src/server/video_service.rs || { echo "[FAIL] v306 R1: VP9 fallback setup_encoder arg not clamped"; exit 1; }
+          ! grep -qF "let quality = quality.max(REBUILD_RATIO_FLOOR);" src/server/video_service.rs || { echo "[FAIL] v306 R1: quality must NOT be rebound (breaks check_qos)"; exit 1; }
+          ! grep -qF "let mut quality = quality.max(REBUILD_RATIO_FLOOR);" src/server/video_service.rs || { echo "[FAIL] v306 R1: quality must NOT be rebound (breaks check_qos)"; exit 1; }
+          grep -qF "    let mut quality = video_qos.ratio();" src/server/video_service.rs || { echo "[FAIL] v306 R1: the QoS ratio binding lost its mut"; exit 1; }
+          echo "[OK] v306 R1: both setup_encoder args floored at 0.55 (H264 qmax 24 / H265 qmax 28)"
 
       - name: Apply decoder rebuild guard (v306 R3)
         shell: bash
