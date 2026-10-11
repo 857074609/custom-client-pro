@@ -103,6 +103,9 @@ jobs:
     with:
       version: ${{ fromJson(inputs.extras).version }}
       patches_sha: 721d45875887c63fb0056509d1e162d84345d170
+      # Same expression as the per-step gate below: missing key -> 'false',
+      # i.e. the bridge stays upstream-clean for unpatched builds.
+      image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
     secrets:
       REPO: ${{ secrets.REPO }}
 

@@ -14,6 +14,13 @@ on:
         description: '857074609/patches commit SHA (MUST track the generator pins)'
         required: true
         type: string
+      image_quality_opt:
+        description: '"true" (default) applies the image-quality patches that add FFI
+          bindings; "false" skips them. MUST mirror the caller build job gate, otherwise
+          bridge_generated.rs references functions the caller never compiles.'
+        required: false
+        default: 'true'
+        type: string
     secrets:
       REPO:
         description: 'token to checkout the private patches repo'
@@ -68,6 +75,11 @@ jobs:
           token: ${{ secrets.REPO }}
 
       - name: Apply cursor-prediction patch so the Dart binding includes mainGetCursorPrediction
+        # [LnDesk v308] Mirrors the build job image-quality gate: the generated
+        # bridge may only reference main_get_cursor_prediction when the caller
+        # really compiles it. Otherwise the Rust lib fails with
+        # "error[E0425]: cannot find function `main_get_cursor_prediction`".
+        if: inputs.image_quality_opt == 'true'
         run: |
           # [LnDesk v269] The windows/linux/macos/portable/win7/android builds inject a
           # new flutter_ffi function main_get_cursor_prediction via patch_cursor_prediction.py.
