@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: c28ba8ac8882ded47a61f38e48418eed1ed2087e
+      patches_sha: 69842469261a9ec3cabe9e3ebe347ab430b2c08a
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: c28ba8ac8882ded47a61f38e48418eed1ed2087e
+          ref: 69842469261a9ec3cabe9e3ebe347ab430b2c08a
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -889,6 +889,48 @@ jobs:
           grep -qF '11f1b3a156f26947054f72923e21e673465a065f' Cargo.toml || { echo "[FAIL] v307a: hwcodec fork not pinned to 11f1b3a (force_i not forwarded)"; exit 1; }
           grep -qF '11f1b3a156f26947054f72923e21e673465a065f' Cargo.lock || { echo "[FAIL] v307a: Cargo.lock hwcodec rev is stale"; exit 1; }
           echo "[OK] v307a: rebuilt VRAM encoders now emit an IDR (kills the refresh livelock)"
+
+      - name: Throttle refresh on decode failure (v307b)
+        shell: bash
+        run: |
+          # [LnDesk v307b] V307a killed the big loop (server rebuilt the whole
+          # video service every 0.45-0.67 s). What survived is a smaller one of
+          # the same shape:
+          #
+          #   解码失败 -> session.refresh_video()      [client.rs, unconditional]
+          #            -> 服务端 refresh_video_display -> OPTION_REFRESH
+          #            -> 客户端 MediaData::Reset -> handler.reset(None)
+          #            -> 解码器重建 -> 第一帧又是坏 IDR -> 循环
+          #
+          # Field evidence that one bad frame must NOT trigger a full refresh:
+          #   - POC pairs repeat (4,5 four times; 11,12 twice) => the reference
+          #     frame came back on its own, the GOP is not broken
+          #   - fail_counter only ever reaches 1 and 2, never the dead-decoder
+          #     threshold 3 => the decoder is fine
+          #   - upstream's own comment says "simple workaround" + "to-do: fix
+          #     the error", and its scenario is a VP8 display switch, not H265
+          #
+          # The fix conditions the refresh on CONSECUTIVE failures (>= 2), so a
+          # single recoverable frame no longer rebuilds the pipeline.
+          #
+          # Deliberately NOT touched: handle_frame()'s first_frame jump (still
+          # upstream behaviour, still an R3 anchor, and it never even ran in the
+          # field log -- "decode first frame failed" appears 0 times), the
+          # MAX_DECODE_FAIL_COUNTER contract, reset(), the server side, and the
+          # other five platforms.
+          python3 patches/patch_throttle_refresh_on_decode_fail.py .
+          grep -qF "const REFRESH_MIN_FAIL_COUNTER: usize = 2;" src/client.rs || { echo "[FAIL] v307b: refresh threshold constant missing"; exit 1; }
+          grep -qF "if handler.fail_counter >= REFRESH_MIN_FAIL_COUNTER {" src/client.rs || { echo "[FAIL] v307b: refresh call site is not guarded"; exit 1; }
+          # Exactly one refresh call, and it sits inside the guard (40-space
+          # indent). A bare 36-space call would mean the unconditional one
+          # survived the patch.
+          [ "$(grep -cF 'session.refresh_video(display as _);' src/client.rs)" = "1" ] || { echo "[FAIL] v307b: expected exactly one refresh call"; exit 1; }
+          grep -qF "                                        session.refresh_video(display as _);" src/client.rs || { echo "[FAIL] v307b: guarded refresh call missing"; exit 1; }
+          # upstream contract and the R3 anchors must be intact
+          grep -qF "const MAX_DECODE_FAIL_COUNTER: usize = 3;" src/client.rs || { echo "[FAIL] v307b: MAX_DECODE_FAIL_COUNTER changed"; exit 1; }
+          grep -qF "if self.first_frame && self.fail_counter < MAX_DECODE_FAIL_COUNTER {" src/client.rs || { echo "[FAIL] v307b: first_frame jump was disturbed"; exit 1; }
+          grep -qF "|| handler.rebuild_fail_streak >= MAX_REBUILD_FAIL_STREAK" src/client.rs || { echo "[FAIL] v307b: R3 dead-decoder check was disturbed"; exit 1; }
+          echo "[OK] v307b: refresh throttled -- one bad frame no longer rebuilds the whole pipeline"
 
 
       # [LnDesk v302b -> v307a] the hwcodec fork now carries force_i all the way
