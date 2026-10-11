@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: 69842469261a9ec3cabe9e3ebe347ab430b2c08a
+      patches_sha: 54b588d5f9cfe369ad8363c098c642b3cc009ae7
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 69842469261a9ec3cabe9e3ebe347ab430b2c08a
+          ref: 54b588d5f9cfe369ad8363c098c642b3cc009ae7
           clean: false
 
       - name: Apply activate_os no-right-click patch
