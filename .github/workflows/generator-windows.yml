@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 721d45875887c63fb0056509d1e162d84345d170
+      patches_sha: 8d4271d92468b0a87bc8d43e9ee8b2acad2ca776
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 721d45875887c63fb0056509d1e162d84345d170
+          ref: 8d4271d92468b0a87bc8d43e9ee8b2acad2ca776
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2507,6 +2507,23 @@ jobs:
           else
             echo "[SKIP] v116-fix4: CQP was never applied (v269 tree); nothing to revert"
           fi
+
+      - name: Apply H264/H265 GPU sharpening (v309)
+        shell: bash
+        run: |
+          # [LnDesk v309] The v116 CPU unsharp mask only runs on pixelbuffer
+          # frames; H264/H265 decoded through the VRAM (D3D11VA) path stay on
+          # the GPU as an ID3D11Texture2D and were never sharpened, so the
+          # sharpening slider looked dead on hardware H26x sessions. This adds
+          # a D3D11 video-processor EDGE_ENHANCEMENT pass for those frames:
+          # GPU only, no HLSL, no hwcodec fork change (works with the upstream
+          # crate too). It engages at sharpening >= 30 and, on any failure,
+          # disables itself and renders the untouched texture.
+          python3 patches/patch_sharpen_h264_h265_d3d11.py .
+          grep -q "mod video_sharpen_d3d11;" ./src/client.rs || { echo "[FAIL] v309: module declaration missing"; exit 1; }
+          grep -q "video_sharpen_d3d11::sharpen_texture(" ./src/client.rs || { echo "[FAIL] v309: VRAM sharpen call missing"; exit 1; }
+          grep -q '"d3d11"' ./Cargo.toml || { echo "[FAIL] v309: winapi d3d11 feature missing"; exit 1; }
+          echo "[OK] v309: H264/H265 GPU sharpening wired"
 
       - name: video tile-diff (v243)
         if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
