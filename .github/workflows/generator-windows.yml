@@ -1341,6 +1341,7 @@ jobs:
           echo "[OK] v269: low-latency pipeline applied"
 
       - name: Apply QoS ratio asymmetry patch (v297)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
