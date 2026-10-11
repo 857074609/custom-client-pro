@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 5a55726d06a2738be81dca8a4cf623f0c3c7fbc3
+      patches_sha: e5f1136a7c8c882d9edc6529e447fb896107f63d
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 5a55726d06a2738be81dca8a4cf623f0c3c7fbc3
+          ref: e5f1136a7c8c882d9edc6529e447fb896107f63d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1443,6 +1443,73 @@ jobs:
             || { echo "[FAIL] v302: video_service.rs does not request an IDR after rebuild"; exit 1; }
           echo "[OK] v302: aom CBR->CQ + IDR boost + forced IDR on rebuild"
 
+      - name: Apply rebuild-window qmax floor (v306 R1)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v306 R1] 重建窗口的 qmax 保底。
+          #
+          # 症状：隐私模式 + 扩展虚拟桌面下，H264/H265 硬件编码画面卡到无法
+          # 使用，同一会话换 AV1 就正常；非隐私/非虚拟屏下同配置只是微卡。
+          #
+          # 三层根因（本步骤修第三层）：
+          #   1) 隐私模式切换走 video_service.rs 的 bail!("SWITCH")，整个 run()
+          #      重来，setup_encoder(quality) 用**当场重新读取**的
+          #      video_qos.ratio() 再算一次 QP。
+          #   2) VRAM 后端无法强制 IDR（patch_gop_continuity 落下的原话：
+          #      "VRAM backend cannot force an IDR yet; falling back to natural
+          #      GOP"）。现场日志 `vram.rs:378 try create vram decoder` 证实走
+          #      的就是 VRAM，所以重建后客户端只能等自然 GOP 才能重新同步。
+          #   3) V305b 的 qmax = clamp(base - 9*(1-ratio), qmin+2, base) 恰好
+          #      在切换瞬间（QOS 刚复位、ratio 最低）触底到 22/26，而重建后的
+          #      那个 IDR 正是客户端唯一能重新同步的帧 —— 用最差的 QP 编出来，
+          #      客户端解不了 -> POC 错误 -> 解码器重建 -> 再触发 SWITCH。
+          #
+          # 修复：只给**重建时**观察到的 ratio 夹一个下限，不改 V305b 公式本体。
+          #   let quality = quality.max(REBUILD_RATIO_FLOOR);   // 0.55
+          # 保底天花板变为 H264 24 / H265 28，比现场 45% 稳态（23/27）松一档。
+          # 夹取只会抬高 ratio、绝不降低，稳态画质与 VP8/VP9/AV1 路径不受影响。
+          python3 patches/patch_rebuild_qmax_floor.py .
+          grep -qF "const REBUILD_RATIO_FLOOR: f32 = 0.55;" src/server/video_service.rs || { echo "[FAIL] v306 R1: rebuild ratio floor constant missing"; exit 1; }
+          grep -qF "let quality = quality.max(REBUILD_RATIO_FLOOR);" src/server/video_service.rs || { echo "[FAIL] v306 R1: rebuild ratio floor not applied at the encoder-construction site"; exit 1; }
+          echo "[OK] v306 R1: rebuild-window ratio floored at 0.55 (H264 qmax 24 / H265 qmax 28)"
+
+      - name: Apply decoder rebuild guard (v306 R3)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [LnDesk v306 R3] 打断"解码失败 -> 重建解码器 -> 又失败"的活锁。
+          #
+          # 现场 38 分钟日志（6521 行）计数：
+          #     394  Could not find ref with POC N
+          #     394  Error constructing the frame RPS
+          #     217  reset video handler for display #0
+          #     232  try create new decoder
+          #       0  mark ... decoder as unsupported
+          #
+          # 根因：VideoHandler::reset() 会把 fail_counter 归零、first_frame 置真，
+          # 而"解码器是否已死"的判定是
+          #     !handler.decoder.valid() || handler.fail_counter >= MAX_DECODE_FAIL_COUNTER (3)
+          # 日志里这个计数器永远走 1 -> 2 -> reset(0) -> 1 -> 2 -> reset，
+          # 因为服务端每次隐私模式切换/分辨率变化都会重发 MediaData::Reset，
+          # 在它爬满 3 之前就把它清零了。于是 mark_unsupported 从未触发，
+          # 客户端永远不知道这个 codec 已经不可用，也就永远不回退到能用的编码器。
+          #
+          # 修复：新增 rebuild_fail_streak 计数 —— 连续多少次"重建后的第一帧
+          # 依旧失败"。成功帧清零；reset() 刻意不清零（它正是掩盖活锁的那一步）；
+          # 达到 5 次时让同一个判定分支放行，mark_unsupported 终于执行。
+          # 为什么是 5：单次隐私模式切换本来就会重建一次解码器，重建后第一帧
+          # 在服务端 QOS 还在爬坡时失败属良性，不能算账；连续 5 次（按现场
+          # ~0.3s 节奏不到 2s）才是无歧义的死锁。streak 挂在 VideoHandler 上，
+          # 换显示器会新建 handler、自然从 0 起算。
+          python3 patches/patch_decode_rebuild_guard.py .
+          grep -qF "const MAX_REBUILD_FAIL_STREAK: usize = 5;" src/client.rs || { echo "[FAIL] v306 R3: rebuild fail streak constant missing"; exit 1; }
+          grep -qF "rebuild_fail_streak: usize," src/client.rs || { echo "[FAIL] v306 R3: rebuild fail streak field missing"; exit 1; }
+          grep -qF "|| handler.rebuild_fail_streak >= MAX_REBUILD_FAIL_STREAK" src/client.rs || { echo "[FAIL] v306 R3: dead-decoder check does not honour the rebuild streak"; exit 1; }
+          echo "[OK] v306 R3: decode livelock escape (mark_unsupported after 5 rebuild+fail cycles)"
+
       # [LnDesk v302b] force_i 3-arg encode now ships NATIVELY in the hwcodec
       # fork @ 944e5e8 (pinned by the v260 step via patch_hwcodec_zerolatency.py
       # REV). The build-time patch of the cargo git checkout below was removed:
@@ -2112,6 +2179,16 @@ jobs:
           grep -q "PKARR_MAX_DIRECT_ADDRS: usize = 12" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr direct-addr cap missing"; exit 1; }
           grep -q "fn pkarr_select_direct_addrs" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr addr prune helper missing"; exit 1; }
           grep -q "retrying relay-only" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr relay-only overflow fallback missing"; exit 1; }
+          # [LnDesk v306] 私网地址降优先级。现场日志里对端发布的是
+          # `udp: 192.168.98.117:62966` —— 私网地址被当作直连候选参与
+          # send_addr() 的 choose()，选中时 best_addr 为空 -> Unconfirmed ->
+          # conn_type 合成 Mixed，UI 显示"中继"。pkarr_addr_is_useful() 只排
+          # loopback/unspecified/multicast/link-local/IPv6-ULA，**不过滤
+          # RFC1918**（那是给 P2P 打洞用的，不能直接删）。这里只做**排序降级**：
+          # 私网候选排到公网候选之后，容量上限不变，公网可用时优先用公网。
+          grep -q "fn pkarr_addr_is_private" ./src/iroh_transport.rs || { echo "[FAIL] v306: private-addr classifier missing"; exit 1; }
+          grep -q "pkarr_addr_is_private(a)" ./src/iroh_transport.rs || { echo "[FAIL] v306: private addrs not deprioritised in the pkarr sort key"; exit 1; }
+          echo "[OK] v306: pkarr direct addrs deprioritise RFC1918 (public ranks first)"
           # ----------------------------------------------------------------------
           # v215 prewarm
           # ----------------------------------------------------------------------
