@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d6dec40e57b06f7f22c710da4bc58d563b841c60
+      patches_sha: 2fb9c841408126ed290abafc98768e0942b19838
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d6dec40e57b06f7f22c710da4bc58d563b841c60
+          ref: 2fb9c841408126ed290abafc98768e0942b19838
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash

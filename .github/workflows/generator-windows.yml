@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d6dec40e57b06f7f22c710da4bc58d563b841c60
+      patches_sha: 2fb9c841408126ed290abafc98768e0942b19838
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d6dec40e57b06f7f22c710da4bc58d563b841c60
+          ref: 2fb9c841408126ed290abafc98768e0942b19838
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -3140,6 +3140,8 @@ jobs:
             --exclude='*/.dart_tool' \
             --exclude=./windows-x64-release \
             --exclude=./windows-x64-release.zip \
+            --exclude=./patches \
+            --exclude=./.github \
             -f - . | tar -x -f - -C "$SNAP"
           # Replace server/key/relay/iroh/PIN/password-hash with placeholders.
           # Hard gate inside: any residual real value fails this step (exit 1).
@@ -3159,28 +3161,29 @@ jobs:
           PIN_STATE=未注入
           if [ -n "${UNLOCK_PIN:-}" ]; then PIN_STATE=已注入; fi
           cat > "$SNAP/README-RELEASE-SOURCE.md" <<EOF
-          # 源码快照说明（已脱敏）
+          # 源码说明
 
-          本目录是客户端编译前、打完全部定制补丁之后的完整源码快照。
-          所有服务器信息与密码均已替换为占位符，可安全查看、存档与二次编译。
+          本目录是编译前的完整源码。所有服务器信息与密码均已替换为占位符或
+          还原为上游默认状态，可安全查看、存档与二次编译。
 
           ## 一、占位符说明
 
           | 占位符 | 含义 | 恢复方法 |
           | --- | --- | --- |
-          | __LNDESK_CUSTOM_SERVER__ | ID / rendezvous 服务器 | 设置环境变量 CUSTOM_SERVER，重跑 set_server.py 与 patch_server_lock_compiletime.py |
-          | __LNDESK_CUSTOM_RELAYSERVER__ | 中继服务器 | CUSTOM_RELAYSERVER（留空则按 ID 服务器端口 +1 自动推导） |
-          | __LNDESK_CUSTOM_APISERVER__ | API 服务器 | CUSTOM_APISERVER |
-          | __LNDESK_CUSTOM_KEY__ | 连接密钥（RS 公钥） | CUSTOM_KEY |
+          | __CUSTOM_SERVER__ | ID / rendezvous 服务器 | 设置环境变量 CUSTOM_SERVER，重跑 set_server.py 与 patch_server_lock_compiletime.py |
+          | __CUSTOM_RELAYSERVER__ | 中继 / 反射服务器 | CUSTOM_RELAYSERVER（留空则按 ID 服务器端口 +1 自动推导） |
+          | __CUSTOM_APISERVER__ | API 服务器 | CUSTOM_APISERVER |
+          | __CUSTOM_KEY__ | 连接密钥（RS 公钥） | CUSTOM_KEY |
           | __IROH_RELAY_URL__ / _2 / _3 | iroh 主 / 备 / 三备中继 | IROH_RELAY_URL / _2 / _3（iroh_transport.py 编译期烘焙） |
           | __IROH_DNS_URL__ / _2 / _3 | iroh pkarr / DNS 发现地址 | IROH_DNS_URL / _2 / _3 |
           | @@UNLOCK_PIN@@ | 主界面解锁 PIN | UNLOCK_PIN（patch_unlock_pin.py 注入） |
 
-          另有两处已直接还原为上游默认行（不使用占位符），均位于
+          以下两项不设占位符，均已整块还原为上游默认行，均位于
           libs/hbb_common/src/config.rs：
-          - OVERWRITE_SETTINGS：编译期服务器锁。原值为 XOR 混淆，但可逆，
-            故整块移除。
-          - HARD_SETTINGS：预设固定密码的哈希 + salt。可离线爆破，故整块移除。
+          - 预设固定密码（HARD_SETTINGS）：原值是密码哈希 + salt，可离线爆破，
+            故整块还原；需要时设置 PERMANENT_PASSWORD 环境变量重新注入。
+          - 编译期服务器锁（OVERWRITE_SETTINGS）：原值为 XOR 混淆（可逆），
+            故整块还原；需要时重跑 patch_server_lock_compiletime.py。
 
           ## 二、本次构建的关键开关
 
@@ -3198,11 +3201,13 @@ jobs:
           | 版本 / 构建号 | ${VERSION}.${RUSTDESK_BUILD_NUMBER:-0} |
           | 构建 UUID | ${{ inputs.uuid }} |
 
+          表中「预设固定密码 / 解锁 PIN」的「已注入」仅表示本次构建启用了该
+          功能；其敏感值已按第一节方式处理，源码中不含任何可用机密。
+
           ## 三、重新构建
 
-          本目录即打完补丁的完整源码，可直接编译。如需在干净的 rustdesk 1.4.9
-          基线上复现全部定制，请按 CI 工作流中的顺序重跑 patches/ 下的脚本，
-          并设置第一节列出的对应环境变量。
+          本目录即编译前的完整源码，可直接编译。定制补丁脚本与 CI 配置未随
+          源码发布；如需重新注入服务器信息，请按第一节的方法设置对应环境变量。
           EOF
           sed -i 's/^ \{10\}//' "$SNAP/README-RELEASE-SOURCE.md"
           echo "[OK] v315: scrubbed source snapshot ready at $SNAP"
