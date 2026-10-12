@@ -3314,7 +3314,15 @@ jobs:
           # 顺序必须保证：先加壳、后自解压打包与签名（加壳会使既有签名失效）。
           # 只压 rustdesk.exe + librustdesk.dll；flutter_windows.dll（引擎）与
           # WindowInjection.dll（注入 DLL）不压，规避加载兼容与杀软误报放大。
-          choco install upx -y --no-progress
+          # [LnDesk v316] UPX fail-soft：UPX 是可选体积优化，社区源 504 / 网络抽风时重试一次；
+          # 仍不可用则打 warning 并跳过加壳（出未加壳包），绝不让 127 带崩整个构建。
+          if ! command -v upx >/dev/null 2>&1; then
+            choco install upx -y --no-progress || choco install upx -y --no-progress || echo "::warning::choco install upx failed (feed down?)"
+          fi
+          if ! command -v upx >/dev/null 2>&1; then
+            echo "::warning::[v227c] UPX unavailable, skipping payload packing (build ships unpacked)"
+            exit 0
+          fi
           upx --version
           upx -9 --lzma ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
           ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
