@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: af46c0aefbc719a7a5a30cae4a348cce100163ca
+      patches_sha: d6dec40e57b06f7f22c710da4bc58d563b841c60
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: af46c0aefbc719a7a5a30cae4a348cce100163ca
+          ref: d6dec40e57b06f7f22c710da4bc58d563b841c60
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2570,6 +2570,95 @@ jobs:
           fi
           echo "[OK] flutter analyze clean (no Dart errors)"
 
+      - name: Snapshot scrubbed source (v315)
+        if: ${{ fromJson(inputs.extras || '{}').generate_source == 'true' }}
+        shell: bash
+        run: |
+          # [LnDesk v315] Copy the fully-patched source tree BEFORE compilation
+          # and scrub every server secret, so a safe snapshot can ship next to
+          # the binaries. Gated by the docker checkbox "generate source"
+          # (generate_source); unchecked builds skip this step entirely.
+          set -e
+          SNAP="./_release_src"
+          rm -rf "$SNAP"
+          mkdir -p "$SNAP"
+          # Whole repo minus VCS / build caches. patches/ is kept so the
+          # snapshot stays self-contained (re-appliable with the same scripts).
+          tar -c \
+            --exclude=./.git \
+            --exclude=./target \
+            --exclude=./_release_src \
+            --exclude=./exe \
+            --exclude=./rustdesk \
+            --exclude=./SignOutput \
+            --exclude='*/build' \
+            --exclude='*/.dart_tool' \
+            -f - . | tar -x -f - -C "$SNAP"
+          # Replace server/key/relay/iroh/PIN/password-hash with placeholders.
+          # Hard gate inside: any residual real value fails this step (exit 1).
+          python3 patches/scrub_source_for_release.py "$SNAP"
+          # README: placeholder legend + this build's key switches. Switch
+          # states are presence/boolean only - never the secret values.
+          IROH_SW=关
+          if [ "${{ fromJson(inputs.extras || '{}').enable_iroh_direct }}" = "true" ]; then IROH_SW=开; fi
+          QUALITY_SW=关
+          if [ "${{ fromJson(inputs.extras || '{}').image_quality_opt }}" = "true" ]; then QUALITY_SW=开; fi
+          OTP_SW=关
+          if [ "${{ fromJson(inputs.extras || '{}').enable_otp }}" = "true" ]; then OTP_SW=开; fi
+          WALL_SW=关
+          if [ "${{ inputs.screen_wall }}" = "true" ]; then WALL_SW=开; fi
+          PW_STATE=未注入
+          if [ -n "${PERMANENT_PASSWORD:-}" ]; then PW_STATE=已注入; fi
+          PIN_STATE=未注入
+          if [ -n "${UNLOCK_PIN:-}" ]; then PIN_STATE=已注入; fi
+          cat > "$SNAP/README-RELEASE-SOURCE.md" <<EOF
+          # 源码快照说明（已脱敏）
+
+          本目录是客户端编译前、打完全部定制补丁之后的完整源码快照。
+          所有服务器信息与密码均已替换为占位符，可安全查看、存档与二次编译。
+
+          ## 一、占位符说明
+
+          | 占位符 | 含义 | 恢复方法 |
+          | --- | --- | --- |
+          | __LNDESK_CUSTOM_SERVER__ | ID / rendezvous 服务器 | 设置环境变量 CUSTOM_SERVER，重跑 set_server.py 与 patch_server_lock_compiletime.py |
+          | __LNDESK_CUSTOM_RELAYSERVER__ | 中继服务器 | CUSTOM_RELAYSERVER（留空则按 ID 服务器端口 +1 自动推导） |
+          | __LNDESK_CUSTOM_APISERVER__ | API 服务器 | CUSTOM_APISERVER |
+          | __LNDESK_CUSTOM_KEY__ | 连接密钥（RS 公钥） | CUSTOM_KEY |
+          | __IROH_RELAY_URL__ / _2 / _3 | iroh 主 / 备 / 三备中继 | IROH_RELAY_URL / _2 / _3（iroh_transport.py 编译期烘焙） |
+          | __IROH_DNS_URL__ / _2 / _3 | iroh pkarr / DNS 发现地址 | IROH_DNS_URL / _2 / _3 |
+          | @@UNLOCK_PIN@@ | 主界面解锁 PIN | UNLOCK_PIN（patch_unlock_pin.py 注入） |
+
+          另有两处已直接还原为上游默认行（不使用占位符），均位于
+          libs/hbb_common/src/config.rs：
+          - OVERWRITE_SETTINGS：编译期服务器锁。原值为 XOR 混淆，但可逆，
+            故整块移除。
+          - HARD_SETTINGS：预设固定密码的哈希 + salt。可离线爆破，故整块移除。
+
+          ## 二、本次构建的关键开关
+
+          | 开关 | 值 |
+          | --- | --- |
+          | 构建工作流 | Custom Windows Client Generator |
+          | Rust 工具链 | ${RUST_VERSION:-unknown} |
+          | UI 变体 / 连接方向 | ${UI_VARIANT:-unknown} |
+          | iroh 直连 | $IROH_SW |
+          | 图像质量优化 | $QUALITY_SW |
+          | OTP 一次性密码 | $OTP_SW |
+          | 屏幕墙 | $WALL_SW |
+          | 预设固定密码 | $PW_STATE |
+          | 解锁 PIN | $PIN_STATE |
+          | 版本 / 构建号 | ${VERSION}.${RUSTDESK_BUILD_NUMBER:-0} |
+          | 构建 UUID | ${{ inputs.uuid }} |
+
+          ## 三、重新构建
+
+          本目录即打完补丁的完整源码，可直接编译。如需在干净的 rustdesk 1.4.9
+          基线上复现全部定制，请按 CI 工作流中的顺序重跑 patches/ 下的脚本，
+          并设置第一节列出的对应环境变量。
+          EOF
+          echo "[OK] v315: scrubbed source snapshot ready at $SNAP"
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
@@ -2812,6 +2901,30 @@ jobs:
             echo "✅ MSI renamed to ${BUILD_FILENAME}.msi" || \
             echo "⚠️ MSI not found, skipping rename."
 
+      - name: Package scrubbed source (v315)
+        if: ${{ fromJson(inputs.extras || '{}').generate_source == 'true' }}
+        shell: bash
+        run: |
+          # [LnDesk v315] Zip the pre-build snapshot into SignOutput so the
+          # upload step below ships it next to the exe/msi. bsdtar (Git Bash)
+          # writes a real zip via -a; fall back to tar.gz if that ever fails.
+          set -e
+          if [ ! -d "./_release_src" ]; then
+            echo "[FAIL] v315: ./_release_src missing (snapshot step did not run?)"
+            exit 1
+          fi
+          ZIP="./SignOutput/${BUILD_FILENAME}-source.zip"
+          if tar -a -c -f "$ZIP" -C . _release_src 2>/dev/null; then
+            echo "[OK] v315: source snapshot packed as $ZIP"
+          else
+            rm -f "$ZIP"
+            ZIP="./SignOutput/${BUILD_FILENAME}-source.tar.gz"
+            tar -c -z -f "$ZIP" -C . _release_src
+            echo "[OK] v315: source snapshot packed as $ZIP (tar.gz fallback)"
+          fi
+          echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
+          ls -lh "$ZIP"
+
       - name: Create GitHub Release and Upload Assets
         if: success()
         continue-on-error: true
@@ -2865,6 +2978,7 @@ jobs:
           STAT='\n[upload] http=%{http_code} sent=%{size_upload}B in %{time_total}s\n'
           rc_exe=0
           rc_msi=0
+          rc_zip=0
           echo "== [1/2] EXE =="
           if curl -f "${CURL_OPTS[@]}" -w "$STAT" \
               -F "file=@$EXE" -F "uuid=$UUID" "$URL"; then
@@ -2882,6 +2996,16 @@ jobs:
           else
             rc_msi=$?
             echo "[FAIL] MSI upload rc=$rc_msi"
+          fi
+          echo "== [3/3] source snapshot (non-fatal) =="
+          if [ -z "${SOURCE_ZIP:-}" ] || [ ! -f "${SOURCE_ZIP:-/nonexistent}" ]; then
+            echo "[SKIP] source snapshot not generated (checkbox off or snapshot step skipped)"
+          elif curl -f "${CURL_OPTS[@]}" -w "$STAT" \
+              -F "file=@$SOURCE_ZIP" -F "uuid=$UUID" "$URL"; then
+            echo "[OK] source snapshot uploaded"
+          else
+            rc_zip=$?
+            echo "[FAIL] source snapshot upload rc=$rc_zip (non-fatal: binaries stay the primary artifacts)"
           fi
           if [ "$rc_exe" -ne 0 ] || [ "$rc_msi" -ne 0 ]; then
             echo "[FAIL] file server upload failed (EXE rc=$rc_exe, MSI rc=$rc_msi)"
