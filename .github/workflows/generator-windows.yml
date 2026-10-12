@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: db1ef9bcd519274a71306b95b5df124f907c25f4
+      patches_sha: 2fe9aa72ebd6bdc3c89a97caabc074f58b5169ad
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: db1ef9bcd519274a71306b95b5df124f907c25f4
+          ref: 2fe9aa72ebd6bdc3c89a97caabc074f58b5169ad
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2151,6 +2151,7 @@ jobs:
           # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
           # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
           python3 patches/patch_input_hover_fix.py .
+          python3 patches/patch_input_move_nosynth.py .
 
       - name: server_otp (v86)
         if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
