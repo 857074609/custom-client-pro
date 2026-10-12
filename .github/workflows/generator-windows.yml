@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 2fe9aa72ebd6bdc3c89a97caabc074f58b5169ad
+      patches_sha: af46c0aefbc719a7a5a30cae4a348cce100163ca
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2fe9aa72ebd6bdc3c89a97caabc074f58b5169ad
+          ref: af46c0aefbc719a7a5a30cae4a348cce100163ca
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2152,6 +2152,7 @@ jobs:
           # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
           python3 patches/patch_input_hover_fix.py .
           python3 patches/patch_input_move_nosynth.py .
+          python3 patches/patch_input_btn_selfheal.py .
 
       - name: server_otp (v86)
         if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
@@ -2215,6 +2216,14 @@ jobs:
             [ "$_hover_count" = "1" ] || { echo "[FAIL] v177: _getMouseEvent move count is $_hover_count (expect 1: only onPointMoveImage)"; exit 1; }
           fi
           grep -q "getMouseEventMove()" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v312: move emits no getMouseEventMove()"; exit 1; }
+          # [v313] Self-heal for the remote button stuck after the window is
+          # restored from the taskbar. Two injections plus one helper, all in
+          # input_model.dart: release stale button bits before a new down, and
+          # notify the peer on pointer enter/leave. Assert all three markers so
+          # a drifted anchor can never silently disable the fix.
+          grep -q "LnDesk v313] self-heal: release stale remote button bits" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: down self-heal marker missing in input_model.dart"; exit 1; }
+          grep -q "LnDesk v313] releaseRemoteButtons helper" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: releaseRemoteButtons helper missing in input_model.dart"; exit 1; }
+          grep -q "LnDesk v313] release remote buttons on pointer enter/leave" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: enterOrLeave release marker missing in input_model.dart"; exit 1; }
           # [v118/v177] OTP delivery settle must exist and be 3000ms. Guard these
           # (a drifted anchor would otherwise stay green), then log the real line.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: kOtpDeliverySettleMs missing in peer_card.dart"; exit 1; }
