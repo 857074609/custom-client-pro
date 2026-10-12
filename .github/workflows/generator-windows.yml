@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 2fb9c841408126ed290abafc98768e0942b19838
+      patches_sha: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2fb9c841408126ed290abafc98768e0942b19838
+          ref: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -3115,20 +3115,24 @@ jobs:
           echo "[OK] flutter analyze clean (no Dart errors)"
           cd ..
 
-      - name: Snapshot scrubbed source (v315)
+      - name: Snapshot scrubbed source (v317)
         if: ${{ fromJson(inputs.extras || '{}').generate_source == 'true' }}
         shell: bash
+        env:
+          SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
         run: |
-          # [LnDesk v315] Copy the fully-patched source tree BEFORE compilation
+          # [LnDesk v317] Copy the fully-patched source tree BEFORE compilation
           # and scrub every server secret, so a safe snapshot can ship next to
           # the binaries. Gated by the docker checkbox "generate source"
           # (generate_source); unchecked builds skip this step entirely.
+          # v317: also neutralizes REFLECTORS / preset-password XOR pair /
+          # custom STUN IPs / LnDesk branding, and ships rustdesk/custom_.txt.
           set -e
           SNAP="./_release_src"
           rm -rf "$SNAP"
           mkdir -p "$SNAP"
-          # Whole repo minus VCS / build caches. patches/ is kept so the
-          # snapshot stays self-contained (re-appliable with the same scripts).
+          # Whole repo minus VCS / build caches / patch backups. patches/ and
+          # .github/ are dropped by the scrubber (customization traces).
           tar -c \
             --exclude=./.git \
             --exclude=./target \
@@ -3138,13 +3142,24 @@ jobs:
             --exclude=./SignOutput \
             --exclude='*/build' \
             --exclude='*/.dart_tool' \
+            --exclude='*.bak*' \
             --exclude=./windows-x64-release \
             --exclude=./windows-x64-release.zip \
             --exclude=./patches \
             --exclude=./.github \
             -f - . | tar -x -f - -C "$SNAP"
-          # Replace server/key/relay/iroh/PIN/password-hash with placeholders.
-          # Hard gate inside: any residual real value fails this step (exit 1).
+          # custom_.txt: docker frontend payload (base64 JSON). ./rustdesk is
+          # tar-excluded and the real file is only written later during
+          # packaging, so rebuild it here from the same dispatch input
+          # (server fields were retired in favour of the compile-time lock,
+          # so it carries no server secrets).
+          if [ -n "${{ inputs.custom }}" ]; then
+            mkdir -p "$SNAP/rustdesk"
+            printf '%s' '${{ inputs.custom }}' > "$SNAP/rustdesk/custom_.txt"
+          fi
+          # Replace server/key/relay/iroh/PIN/password/REFLECTORS/STUN/brand
+          # with placeholders. Hard gate inside: any residual real value fails
+          # this step (exit 1).
           python3 patches/scrub_source_for_release.py "$SNAP"
           # README: placeholder legend + this build's key switches. Switch
           # states are presence/boolean only - never the secret values.
@@ -3171,21 +3186,32 @@ jobs:
           | 占位符 | 含义 | 恢复方法 |
           | --- | --- | --- |
           | __CUSTOM_SERVER__ | ID / rendezvous 服务器 | 设置环境变量 CUSTOM_SERVER，重跑 set_server.py 与 patch_server_lock_compiletime.py |
-          | __CUSTOM_RELAYSERVER__ | 中继 / 反射服务器 | CUSTOM_RELAYSERVER（留空则按 ID 服务器端口 +1 自动推导） |
+          | __CUSTOM_RELAYSERVER__ | 中继服务器（relay） | CUSTOM_RELAYSERVER（留空则按 ID 服务器端口 +1 自动推导） |
           | __CUSTOM_APISERVER__ | API 服务器 | CUSTOM_APISERVER |
           | __CUSTOM_KEY__ | 连接密钥（RS 公钥） | CUSTOM_KEY |
+          | __SUPER_P2P_REFLECTORS__ | 反射节点（REFLECTORS，super_p2p NAT 观测用） | 环境变量 SUPER_P2P_REFLECTORS（生成器 extras custom_p2p_reflector，patch_super_p2p.py 烘焙） |
+          | __CUSTOM_STUN__ | 国内 STUN 服务器地址（V196/V298 补充） | 修改 src/common.rs 的 STUNS_V4 与 src/super_p2p/mod.rs 的 STUN_TARGETS |
           | __IROH_RELAY_URL__ / _2 / _3 | iroh 主 / 备 / 三备中继 | IROH_RELAY_URL / _2 / _3（iroh_transport.py 编译期烘焙） |
           | __IROH_DNS_URL__ / _2 / _3 | iroh pkarr / DNS 发现地址 | IROH_DNS_URL / _2 / _3 |
           | @@UNLOCK_PIN@@ | 主界面解锁 PIN | UNLOCK_PIN（patch_unlock_pin.py 注入） |
 
-          以下两项不设占位符，均已整块还原为上游默认行，均位于
+          以下各项不设占位符，均已整块还原为上游默认行，均位于
           libs/hbb_common/src/config.rs：
-          - 预设固定密码（HARD_SETTINGS）：原值是密码哈希 + salt，可离线爆破，
-            故整块还原；需要时设置 PERMANENT_PASSWORD 环境变量重新注入。
+          - 预设固定密码：原值是由 patch_permanent_password_new.py 写入的
+            XOR 混淆字节对（可逆），故已清空为空数组（即未配置预设密码）；
+            需要时设置 PERMANENT_PASSWORD 环境变量并重跑该脚本注入。
           - 编译期服务器锁（OVERWRITE_SETTINGS）：原值为 XOR 混淆（可逆），
             故整块还原；需要时重跑 patch_server_lock_compiletime.py。
 
-          ## 二、本次构建的关键开关
+          ## 二、其他说明
+
+          - rustdesk/custom_.txt：构建前端生成的外观与开关配置（base64 编码的
+            JSON）。服务器字段已废弃（改由编译期服务器锁注入），文件内不含
+            服务器机密；运营者手工覆盖项中如含敏感值，已同样替换为占位符。
+          - src/super_p2p 与 src/common.rs 中测试夹具的公网 IP 已替换为
+            RFC 5737 文档段地址（192.0.2.0/24 等），不影响测试逻辑。
+
+          ## 三、本次构建的关键开关
 
           | 开关 | 值 |
           | --- | --- |
@@ -3204,7 +3230,7 @@ jobs:
           表中「预设固定密码 / 解锁 PIN」的「已注入」仅表示本次构建启用了该
           功能；其敏感值已按第一节方式处理，源码中不含任何可用机密。
 
-          ## 三、重新构建
+          ## 四、重新构建
 
           本目录即编译前的完整源码，可直接编译。定制补丁脚本与 CI 配置未随
           源码发布；如需重新注入服务器信息，请按第一节的方法设置对应环境变量。
@@ -3482,6 +3508,10 @@ jobs:
             test -d "./_release_src/$d" || { echo "[FAIL] v315: snapshot missing $d (wrong content?)"; exit 1; }
           done
           test -f "./_release_src/README-RELEASE-SOURCE.md" || { echo "[FAIL] v315: README-RELEASE-SOURCE.md missing in snapshot"; exit 1; }
+          # [v317] custom_.txt must ship whenever the dispatch carried one.
+          if [ -n "${{ inputs.custom }}" ]; then
+            test -f "./_release_src/rustdesk/custom_.txt" || { echo "[FAIL] v317: custom_.txt missing in snapshot"; exit 1; }
+          fi
           # [v315-fix] Binary-leak gate: the upstream git tree tracks zero
           # binaries, so any dll/exe/pdb/lib/exp/zip inside the snapshot is
           # a CI intermediate artifact (e.g. windows-x64-release from the
