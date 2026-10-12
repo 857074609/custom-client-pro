@@ -2201,8 +2201,13 @@ jobs:
           # move call survives (the onPointMoveImage one) -- the hover one must
           # be gone, otherwise a spurious right-click is sent on first hover.
           grep -q "LnDesk v177] Hover must only move the remote cursor" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v177: input hover fix marker missing in input_model.dart"; exit 1; }
+          # [v312] hover (v177) AND move (v312) must BOTH emit a plain move via
+          # getMouseEventMove(); neither may synthesize a button press through
+          # _getMouseEvent(e, _kMouseEventMove). So zero such calls remain.
           _hover_count=$(grep -c "_getMouseEvent(e, _kMouseEventMove)" ./flutter/lib/models/input_model.dart)
-          [ "$_hover_count" = "1" ] || { echo "[FAIL] v177: _getMouseEvent move count is $_hover_count (expect 1: only onPointMoveImage)"; exit 1; }
+          [ "$_hover_count" = "0" ] || { echo "[FAIL] v312: _getMouseEvent move call still present ($_hover_count, expect 0: hover+move use getMouseEventMove)"; exit 1; }
+          grep -q "LnDesk v312" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v312: move-no-synth marker missing in input_model.dart"; exit 1; }
+          grep -q "getMouseEventMove()" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v312: move emits no getMouseEventMove()"; exit 1; }
           grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
