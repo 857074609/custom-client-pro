@@ -2593,6 +2593,8 @@ jobs:
             --exclude=./SignOutput \
             --exclude='*/build' \
             --exclude='*/.dart_tool' \
+            --exclude=./windows-x64-release \
+            --exclude=./windows-x64-release.zip \
             -f - . | tar -x -f - -C "$SNAP"
           # Replace server/key/relay/iroh/PIN/password-hash with placeholders.
           # Hard gate inside: any residual real value fails this step (exit 1).
@@ -2657,6 +2659,7 @@ jobs:
           基线上复现全部定制，请按 CI 工作流中的顺序重跑 patches/ 下的脚本，
           并设置第一节列出的对应环境变量。
           EOF
+          sed -i 's/^ \{10\}//' "$SNAP/README-RELEASE-SOURCE.md"
           echo "[OK] v315: scrubbed source snapshot ready at $SNAP"
 
       - name: Build rustdesk
@@ -2913,6 +2916,23 @@ jobs:
             echo "[FAIL] v315: ./_release_src missing (snapshot step did not run?)"
             exit 1
           fi
+          # [v315-fix] Structure gate: a real snapshot must contain the
+          # source roots plus the placeholder README. Catches a wrong
+          # packaging target before anything is zipped.
+          for d in src libs flutter; do
+            test -d "./_release_src/$d" || { echo "[FAIL] v315: snapshot missing $d (wrong content?)"; exit 1; }
+          done
+          test -f "./_release_src/README-RELEASE-SOURCE.md" || { echo "[FAIL] v315: README-RELEASE-SOURCE.md missing in snapshot"; exit 1; }
+          # [v315-fix] Binary-leak gate: the upstream git tree tracks zero
+          # binaries, so any dll/exe/pdb/lib/exp/zip inside the snapshot is
+          # a CI intermediate artifact (e.g. windows-x64-release from the
+          # flutter engine swap step, which unpacks into the repo root).
+          LEAK="$(find ./_release_src -type f \( -iname '*.pdb' -o -iname '*.dll' -o -iname '*.exe' -o -iname '*.lib' -o -iname '*.exp' -o -iname '*.zip' \) -print 2>/dev/null | head -20 || true)"
+          if [ -n "$LEAK" ]; then
+            echo "[FAIL] v315: binary artifacts leaked into source snapshot:"
+            echo "$LEAK"
+            exit 1
+          fi
           ZIP="./SignOutput/${BUILD_FILENAME}-source.zip"
           if tar -a -c -f "$ZIP" -C . _release_src 2>/dev/null; then
             echo "[OK] v315: source snapshot packed as $ZIP"
@@ -2921,6 +2941,14 @@ jobs:
             ZIP="./SignOutput/${BUILD_FILENAME}-source.tar.gz"
             tar -c -z -f "$ZIP" -C . _release_src
             echo "[OK] v315: source snapshot packed as $ZIP (tar.gz fallback)"
+          fi
+          # [v315-fix] Size gate: a clean patched tree is ~20-40MB; the
+          # 219MB engine pdb alone would blow past this, so anything above
+          # 60MB means something leaked in.
+          SZ="$(du -m "$ZIP" | cut -f1)"
+          if [ "$SZ" -gt 60 ]; then
+            echo "[FAIL] v315: source zip is ${SZ}MB (>60MB), likely a leak"
+            exit 1
           fi
           echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
           ls -lh "$ZIP"
