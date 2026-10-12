@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
+      patches_sha: f148bde41d4f1b4d82fe6ed40479da1ed9cbe634
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
+          ref: f148bde41d4f1b4d82fe6ed40479da1ed9cbe634
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2154,6 +2154,7 @@ jobs:
           python3 patches/patch_input_move_nosynth.py .
           python3 patches/patch_input_btn_selfheal.py .
           python3 patches/patch_input_mask_guard.py .
+          python3 patches/patch_input_up_mask_guard.py .
 
       - name: server_otp (v86)
         if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
@@ -2235,6 +2236,9 @@ jobs:
           grep -q "LnDesk v314] mask guard" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v314: mask guard marker missing in input_model.dart"; exit 1; }
           grep -q "buttonsOverride" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v314: _getMouseEvent lacks buttonsOverride (sanitized mask not plumbed)"; exit 1; }
           grep -q "_v314SanitizeDownMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v314: _v314SanitizeDownMask helper missing"; exit 1; }
+          grep -q "LnDesk v318] up mask guard" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: up mask guard marker missing in input_model.dart"; exit 1; }
+          grep -q "_v318SanitizeUpMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: _v318SanitizeUpMask helper missing"; exit 1; }
+          grep -q "buttonsOverride: _v318SanitizeUpMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: up path does not plumb the sanitized mask"; exit 1; }
           # [v118/v177] OTP delivery settle must exist and be 3000ms. Guard these
           # (a drifted anchor would otherwise stay green), then log the real line.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: kOtpDeliverySettleMs missing in peer_card.dart"; exit 1; }
