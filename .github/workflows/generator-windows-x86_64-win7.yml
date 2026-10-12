@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
+      patches_sha: 99a792677ce5cdaaa45bd90892ee47546381d56c
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
+          ref: 99a792677ce5cdaaa45bd90892ee47546381d56c
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2570,28 +2570,51 @@ jobs:
           fi
           echo "[OK] flutter analyze clean (no Dart errors)"
 
-      - name: Snapshot scrubbed source (v317)
+      - name: Snapshot scrubbed source (v319)
         if: ${{ fromJson(inputs.extras || '{}').generate_source == 'true' }}
         shell: bash
         env:
           SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
         run: |
-          # [LnDesk v317] Copy the fully-patched source tree BEFORE compilation
+          # [LnDesk v319] Copy the fully-patched source tree BEFORE compilation
           # and scrub every server secret, so a safe snapshot can ship next to
           # the binaries. Gated by the docker checkbox "generate source"
           # (generate_source); unchecked builds skip this step entirely.
           # v317: also neutralizes REFLECTORS / preset-password XOR pair /
           # custom STUN IPs / LnDesk branding, and ships rustdesk/custom_.txt.
+          # v319: the workspace HEAD is the pristine upstream tag commit and
+          # every patch edits the working tree, so `git diff` (after
+          # `git add -N` to register patch-created files) is the exact set of
+          # patch-injected lines - the scrubber uses it to strip ALL
+          # patch-injected comments, marked or not, leaving upstream
+          # comments untouched. No usable diff -> marker-only fallback.
           set -e
           SNAP="./_release_src"
           rm -rf "$SNAP"
           mkdir -p "$SNAP"
+          # Patch-injected line set (worktree vs index; intent-to-add makes
+          # patch-created files show up as new-file diffs). Build artifacts
+          # are excluded by pathspec - .gitignore only covers /target.
+          # Failures here are non-fatal: the scrubber falls back to
+          # marker-only comment stripping.
+          git add -N -- . 2>/dev/null || true
+          git diff -U0 --no-renames \
+            -- . \
+            ':(exclude)windows-x64-release' \
+            ':(exclude)windows-x64-release.zip' \
+            ':(exclude)_release_src' \
+            ':(exclude)_patchdiff.txt' \
+            ':(exclude)exe' \
+            ':(exclude)SignOutput' \
+            ':(exclude)rustdesk' \
+            > _patchdiff.txt 2>/dev/null || true
           # Whole repo minus VCS / build caches / patch backups. patches/ and
           # .github/ are dropped by the scrubber (customization traces).
           tar -c \
             --exclude=./.git \
             --exclude=./target \
             --exclude=./_release_src \
+            --exclude=./_patchdiff.txt \
             --exclude=./exe \
             --exclude=./rustdesk \
             --exclude=./SignOutput \
@@ -2613,9 +2636,9 @@ jobs:
             printf '%s' '${{ inputs.custom }}' > "$SNAP/rustdesk/custom_.txt"
           fi
           # Replace server/key/relay/iroh/PIN/password/REFLECTORS/STUN/brand
-          # with placeholders. Hard gate inside: any residual real value fails
-          # this step (exit 1).
-          python3 patches/scrub_source_for_release.py "$SNAP"
+          # with placeholders and strip patch-injected comments per the diff.
+          # Hard gate inside: any residual real value fails this step (exit 1).
+          python3 patches/scrub_source_for_release.py "$SNAP" ./_patchdiff.txt
           # README: placeholder legend + this build's key switches. Switch
           # states are presence/boolean only - never the secret values.
           IROH_SW=关
@@ -2689,6 +2712,7 @@ jobs:
 
           本目录即编译前的完整源码，可直接编译。定制补丁脚本与 CI 配置未随
           源码发布；如需重新注入服务器信息，请按第一节的方法设置对应环境变量。
+          定制方注入的注释已全部清除，上游原有注释保留原样。
           EOF
           sed -i 's/^ \{10\}//' "$SNAP/README-RELEASE-SOURCE.md"
           echo "[OK] v315: scrubbed source snapshot ready at $SNAP"

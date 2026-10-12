@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
+      patches_sha: 99a792677ce5cdaaa45bd90892ee47546381d56c
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -260,7 +260,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 0e8be28638bb77a750ec6508f1b2acd2d3e438dd
+          ref: 99a792677ce5cdaaa45bd90892ee47546381d56c
           clean: false
 
       - name: Apply activate_os no-right-click patch
