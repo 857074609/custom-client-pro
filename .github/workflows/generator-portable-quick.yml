@@ -1677,14 +1677,18 @@ jobs:
           # the count that matches the pinned patches version so a mismatched
           # patches_sha can never silently break the build -- but still fail hard on
           # a genuine regression (count > 1, or getMouseEventMove() absent).
-          _hover_count=$(grep -c "_getMouseEvent(e, _kMouseEventMove)" ./flutter/lib/models/input_model.dart)
+          _hover_count=$(grep -c "_getMouseEvent(e, _kMouseEventMove)" ./flutter/lib/models/input_model.dart || true)
           if grep -q "LnDesk v312" ./flutter/lib/models/input_model.dart; then
             [ "$_hover_count" = "0" ] || { echo "[FAIL] v312: _getMouseEvent move call still present ($_hover_count, expect 0: hover+move use getMouseEventMove)"; exit 1; }
           else
             [ "$_hover_count" = "1" ] || { echo "[FAIL] v177: _getMouseEvent move count is $_hover_count (expect 1: only onPointMoveImage)"; exit 1; }
           fi
           grep -q "getMouseEventMove()" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v312: move emits no getMouseEventMove()"; exit 1; }
-          grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart
+          # [v118/v177] OTP delivery settle must exist and be 3000ms. Guard these
+          # (a drifted anchor would otherwise stay green), then log the real line.
+          grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: kOtpDeliverySettleMs missing in peer_card.dart"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 3000" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v177: OTP delivery settle is not 3000ms"; exit 1; }
+          grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || true
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
             exit 1
@@ -1704,7 +1708,7 @@ jobs:
           # Assert the constant and echo the real line for searchable proof.
           grep -q "TIME_OTP_POLL" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll constant missing in sync.rs"; exit 1; }
           grep -q "from_millis(500)" ./src/hbbs_http/sync.rs || { echo "[FAIL] OTP poll interval is not 500ms"; exit 1; }
-          grep -n "TIME_OTP_POLL" ./src/hbbs_http/sync.rs
+          grep -n "TIME_OTP_POLL" ./src/hbbs_http/sync.rs || true
       - name: Invite feature (v143 remote assistance + v150 watch)
         # [V218] 合并 addinvite 控制的 2 个邀请步骤（v143 邀请 + v150 托盘监听），
         # 与 generator-windows.yml 保持一致：两者条件完全相同、相邻、均为 bash。
