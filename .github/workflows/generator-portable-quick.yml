@@ -1548,6 +1548,7 @@ jobs:
           echo "[OK] v150: invite watch wired"
 
       - name: winp dxgi fix (v116)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_winp_dxgi.py .
@@ -1569,6 +1570,59 @@ jobs:
           # proof that the row was restyled instead of left full-width.
           grep -q "slider3/value1/label2" ./flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] v118: sharpening row layout not restyled"; exit 1; }
           if grep -q "Image sharpening tip" ./flutter/lib/common/widgets/dialog.dart; then echo "[FAIL] v118: sharpening tip paragraph must be removed"; exit 1; fi
+
+      - name: cqp quality (v116)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
+        shell: bash
+        run: |
+          python3 patches/quality/patch_cqp_quality.py .
+          ! grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116 qp_for_ratio must NOT be present (removed as dead code)"; exit 1; }
+          # [v269] patch_cqp_quality.py is all-or-nothing: when the v269
+          # low-latency pipeline has rewritten the EncodeContext anchors it
+          # SKIP-ABSENTs, the whole CQP pair collapses to a no-op and the
+          # hwcodec fork pin never lands. Record the outcome so the revert
+          # step below knows whether there is anything to revert.
+          if grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml; then
+            echo "[OK] v116 cqp applied; hwcodec fork pinned"
+            echo "CQP_APPLIED=1" >> $GITHUB_ENV
+          else
+            echo "[SKIP] v116 cqp: anchors not applicable on this tree (v269 low-latency EncodeContext); patch skipped"
+            echo "CQP_APPLIED=0" >> $GITHUB_ENV
+          fi
+
+      - name: v116 revert CQP (hwcodec 0.8.0 externals missing from git-data upload)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
+        shell: bash
+        run: |
+          python3 patches/quality/patch_v116_revert_cqp.py .
+          # [v269] only assert the revert when CQP actually landed; on a v269
+          # tree there is nothing to revert and the pair is a clean no-op.
+          if [ "${CQP_APPLIED:-0}" = "1" ]; then
+            grep -q "v116-fix4" ./libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v116-fix4 revert marker missing"; exit 1; }
+            ! grep -qF '857074609/hwcodec' ./libs/scrap/Cargo.toml || { echo "[FAIL] v116-fix4 hwcodec pin not reverted"; exit 1; }
+            ! grep -q "pub fn qp_for_ratio" ./libs/scrap/src/common/codec.rs || { echo "[FAIL] v116-fix4 qp_for_ratio must NOT survive (dead code removed)"; exit 1; }
+            ! grep -q "patch/0030-nvenc" ./res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v116-fix4 portfile not reverted"; exit 1; }
+          else
+            echo "[SKIP] v116-fix4: CQP was never applied (v269 tree); nothing to revert"
+          fi
+
+      - name: Apply H264/H265 GPU sharpening (v309)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
+        shell: bash
+        run: |
+          # [LnDesk v309] The v116 CPU unsharp mask only runs on pixelbuffer
+          # frames; H264/H265 decoded through the VRAM (D3D11VA) path stay on
+          # the GPU as an ID3D11Texture2D and were never sharpened, so the
+          # sharpening slider looked dead on hardware H26x sessions. This adds
+          # a D3D11 video-processor EDGE_ENHANCEMENT pass for those frames:
+          # GPU only, no HLSL, no hwcodec fork change (works with the upstream
+          # crate too). It engages at sharpening >= 30 and, on any failure,
+          # disables itself and renders the untouched texture.
+          python3 patches/quality/patch_sharpen_h264_h265_d3d11.py .
+          grep -q "mod video_sharpen_d3d11;" ./src/client.rs || { echo "[FAIL] v309: module declaration missing"; exit 1; }
+          grep -q "video_sharpen_d3d11::sharpen_texture(" ./src/client.rs || { echo "[FAIL] v309: VRAM sharpen call missing"; exit 1; }
+          grep -q '"d3d11"' ./Cargo.toml || { echo "[FAIL] v309: winapi d3d11 feature missing"; exit 1; }
+          echo "[OK] v309: H264/H265 GPU sharpening wired"
 
       - name: video tile-diff (v243)
         shell: bash
@@ -1631,7 +1685,7 @@ jobs:
 # === 用户附加功能（Custom Enhancements）===
       
       - name: fix connection delay  
-        if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
+        if: fromJson(inputs.extras || '{}').delayFix == 'true' && fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_delay_fix.py .

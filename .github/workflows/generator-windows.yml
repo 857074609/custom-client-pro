@@ -1542,7 +1542,7 @@ jobs:
 # === 用户附加功能（Custom Enhancements）===
       
       - name: fix connection delay  
-        if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
+        if: fromJson(inputs.extras || '{}').delayFix == 'true' && fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_delay_fix.py .
@@ -2110,6 +2110,7 @@ jobs:
           fi
 
       - name: winp dxgi fix (v116)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_winp_dxgi.py .
@@ -2133,6 +2134,7 @@ jobs:
           if grep -q "Image sharpening tip" ./flutter/lib/common/widgets/dialog.dart; then echo "[FAIL] v118: sharpening tip paragraph must be removed"; exit 1; fi
 
       - name: cqp quality (v116)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_cqp_quality.py .
@@ -2151,6 +2153,7 @@ jobs:
           fi
 
       - name: v116 revert CQP (hwcodec 0.8.0 externals missing from git-data upload)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_v116_revert_cqp.py .
@@ -2166,6 +2169,7 @@ jobs:
           fi
 
       - name: Apply H264/H265 GPU sharpening (v309)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           # [LnDesk v309] The v116 CPU unsharp mask only runs on pixelbuffer
