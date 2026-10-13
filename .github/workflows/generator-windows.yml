@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 7c630ab0616e4dddb42c1a0fade21f72cebaf0cd
+      patches_sha: 42d6fde9ace6b999ad396cc78eddcec23cd9fa18
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 7c630ab0616e4dddb42c1a0fade21f72cebaf0cd
+          ref: 42d6fde9ace6b999ad396cc78eddcec23cd9fa18
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1181,6 +1181,10 @@ jobs:
         run: |
           python3 patches/server/set_server.py
 
+      - name: Apply v325 fps fast ramp
+        shell: bash
+        run: |
+          python3 patches/quality/patch_fps_fast_ramp.py .
       - name: Apply compile-time server lock (OVERWRITE_SETTINGS)
         # Compiles ID/key/api/relay servers into the OVERWRITE_SETTINGS static
         # (highest option priority): locked, overrides saved RustDesk2.toml,

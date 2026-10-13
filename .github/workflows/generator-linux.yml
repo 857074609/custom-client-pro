@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 7c630ab0616e4dddb42c1a0fade21f72cebaf0cd
+      patches_sha: 42d6fde9ace6b999ad396cc78eddcec23cd9fa18
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -260,7 +260,7 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 7c630ab0616e4dddb42c1a0fade21f72cebaf0cd
+          ref: 42d6fde9ace6b999ad396cc78eddcec23cd9fa18
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -393,6 +393,10 @@ jobs:
           fi
           python3 patches/server/set_server.py
 
+      - name: Apply v325 fps fast ramp
+        shell: bash
+        run: |
+          python3 patches/quality/patch_fps_fast_ramp.py .
       - name: Apply compile-time server lock (OVERWRITE_SETTINGS)
         # Compiles ID/key/api/relay servers into the OVERWRITE_SETTINGS static
         # (highest option priority): locked, overrides saved config, no
