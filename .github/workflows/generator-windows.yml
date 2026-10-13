@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 42d6fde9ace6b999ad396cc78eddcec23cd9fa18
+      patches_sha: 65c053d675cf20709d6b8362d161c99b32d26dcf
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 42d6fde9ace6b999ad396cc78eddcec23cd9fa18
+          ref: 65c053d675cf20709d6b8362d161c99b32d26dcf
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2116,6 +2116,7 @@ jobs:
           test $(grep -c "prod-line v116" ./libs/scrap/src/common/dxgi.rs) -ge 4 || { echo "[FAIL] v116 winp dxgi markers missing"; exit 1; }
 
       - name: lan quality (v116)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_lan_quality.py .
