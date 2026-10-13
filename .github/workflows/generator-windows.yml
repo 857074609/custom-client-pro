@@ -2223,13 +2223,8 @@ jobs:
         # pinned fork rev must already be materialized here.
         shell: bash
         run: |
-          grep -qF '857074609/hwcodec' ./Cargo.lock || { echo "[FAIL] v260 hwcodec zerolatency fork missing from lock"; exit 1; }
-          # [LnDesk v307a-rev-single-source] read the pinned hwcodec rev from its single
-          # definition point instead of hard-coding a hash that goes
-          # stale on every REV bump.
-          HWC_REV="$(python3 -c 'import importlib.util as u; s=u.spec_from_file_location("p","patches/quality/patch_hwcodec_zerolatency.py"); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.REV)')"
-          grep -qF "rev=$HWC_REV" ./Cargo.lock || { echo "[FAIL] v260 hwcodec fork not pinned to $HWC_REV"; exit 1; }
-          echo "[OK] v260 hwcodec fork materialized in lock @ $HWC_REV"
+          echo "[SKIP] gate hwcodec zerolatency fork IS in lock (v260): hwcodec fork chain removed (V324), step kept as placeholder"
+
       - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
         # [V218] 合并为一个步骤：两步强耦合（V200 依赖 super_p2p 模块），且同属
         # 「启用P2P增强」(super_p2p_enforcement) 一个复选框。
