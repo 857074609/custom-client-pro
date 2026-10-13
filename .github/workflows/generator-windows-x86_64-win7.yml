@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 99a792677ce5cdaaa45bd90892ee47546381d56c
+      patches_sha: 57d156870fb3a8ad63c603b21c5e4e36eeed0fbb
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 99a792677ce5cdaaa45bd90892ee47546381d56c
+          ref: 57d156870fb3a8ad63c603b21c5e4e36eeed0fbb
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1610,9 +1610,6 @@ jobs:
           # right after connect in control mode (some platforms report a non-zero
           # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
           # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
-          python3 patches/patch_input_hover_fix.py .
-          python3 patches/patch_input_move_nosynth.py .
-          python3 patches/patch_input_btn_selfheal.py .
 
       - name: server_otp (v86)
         if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
@@ -1661,29 +1658,16 @@ jobs:
           # assert the marker is present and that exactly ONE _getMouseEvent
           # move call survives (the onPointMoveImage one) -- the hover one must
           # be gone, otherwise a spurious right-click is sent on first hover.
-          grep -q "LnDesk v177] Hover must only move the remote cursor" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v177: input hover fix marker missing in input_model.dart"; exit 1; }
           # [v312] hover (v177) AND move (v312) must BOTH emit a plain move via
-          # getMouseEventMove(); neither may synthesize a button press through
           # _getMouseEvent(e, _kMouseEventMove). After v312 zero such calls remain;
           # before v312 (v177 only) exactly one (the move handler) remained. Assert
           # the count that matches the pinned patches version so a mismatched
           # patches_sha can never silently break the build -- but still fail hard on
-          # a genuine regression (count > 1, or getMouseEventMove() absent).
-          _hover_count=$(grep -c "_getMouseEvent(e, _kMouseEventMove)" ./flutter/lib/models/input_model.dart || true)
-          if grep -q "LnDesk v312" ./flutter/lib/models/input_model.dart; then
-            [ "$_hover_count" = "0" ] || { echo "[FAIL] v312: _getMouseEvent move call still present ($_hover_count, expect 0: hover+move use getMouseEventMove)"; exit 1; }
-          else
-            [ "$_hover_count" = "1" ] || { echo "[FAIL] v177: _getMouseEvent move count is $_hover_count (expect 1: only onPointMoveImage)"; exit 1; }
-          fi
-          grep -q "getMouseEventMove()" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v312: move emits no getMouseEventMove()"; exit 1; }
           # [v313] Self-heal for the remote button stuck after the window is
           # restored from the taskbar. Two injections plus one helper, all in
           # input_model.dart: release stale button bits before a new down, and
           # notify the peer on pointer enter/leave. Assert all three markers so
           # a drifted anchor can never silently disable the fix.
-          grep -q "LnDesk v313] self-heal: release stale remote button bits" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: down self-heal marker missing in input_model.dart"; exit 1; }
-          grep -q "LnDesk v313] releaseRemoteButtons helper" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: releaseRemoteButtons helper missing in input_model.dart"; exit 1; }
-          grep -q "LnDesk v313] release remote buttons on pointer enter/leave" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: enterOrLeave release marker missing in input_model.dart"; exit 1; }
           # [v118/v177] OTP delivery settle must exist and be 3000ms. Guard these
           # (a drifted anchor would otherwise stay green), then log the real line.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: kOtpDeliverySettleMs missing in peer_card.dart"; exit 1; }

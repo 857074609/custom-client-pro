@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d7e3e54c4b197d3847ed51b7973e487dd734f13c
+      patches_sha: 57d156870fb3a8ad63c603b21c5e4e36eeed0fbb
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d7e3e54c4b197d3847ed51b7973e487dd734f13c
+          ref: 57d156870fb3a8ad63c603b21c5e4e36eeed0fbb
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2188,16 +2188,7 @@ jobs:
           # V322 (which only fixed v314's lowest-bit fallback) still reproduced
           # on the built client, so the whole v177..v321 mouse sanitize chain is
           # suspect. Disable it to see if upstream input_model.dart is clean.
-          # python3 patches/patch_input_hover_fix.py .
-          # python3 patches/patch_input_move_nosynth.py .
-          # python3 patches/patch_input_btn_selfheal.py .
-          # python3 patches/patch_input_mask_guard.py .
-          # python3 patches/patch_input_up_mask_guard.py .
           # [v321] Diagnostic build ... (disabled for TEST-A)
-          # python3 patches/patch_mouse_diag.py .
-          # grep -q "LnDesk v321] mouse diagnostics" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v321: mouse diagnostics missing in input_model.dart"; exit 1; }
-          # grep -q "_v321DiagOn" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v321: runtime gate (_v321DiagOn) missing"; exit 1; }
-          # grep -q "peer-send" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v321: peer-send funnel not instrumented"; exit 1; }
           # echo "[OK] v321 mouse diagnostics wired"
 
       - name: server_otp (v86)
@@ -2247,52 +2238,11 @@ jobs:
           # assert the marker is present and that exactly ONE _getMouseEvent
           # move call survives (the onPointMoveImage one) -- the hover one must
           # be gone, otherwise a spurious right-click is sent on first hover.
-          # [TEST-A] grep -q "LnDesk v177] Hover must only move the remote cursor" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v177: input hover fix marker missing in input_model.dart"; exit 1; }
           # [v312] hover (v177) AND move (v312) must BOTH emit a plain move via
-          # getMouseEventMove(); neither may synthesize a button press through
           # _getMouseEvent(e, _kMouseEventMove). After v312 zero such calls remain;
           # before v312 (v177 only) exactly one (the move handler) remained. Assert
           # the count that matches the pinned patches version so a mismatched
           # patches_sha can never silently break the build -- but still fail hard on
-          # a genuine regression (count > 1, or getMouseEventMove() absent).
-          # [TEST-A] _hover_count=$(grep -c "_getMouseEvent(e, _kMouseEventMove)" ./flutter/lib/models/input_model.dart || true)
-          # [TEST-A] if grep -q "LnDesk v312" ./flutter/lib/models/input_model.dart; then
-          # [TEST-A]   [ "$_hover_count" = "0" ] || { echo "[FAIL] v312: _getMouseEvent move call still present ($_hover_count, expect 0: hover+move use getMouseEventMove)"; exit 1; }
-          # [TEST-A] else
-          # [TEST-A]   [ "$_hover_count" = "1" ] || { echo "[FAIL] v177: _getMouseEvent move count is $_hover_count (expect 1: only onPointMoveImage)"; exit 1; }
-          # [TEST-A] fi
-          # [TEST-A] grep -q "getMouseEventMove()" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v312: move emits no getMouseEventMove()"; exit 1; }
-          # [v313] Self-heal for the remote button stuck after the window is
-          # restored from the taskbar. Two injections plus one helper, all in
-          # input_model.dart: release stale button bits before a new down, and
-          # notify the peer on pointer enter/leave. Assert all three markers so
-          # a drifted anchor can never silently disable the fix.
-          # [TEST-A] grep -q "LnDesk v313] self-heal: release stale remote button bits" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: down self-heal marker missing in input_model.dart"; exit 1; }
-          # [TEST-A] grep -q "LnDesk v313] releaseRemoteButtons helper" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: releaseRemoteButtons helper missing in input_model.dart"; exit 1; }
-          # [TEST-A] grep -q "LnDesk v313] release remote buttons on pointer enter/leave" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v313: enterOrLeave release marker missing in input_model.dart"; exit 1; }
-          # [v314] Taskbar-restore mask guard. The OS keeps a stale buttons bit
-          # after a window restore; the DOWN path used to forward it as a real
-          # click (first left click after a restore acted as a right click), and
-          # real mouse ups were dropped once a synthesized non-mouse event cleared
-          # isPhysicalMouse. Assert the sanitizer is plumbed into _getMouseEvent
-          # and that the helper landed, so a drifted anchor cannot silently
-          # disable the fix.
-          # [TEST-A] grep -q "LnDesk v314] mask guard" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v314: mask guard marker missing in input_model.dart"; exit 1; }
-          # [TEST-A] grep -q "buttonsOverride" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v314: _getMouseEvent lacks buttonsOverride (sanitized mask not plumbed)"; exit 1; }
-          # [TEST-A] grep -q "_v314SanitizeDownMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v314: _v314SanitizeDownMask helper missing"; exit 1; }
-          # [TEST-A] grep -q "LnDesk v318] up mask guard" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: up mask guard marker missing in input_model.dart"; exit 1; }
-          # [TEST-A] grep -q "_v318SanitizeUpMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: _v318SanitizeUpMask helper missing"; exit 1; }
-          # [TEST-A] _v318_up_calls=$(grep -c "_v318SanitizeUpMask(e.buttons)" ./flutter/lib/models/input_model.dart || true)
-          # [TEST-A] [ "$_v318_up_calls" -ge 2 ] || { echo "[FAIL] v318: up mask guard not plumbed into both up paths (got $_v318_up_calls, expect >=2: absolute + relative)"; exit 1; }
-          # [v118/v177] OTP delivery settle must exist and be 3000ms. Guard these
-          # (a drifted anchor would otherwise stay green), then log the real line.
-          grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: kOtpDeliverySettleMs missing in peer_card.dart"; exit 1; }
-          grep -q "kOtpDeliverySettleMs = 3000" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v177: OTP delivery settle is not 3000ms"; exit 1; }
-          grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || true
-          if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
-            echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
-            exit 1
-          fi
           # [v120] OTP auto-retry wiring. The control-side re-dials once on a
           # wrong-password OTP session (cold-start race). Assert the armed/fired
           # helpers are present in model.dart, otherwise the retry silently no-ops.

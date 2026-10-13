@@ -821,8 +821,6 @@ jobs:
           # right after connect in control mode (some platforms report a non-zero
           # buttons mask on the first hover). Edits flutter/lib/models/input_model.dart.
           # 与 OTP 无关，独立无条件步骤，避免关闭「启用OTP」时误关此通用修复。
-          python3 patches/patch_input_hover_fix.py .
-          python3 patches/patch_input_move_nosynth.py .
 
       - name: server_otp (v86)
         if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
