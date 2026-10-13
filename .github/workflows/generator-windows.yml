@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 99a792677ce5cdaaa45bd90892ee47546381d56c
+      patches_sha: e0af77d05b30fb37c1357613cc02acdcb952600f
       # Same expression as the per-step gate below: missing key -> 'false',
       # i.e. the bridge stays upstream-clean for unpatched builds.
       image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2eb8d391c4d8506fcaf9fa7b06958bb0dad8ace0
+          ref: e0af77d05b30fb37c1357613cc02acdcb952600f
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash

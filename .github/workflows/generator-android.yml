@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: 99a792677ce5cdaaa45bd90892ee47546381d56c
+      patches_sha: e0af77d05b30fb37c1357613cc02acdcb952600f
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 99a792677ce5cdaaa45bd90892ee47546381d56c
+          ref: e0af77d05b30fb37c1357613cc02acdcb952600f
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -931,6 +931,39 @@ jobs:
           grep -qF "if self.first_frame && self.fail_counter < MAX_DECODE_FAIL_COUNTER {" src/client.rs || { echo "[FAIL] v307b: first_frame jump was disturbed"; exit 1; }
           grep -qF "|| handler.rebuild_fail_streak >= MAX_REBUILD_FAIL_STREAK" src/client.rs || { echo "[FAIL] v307b: R3 dead-decoder check was disturbed"; exit 1; }
           echo "[OK] v307b: refresh throttled -- one bad frame no longer rebuilds the whole pipeline"
+
+      - name: File transfer resilience (v320)
+        shell: bash
+        run: |
+          # [LnDesk v320] file-transfer resilience (client send timeout + pump stall guard)
+          #
+          # Two client-side guards so a stalled upload fails
+          # VISIBLY instead of freezing the progress bar forever.
+          #
+          # Symptom: uploading a file freezes partway (seen at 98%); after
+          # that there is no transfer log at all, the session stays alive,
+          # and it reproduces identically over relay and direct P2P (so it
+          # is not a network-path problem).
+          #
+          # Root cause: the controlled side sets a send timeout on its
+          # stream, but the CONTROLLING side never did, so a peer that
+          # stops consuming file blocks wedges our send forever on a full
+          # socket buffer with no deadline.
+          #   v320-1: set a client send timeout (120s, matches the
+          #           controlled side's SEND_TIMEOUT_OTHER).
+          #   v320-2: bound one pump tick (60s) so zero forward progress
+          #           breaks the io_loop and triggers a reconnect.
+          python3 patches/patch_client_send_timeout.py .
+          python3 patches/patch_transfer_stall_timeout.py .
+          # Guards: both markers, the actual timeout wire-ups, and the
+          # timeout constant typed as u64 milliseconds (hbb_common::timeout
+          # takes ms, not a Duration -- a Duration here fails to compile).
+          grep -qF "[LnDesk v320] client send timeout" src/client/io_loop.rs || { echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "peer.set_send_timeout(V320_CLIENT_SEND_TIMEOUT_MS);" src/client/io_loop.rs || { echo "[FAIL] v320: client set_send_timeout call missing"; exit 1; }
+          grep -qF "[LnDesk v320] transfer stall timeout" src/client/io_loop.rs || { echo "[FAIL] v320: transfer stall-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "const V320_TRANSFER_STALL_TIMEOUT_MS: u64 = 60_000;" src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout constant must be u64 milliseconds"; exit 1; }
+          grep -qF "V320_TRANSFER_STALL_TIMEOUT_MS," src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout not passed to timeout()"; exit 1; }
+          echo "[OK] v320: client send timeout + transfer pump stall guard in place"
 
 
       # [LnDesk v302b -> v307a] the hwcodec fork now carries force_i all the way
