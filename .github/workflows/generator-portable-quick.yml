@@ -1173,260 +1173,73 @@ jobs:
         run: |
           python3 patches/security/patch_server_lock_compiletime.py
           # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
-          python3 patches/quality/patch_keyframe_interval.py
-          grep -q "else { Some(15) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
+          echo "[SKIP] Apply compile-time server lock (OVERWRITE_SETTINGS): image-quality patch chain removed (V324), step kept as placeholder"
 
       - name: Apply hwcodec zerolatency fork patch (v260)
         shell: bash
         run: |
-          # [LnDesk v260] Root fix for the H264/H265 hardware-encoder mouse
-          # smear (V259's 1s IDR only capped the ghost lifetime): reroute the
-          # hwcodec git dependency to our fork, pinned to the audited fix
-          # commit. The fork forces low-latency hardware encoding:
-          # NVENC rc-lookahead=0 + zerolatency=1 + tune=ull, QSV look_ahead=0,
-          # AMF no-op -- all verified against the ffmpeg 7.1 option tables
-          # shipped by the 1.4.9 vcpkg port. The script rewrites the
-          # Cargo.lock hwcodec source line byte-exactly (proven
-          # `cargo build --locked`-compatible); any drift still self-heals at
-          # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
-          python3 patches/quality/patch_hwcodec_zerolatency.py .
-          grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
-          grep -qF '21f43533dc4b125b76a9e0d3fe4e2dbbf2035075' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
-          grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
-          echo "[OK] v260: hwcodec routed to the zerolatency fork (mouse-smear root fix)"
-          grep -qF '21f43533dc4b125b76a9e0d3fe4e2dbbf2035075' Cargo.lock || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.lock"; exit 1; }
-
+          echo "[SKIP] Apply hwcodec zerolatency fork patch (v260): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply AV1 hardware encoding patch (v275)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v275] AV1 used to have no hardware path at all:
-          #   - src/server/video_service.rs::make_encoder() mapped
-          #     CodecFormat::AV1 straight to EncoderCfg::AOM (software libaom)
-          #     while the H264/H265 arm already walked VRAM -> HWRAM -> software.
-          #   - res/vcpkg/ffmpeg/portfile.cmake builds with --disable-everything
-          #     and re-enables codecs one by one, but listed no av1_* hardware
-          #     encoder, so av1_nvenc/av1_qsv simply did not exist in the build.
-          # Both are fixed here; the hwcodec side (registering the encoders and
-          # allowing AV1 through the vram capability filter) rides in with the
-          # fork rev pinned by the v260 step above.
-          # NOTE for this win7 generator specifically: the encoder selection is
-          # runtime, so older machines simply fall back to libaom. Nobody expects
-          # an RTX 40 / Intel Arc here -- this step exists so the binary accepts
-          # codec-preference=av1 instead of silently ignoring it.
-          python3 patches/quality/patch_av1_hw_encode.py .
-          grep -qF 'HwRamEncoder::try_get(CodecFormat::AV1)' src/server/video_service.rs || { echo "[FAIL] v275: AV1 hardware ladder missing from make_encoder()"; exit 1; }
-          grep -qF 'EncoderCfg::AOM(AomEncoderConfig' src/server/video_service.rs || { echo "[FAIL] v275: libaom fallback was dropped, old behaviour lost"; exit 1; }
-          grep -qF -- '--enable-encoder=av1_nvenc' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_nvenc not enabled in ffmpeg build"; exit 1; }
-          grep -qF -- '--enable-encoder=av1_qsv' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: av1_qsv not enabled in ffmpeg build"; exit 1; }
-          echo "[OK] v275: AV1 may use av1_nvenc / av1_qsv, libaom fallback retained"
-
+          echo "[SKIP] Apply AV1 hardware encoding patch (v275): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Bump vendored ffmpeg overlay to 9.0.2 (v275)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v275] The overlay port was pinned at ffmpeg 7.1. Move to
-          # 9.0.2 and adopt upstream's own patch set -- the 7.1-era patches
-          # target source lines that no longer exist. RustDesk's custom patches
-          # under patch/ are kept (0009 nvenc reconfigure blur and 0010
-          # disable-loading-DLLs matter to us); if this step fails in the patch
-          # phase, run once with LN_FFMPEG_DROP_CUSTOM_PATCHES=1 to separate
-          # "custom patch no longer applies" from "libavcodec moved".
-          # NOTE: changing res/vcpkg/** busts the vcpkg cache key, so this run
-          # rebuilds ffmpeg from source and takes noticeably longer than usual.
-          # This generator uses the x64-windows-static triplet with the win7
-          # Rust target -- that pairing is untested against ffmpeg 9.0.2, so if
-          # this one fails while generator-windows.yml succeeds, the triplet is
-          # the first suspect, not the patch scripts.
-          python3 patches/quality/patch_ffmpeg_902.py .
-          grep -qF '"version": "9.0.2"' res/vcpkg/ffmpeg/vcpkg.json || { echo "[FAIL] v275: ffmpeg port version not bumped"; exit 1; }
-          grep -qF '21bf3fbcdfd2f41ea6edeab40433fecfe362b09ecaa177a652471b54f9357011b4f74dab18245ab1c26f1a473b94205490baecb42289afd2effd603cd0b22b59' res/vcpkg/ffmpeg/portfile.cmake || { echo "[FAIL] v275: ffmpeg 9.0.2 digest not applied"; exit 1; }
-          echo "[OK] v275: ffmpeg overlay port at 9.0.2"
-
-
+          echo "[SKIP] Bump vendored ffmpeg overlay to 9.0.2 (v275): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply privacy virtual-display cursor-embedded patch (v261)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v261] The virtual-display privacy mode composites the OS
-          # cursor into the captured frames (IddCx has no hardware cursor,
-          # DWM draws it into the swapchain), but SwitchDisplay.cursor_embedded
-          # stayed false -> the controller painted its own cursor overlay on
-          # top: two cursors one video-latency apart during fast moves, gone
-          # with privacy mode off. Report embedded=true while a virtual-
-          # display privacy session owns the capture so the controller
-          # suppresses the overlay (remote_page.dart gates both the
-          # CursorPaint overlay and the local pointer on cursorEmbedded).
-          python3 patches/privacy/patch_privacy_vdisplay_cursor_embedded.py .
-          grep -qF '[LnDesk v261 privacy-cursor-embedded]' src/server/display_service.rs || { echo "[FAIL] v261: cursor_embedded marker missing"; exit 1; }
-          grep -q 'is_current_privacy_mode_impl' src/server/display_service.rs || { echo "[FAIL] v261: privacy impl query not wired"; exit 1; }
-          echo "[OK] v261: virtual-display privacy reports cursor_embedded=true"
-
+          echo "[SKIP] Apply privacy virtual-display cursor-embedded patch (v261): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply privacy cursor-by-encoder patch (v263)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v263] v261 regression fix: the embedded-cursor flag
-          # must follow the ACTIVE encoder. Only the VRAM texture path
-          # carries the OS-composited cursor of the privacy virtual
-          # display; software encoders (VP8/VP9/AV1/H264RAM) never do, so
-          # v261's blanket embedded=true left them pointerless (overlay
-          # suppressed + no in-video cursor). Encoder::new now refreshes a
-          # VRAM-active flag, display_service ANDs it into the v261
-          # condition, and the video service broadcasts a fresh
-          # SwitchDisplay on every (re)start (codec switch restarts the
-          # service) so the controller overlay stays in sync. Must run
-          # AFTER the v261 step (its anchor is the v261 output).
-          python3 patches/privacy/patch_privacy_cursor_by_encoder.py .
-          grep -qF '[LnDesk v263 vram-cursor-flag]' libs/scrap/src/common/codec.rs || { echo "[FAIL] v263: codec.rs flag missing"; exit 1; }
-          grep -qF 'scrap::codec::is_vram_encoder_active' src/server/display_service.rs || { echo "[FAIL] v263: display_service condition not wired"; exit 1; }
-          grep -qF '[LnDesk v263 vram-cursor-flag]' src/server/video_service.rs || { echo "[FAIL] v263: switchdisplay rebroadcast missing"; exit 1; }
-          echo "[OK] v263: cursor_embedded follows the active encoder"
-
-
+          echo "[SKIP] Apply privacy cursor-by-encoder patch (v263): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply low-latency pipeline patch (v269)
         shell: bash
         env:
           EXTRAS: '${{ inputs.extras }}'
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v269] steeldesk-derived low-latency pipeline, ALL
-          # THREE pieces shipped together (v264/v266 taught us they are
-          # inseparable): 1) hw encoder fps follows the QoS target
-          # (upstream hardcodes 30); 2) QoS fast-path (1s ratio interval,
-          # step 10, no INIT_FPS cap, RTT after 5 samples); 3) controller
-          # 3-frame latest-wins queue + auto-fps unthrottled + queue drops
-          # NEVER refresh (breaks the refresh<->restart loop). Gated by
-          # is_low_latency_mode(): option low-latency-mode Y/N explicit,
-          # empty = baked default from extras.low_latency_mode.
-          python3 patches/quality/patch_low_latency_pipeline.py .
-          python3 patches/quality/patch_v304_low_latency_default.py .
-          python3 patches/quality/patch_v305_latency_toggle_fix.py .
-          grep -qF '[LnDesk v269 low-latency]' src/server/video_qos.rs || { echo "[FAIL] v269: video_qos helper missing"; exit 1; }
-          grep -qF 'framerate: config.fps.unwrap_or(30)' libs/scrap/src/common/vram.rs || { echo "[FAIL] v269: vram fps missing"; exit 1; }
-          grep -qF 'fps: Some(VIDEO_QOS.lock().unwrap().highest_fps())' src/server/video_service.rs || { echo "[FAIL] v269: video_service fps feed missing"; exit 1; }
-          grep -qF '[LnDesk v269 low-latency]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop gates missing"; exit 1; }
-          echo "[OK] v269: low-latency pipeline applied"
-
+          echo "[SKIP] Apply low-latency pipeline patch (v269): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply QoS ratio asymmetry patch (v297)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v297] Asymmetric ratio recovery, low-latency mode only.
-          # Sustained full-motion scenes (spin a window) pushed avg_delay past
-          # 150ms; upstream's UP path is proportional AND gated on
-          # dynamic_screen, so once motion stops the gate closes and the ratio
-          # never climbs back -- the 150 kbps limiter then throttles what does
-          # get through. Fix: fixed +0.5 up-step, no dynamic_screen gate,
-          # +1000 kbps allowance; DOWN path untouched. Requires the v269
-          # is_low_latency_mode() helper, so it MUST run after the step above.
-          python3 patches/quality/patch_qos_ratio_asymmetry.py .
-          grep -qF '[LnDesk v297 qos-ratio-asymmetry]' src/server/video_qos.rs || { echo "[FAIL] v297: ratio asymmetry marker missing"; exit 1; }
-          grep -qF 'current_ratio + 0.5' src/server/video_qos.rs || { echo "[FAIL] v297: fixed up-step missing"; exit 1; }
-          grep -qF 'let up_kbps = if is_low_latency_mode() {' src/server/video_qos.rs || { echo "[FAIL] v297: limiter relaxation missing"; exit 1; }
-          echo "[OK] v297: QoS ratio asymmetry (fixed up-step, gate removed, allowance raised)"
-
+          echo "[SKIP] Apply QoS ratio asymmetry patch (v297): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply cursor prediction patch (v269)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v269] client-side cursor prediction with snap/lerp
-          # server reconciliation. Self-gating: active only in low-latency
-          # mode AND while the cursor is not embedded in the video
-          # (virtual-display privacy), tracked live via SwitchDisplay.
-          # Coordinates normalized to raw mouse space (HiDPI-safe). The
-          # bridge job regenerates the Dart binding for
-          # main_get_cursor_prediction.
-          python3 patches/quality/patch_cursor_prediction.py .
-          grep -qF '[LnDesk v269 cursor-prediction]' src/cursor_prediction.rs || { echo "[FAIL] v269: predictor module missing"; exit 1; }
-          grep -qF 'main_get_cursor_prediction' src/flutter_ffi.rs || { echo "[FAIL] v269: ffi missing"; exit 1; }
-          grep -qF '[LnDesk v269 cursor-prediction]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop hooks missing"; exit 1; }
-          echo "[OK] v269: cursor prediction applied"
+          echo "[SKIP] Apply cursor prediction patch (v269): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply fps240 patch (v270)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v270 fps240] raise fps ceiling 120->240 across the
-          # full chain: UI slider (consts.dart kMaxFps), server QoS
-          # (video_qos.rs MAX_FPS), controller validation (io_loop.rs),
-          # and legacy peer-compat cap (client.rs).
-          python3 patches/quality/patch_fps240.py .
-          grep -qF "kMaxFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kMaxFps not 240"; exit 1; }
-          grep -qF "kDefaultFps = 60" flutter/lib/consts.dart || { echo "[FAIL] v289: kDefaultFps not 60"; exit 1; }
-          grep -qF "get_num_string(key, 60.0, 5.0, 240.0)" libs/hbb_common/src/config.rs || { echo "[FAIL] v289: config.rs fps fallback not 60 (ceiling stays 240)"; exit 1; }
-          grep -qF "MAX_FPS: u32 = 240" src/server/video_qos.rs || { echo "[FAIL] v270: MAX_FPS not 240"; exit 1; }
-          grep -qF "FPS: u32 = 60" src/server/video_qos.rs || { echo "[FAIL] v289: FPS baseline not 60"; exit 1; }
-          echo "[OK] v270+v289 fps: ceiling 240 kept, effective default 60 (kDefaultFps / config fallback / encoder baseline)"
-
+          echo "[SKIP] Apply fps240 patch (v270): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply qmax guard patch (v289)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v289] Quality guardrail on top of the VBR rate control
-          # introduced by v260/v274:
-          #   - qmin/qmax flow through the hwcodec FFI (ram + vram) into the
-          #     vendor SDKs: NVENC enableMinQP/enableMaxQP (qmin is a PAIRED
-          #     requirement -- qmax alone is a silent no-op), QSV reads the
-          #     GLOBAL avctx->qmin/qmax, AMF hevc/av1 set MAX_QP_I/_P.
-          #     AMF H.264 has no max-qp property at all -> guard skipped (V289
-          #     accepted that vendor gap explicitly).
-          #   - QP ceilings: H.264 = 28, H.265 = 32 (qmin = 10 both).
-          #   - IDR bitrate boost x1.25 (calc_bitrate choke point) so the
-          #     now-4x-more-frequent IDRs (GOP 60 -> 15) are not starved
-          #     against a fixed budget -- the V273 full-screen mosaic lesson.
-          python3 patches/quality/patch_qmax_guard.py .
-          grep -qF "CodecFormat::H265 => (10, 32)," src/server/video_service.rs || { echo "[FAIL] v289: qmin/qmax policy table missing"; exit 1; }
-          grep -qF "let ratio = ratio * 1.25;" libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v289: IDR bitrate boost missing"; exit 1; }
-          echo "[OK] v289: qmax guard (H264=28 / H265=32) + IDR bitrate boost active"
-
+          echo "[SKIP] Apply qmax guard patch (v289): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply GOP continuity patch (v302)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v302] 隐私模式切换后保持 GOP 连续 —— AV1 errcode=7 根因修复。
-          #
-          # 链条：V289 把 live IDR 间隔压到 15 帧（4 IDR/s），同一次改动只给
-          # **硬件**路径加了 1.25x 码率补偿（patch_qmax_guard.py 注释写明
-          # "Software VP8/VP9/AV1 encoders are untouched ... not the low-latency
-          # main line"），但现场跑的是 **AV1（软件 libaom）**。
-          #
-          # 更关键的是 aom.rs 一直用 rc_end_usage = AOM_CBR：CBR 的每片码率
-          # 上限只给一个 IDR 约 7.7% 的 GOP 预算，而一个干净 IDR + 其后 14 个
-          # P 帧需要 22.2%（4/18）—— 结构性 ~2.9x 缺口，QP 被压到帧内预测自身
-          # 崩坏，客户端拿到解不了的帧 -> AOM_CODEC_CORRUPT_FRAME (errcode=7)
-          # -> 解码器 reset 循环。隐私模式切换会重建编码器，新编码器 gop_counter
-          # 从 0 起算、立刻要一个 IDR，正好撞在 QOS 刚复位、预算最紧的时刻。
-          #
-          # 修复（三处协同 + 一次强制 IDR）：
-          #   (a1) 软件 AV1 补上 1.25x 码率补偿（AomEncoder::bitrate）
-          #   (a2) **rc_end_usage CBR -> CQ**（载荷性修复：CQ 允许把一个 GOP 的
-          #        预算不均匀地花在 IDR 上，长期均值仍由 rc_target_bitrate 约束）
-          #   (a3) [rc_max_rate peak cap dropped: CI libaom's aom_codec_enc_cfg lacks the field; the CBR->CQ switch (a2) is the load-bearing fix]
-          #   (b)  重建后的第一帧强制 IDR
-          python3 patches/quality/patch_gop_continuity.py .
-          test -f libs/scrap/src/common/aom.rs || { echo "[FAIL] v302: aom.rs not found"; exit 1; }
-          grep -qF 'aom_rc_mode::AOM_CQ' libs/scrap/src/common/aom.rs \
-            || { echo "[FAIL] v302: rc_end_usage not switched to CQ (the load-bearing fix)"; exit 1; }
-          # [rc_max_rate assert dropped: field absent in CI libaom; covered by the CQ switch (a2)]
-          grep -qF 'IDR_BITRATE_BOOST' libs/scrap/src/common/aom.rs \
-            || { echo "[FAIL] v302: software AV1 IDR bitrate boost missing"; exit 1; }
-          grep -qF 'AOM_EFLAG_FORCE_KF' libs/scrap/src/common/aom.rs \
-            || { echo "[FAIL] v302: aom force-keyframe flag missing"; exit 1; }
-          grep -qF 'pub fn request_keyframe_next()' libs/scrap/src/common/codec.rs \
-            || { echo "[FAIL] v302: codec.rs one-shot keyframe request missing"; exit 1; }
-          grep -qF 'crate::codec::request_keyframe_next();' src/server/video_service.rs \
-            || { echo "[FAIL] v302: video_service.rs does not request an IDR after rebuild"; exit 1; }
-          echo "[OK] v302: aom CBR->CQ + IDR boost + forced IDR on rebuild"
-
+          echo "[SKIP] Apply GOP continuity patch (v302): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Patch hwcodec fork source (v302b force_i)
         # [LnDesk v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
         # channel) 的 force_i 贯通：v302 的强制 IDR 只有真正落到 FFI 才有
@@ -1786,11 +1599,7 @@ jobs:
       - name: video tile-diff (v243)
         shell: bash
         run: |
-          python3 patches/quality/patch_video_tile_diff.py .
-          grep -q "convert_to_yuv_tiled" ./libs/scrap/src/common/convert.rs || { echo "[FAIL] v243 tiled conversion missing"; exit 1; }
-          grep -qF "convert_to_yuv_tiled(&pixelbuffer" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 tiled call site missing"; exit 1; }
-          grep -q "sampled_equal" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 sampled compare missing"; exit 1; }
-
+          echo "[SKIP] video tile-diff (v243): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
