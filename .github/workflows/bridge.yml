@@ -88,7 +88,7 @@ jobs:
           # side (cursor_overlay.dart -> bind.mainGetCursorPrediction()) fails to compile
           # with "The method 'mainGetCursorPrediction' isn't defined". The patch is
           # idempotent (SKIPs if already applied).
-          python3 patches/patch_cursor_prediction.py .
+          python3 patches/quality/patch_cursor_prediction.py .
           grep -qF 'main_get_cursor_prediction' ./src/flutter_ffi.rs || { echo "[FAIL] bridge: flutter_ffi.rs not patched"; exit 1; }
           echo "[OK] bridge: flutter_ffi.rs patched for cursor prediction"
 

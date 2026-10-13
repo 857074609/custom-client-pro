@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 57d156870fb3a8ad63c603b21c5e4e36eeed0fbb
+      patches_sha: 7c630ab0616e4dddb42c1a0fade21f72cebaf0cd
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -260,18 +260,18 @@ jobs:
           repository: 857074609/patches
           token: ${{ secrets.REPO }}
           path: patches
-          ref: 57d156870fb3a8ad63c603b21c5e4e36eeed0fbb
+          ref: 7c630ab0616e4dddb42c1a0fade21f72cebaf0cd
           clean: false
 
       - name: Apply activate_os no-right-click patch
-        run: python3 patches/patch_activate_os_fix.py .
+        run: python3 patches/input/patch_activate_os_fix.py .
       - name: Apply connection text patch
-        run: python3 patches/patch_connection_text.py .
+        run: python3 patches/ui/patch_connection_text.py .
 
       - name: Apply clipboard session sync patch
-        run: python3 patches/patch_clipboard_session_sync.py .
+        run: python3 patches/ui/patch_clipboard_session_sync.py .
       - name: Apply audio playback refactor patch
-        run: python3 patches/patch_audio_playback_refactor.py .
+        run: python3 patches/audio/patch_audio_playback_refactor.py .
 
       - name: Report Status
         continue-on-error: true
@@ -346,24 +346,24 @@ jobs:
         id: conn
         shell: bash
         run: |
-          CUSTOM_INPUT="${{ inputs.custom }}" python3 patches/extract_conn_type.py
+          CUSTOM_INPUT="${{ inputs.custom }}" python3 patches/tooling/extract_conn_type.py
 
       - name: Apply patches for custom update
         if: env.UPDATE_LINK != '' && env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download'
         run: |
-          python3 patches/enable_custom_client_update.py
-          python3 patches/patch_handle_update_url_1.py
-          python3 patches/patch_filename_based_update.py
-          python3 patches/patch_handle_update_url_2.py
-          python3 patches/patch_custom_client_update_check.py
-          python3 patches/patch_enable_auto_update.py
-          python3 patches/patch_inject_client_type.py
-          python3 patches/fix_update_tip.py
+          python3 patches/update/enable_custom_client_update.py
+          python3 patches/update/patch_handle_update_url_1.py
+          python3 patches/update/patch_filename_based_update.py
+          python3 patches/update/patch_handle_update_url_2.py
+          python3 patches/update/patch_custom_client_update_check.py
+          python3 patches/update/patch_enable_auto_update.py
+          python3 patches/update/patch_inject_client_type.py
+          python3 patches/update/fix_update_tip.py
 
       - name: Apply patch for auto silent update
         if: ${{ fromJson(inputs.extras).auto_silent_update == 'true' && (env.UPDATE_LINK != '' && env.UPDATE_LINK != 'https://api.rustdesk.com/version/latest' || env.DOWNLOAD_LINK != '' && env.DOWNLOAD_LINK != 'https://rustdesk.com/download') }}
         run: |
-          python3 patches/patch_auto_silent_update.py
+          python3 patches/update/patch_auto_silent_update.py
 
       - name: Apply domestic STUN fallback (domestic-only)
         # [LnDesk v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
@@ -372,7 +372,7 @@ jobs:
         # super_p2p 侧 V298 的 STUN_TARGETS 一致。
         shell: bash
         run: |
-          python3 patches/hand_stun.py
+          python3 patches/network/hand_stun.py
           echo ">> assert domestic-only STUN (common.rs STUNS_V4 + webrtc.rs ICE)"
           # 每条 STUN 表体单独取出来检查：注释里会提到被删掉的主机名，
           # 整体 grep 会误报（与 V298 的 STUN_TARGETS 断言同一个坑）。
@@ -391,7 +391,7 @@ jobs:
             echo "::warning::CUSTOM_SERVER not set (no serverinfo / test build) -> skip set_server, building with default server"
             exit 0
           fi
-          python3 patches/set_server.py
+          python3 patches/server/set_server.py
 
       - name: Apply compile-time server lock (OVERWRITE_SETTINGS)
         # Compiles ID/key/api/relay servers into the OVERWRITE_SETTINGS static
@@ -400,9 +400,9 @@ jobs:
         # DEFAULT-layer fallback.
         shell: bash
         run: |
-          python3 patches/patch_server_lock_compiletime.py
+          python3 patches/security/patch_server_lock_compiletime.py
           # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
-          python3 patches/patch_keyframe_interval.py
+          python3 patches/quality/patch_keyframe_interval.py
           grep -q "else { Some(15) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
 
       - name: Apply hwcodec zerolatency fork patch (v260)
@@ -418,7 +418,7 @@ jobs:
           # Cargo.lock hwcodec source line byte-exactly (proven
           # `cargo build --locked`-compatible); any drift still self-heals at
           # the pre-build `cargo fetch`, and the v260 lock gate asserts it.
-          python3 patches/patch_hwcodec_zerolatency.py .
+          python3 patches/quality/patch_hwcodec_zerolatency.py .
           grep -qF '[patch."https://github.com/rustdesk-org/hwcodec"]' Cargo.toml || { echo "[FAIL] v260: hwcodec [patch] table missing from Cargo.toml"; exit 1; }
           grep -qF '21f43533dc4b125b76a9e0d3fe4e2dbbf2035075' Cargo.toml || { echo "[FAIL] v260: hwcodec fork rev not pinned in Cargo.toml"; exit 1; }
           grep -qF '857074609/hwcodec' Cargo.lock || { echo "[FAIL] v260: hwcodec fork source line missing from Cargo.lock"; exit 1; }
@@ -439,7 +439,7 @@ jobs:
           # display privacy session owns the capture so the controller
           # suppresses the overlay (remote_page.dart gates both the
           # CursorPaint overlay and the local pointer on cursorEmbedded).
-          python3 patches/patch_privacy_vdisplay_cursor_embedded.py .
+          python3 patches/privacy/patch_privacy_vdisplay_cursor_embedded.py .
           grep -qF '[LnDesk v261 privacy-cursor-embedded]' src/server/display_service.rs || { echo "[FAIL] v261: cursor_embedded marker missing"; exit 1; }
           grep -q 'is_current_privacy_mode_impl' src/server/display_service.rs || { echo "[FAIL] v261: privacy impl query not wired"; exit 1; }
           echo "[OK] v261: virtual-display privacy reports cursor_embedded=true"
@@ -460,7 +460,7 @@ jobs:
           # SwitchDisplay on every (re)start (codec switch restarts the
           # service) so the controller overlay stays in sync. Must run
           # AFTER the v261 step (its anchor is the v261 output).
-          python3 patches/patch_privacy_cursor_by_encoder.py .
+          python3 patches/privacy/patch_privacy_cursor_by_encoder.py .
           grep -qF '[LnDesk v263 vram-cursor-flag]' libs/scrap/src/common/codec.rs || { echo "[FAIL] v263: codec.rs flag missing"; exit 1; }
           grep -qF 'scrap::codec::is_vram_encoder_active' src/server/display_service.rs || { echo "[FAIL] v263: display_service condition not wired"; exit 1; }
           grep -qF '[LnDesk v263 vram-cursor-flag]' src/server/video_service.rs || { echo "[FAIL] v263: switchdisplay rebroadcast missing"; exit 1; }
@@ -482,9 +482,9 @@ jobs:
           # NEVER refresh (breaks the refresh<->restart loop). Gated by
           # is_low_latency_mode(): option low-latency-mode Y/N explicit,
           # empty = baked default from extras.low_latency_mode.
-          python3 patches/patch_low_latency_pipeline.py .
-          python3 patches/patch_v304_low_latency_default.py .
-          python3 patches/patch_v305_latency_toggle_fix.py .
+          python3 patches/quality/patch_low_latency_pipeline.py .
+          python3 patches/quality/patch_v304_low_latency_default.py .
+          python3 patches/quality/patch_v305_latency_toggle_fix.py .
           grep -qF '[LnDesk v269 low-latency]' src/server/video_qos.rs || { echo "[FAIL] v269: video_qos helper missing"; exit 1; }
           grep -qF 'framerate: config.fps.unwrap_or(30)' libs/scrap/src/common/vram.rs || { echo "[FAIL] v269: vram fps missing"; exit 1; }
           grep -qF 'fps: Some(VIDEO_QOS.lock().unwrap().highest_fps())' src/server/video_service.rs || { echo "[FAIL] v269: video_service fps feed missing"; exit 1; }
@@ -504,7 +504,7 @@ jobs:
           # get through. Fix: fixed +0.5 up-step, no dynamic_screen gate,
           # +1000 kbps allowance; DOWN path untouched. Requires the v269
           # is_low_latency_mode() helper, so it MUST run after the step above.
-          python3 patches/patch_qos_ratio_asymmetry.py .
+          python3 patches/quality/patch_qos_ratio_asymmetry.py .
           grep -qF '[LnDesk v297 qos-ratio-asymmetry]' src/server/video_qos.rs || { echo "[FAIL] v297: ratio asymmetry marker missing"; exit 1; }
           grep -qF 'current_ratio + 0.5' src/server/video_qos.rs || { echo "[FAIL] v297: fixed up-step missing"; exit 1; }
           grep -qF 'let up_kbps = if is_low_latency_mode() {' src/server/video_qos.rs || { echo "[FAIL] v297: limiter relaxation missing"; exit 1; }
@@ -522,7 +522,7 @@ jobs:
           # Coordinates normalized to raw mouse space (HiDPI-safe). The
           # bridge job regenerates the Dart binding for
           # main_get_cursor_prediction.
-          python3 patches/patch_cursor_prediction.py .
+          python3 patches/quality/patch_cursor_prediction.py .
           grep -qF '[LnDesk v269 cursor-prediction]' src/cursor_prediction.rs || { echo "[FAIL] v269: predictor module missing"; exit 1; }
           grep -qF 'main_get_cursor_prediction' src/flutter_ffi.rs || { echo "[FAIL] v269: ffi missing"; exit 1; }
           grep -qF '[LnDesk v269 cursor-prediction]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop hooks missing"; exit 1; }
@@ -536,7 +536,7 @@ jobs:
           # full chain: UI slider (consts.dart kMaxFps), server QoS
           # (video_qos.rs MAX_FPS), controller validation (io_loop.rs),
           # and legacy peer-compat cap (client.rs).
-          python3 patches/patch_fps240.py .
+          python3 patches/quality/patch_fps240.py .
           grep -qF "kMaxFps = 240" flutter/lib/consts.dart || { echo "[FAIL] v270: kMaxFps not 240"; exit 1; }
           grep -qF "kDefaultFps = 60" flutter/lib/consts.dart || { echo "[FAIL] v289: kDefaultFps not 60"; exit 1; }
           grep -qF "get_num_string(key, 60.0, 5.0, 240.0)" libs/hbb_common/src/config.rs || { echo "[FAIL] v289: config.rs fps fallback not 60 (ceiling stays 240)"; exit 1; }
@@ -561,7 +561,7 @@ jobs:
           #   - IDR bitrate boost x1.25 (calc_bitrate choke point) so the
           #     now-4x-more-frequent IDRs (GOP 60 -> 15) are not starved
           #     against a fixed budget -- the V273 full-screen mosaic lesson.
-          python3 patches/patch_qmax_guard.py .
+          python3 patches/quality/patch_qmax_guard.py .
           grep -qF "CodecFormat::H265 => (10, 32)," src/server/video_service.rs || { echo "[FAIL] v289: qmin/qmax policy table missing"; exit 1; }
           grep -qF "let ratio = ratio * 1.25;" libs/scrap/src/common/hwcodec.rs || { echo "[FAIL] v289: IDR bitrate boost missing"; exit 1; }
           echo "[OK] v289: qmax guard (H264=28 / H265=32) + IDR bitrate boost active"
@@ -591,7 +591,7 @@ jobs:
           #        预算不均匀地花在 IDR 上，长期均值仍由 rc_target_bitrate 约束）
           #   (a3) [rc_max_rate peak cap dropped: CI libaom's aom_codec_enc_cfg lacks the field; the CBR->CQ switch (a2) is the load-bearing fix]
           #   (b)  重建后的第一帧强制 IDR
-          python3 patches/patch_gop_continuity.py .
+          python3 patches/quality/patch_gop_continuity.py .
           test -f libs/scrap/src/common/aom.rs || { echo "[FAIL] v302: aom.rs not found"; exit 1; }
           grep -qF 'aom_rc_mode::AOM_CQ' libs/scrap/src/common/aom.rs \
             || { echo "[FAIL] v302: rc_end_usage not switched to CQ (the load-bearing fix)"; exit 1; }
@@ -642,7 +642,7 @@ jobs:
             exit 0
           fi
           echo ">> patching hwcodec fork at $CO"
-          python3 patches/patch_hwcodec_force_i.py "$CO"
+          python3 patches/quality/patch_hwcodec_force_i.py "$CO"
           grep -qF 'force_i' "$CO/cpp/ffmpeg_ram/ffmpeg_ram_ffi.h" \
             || { echo "[FAIL] v302b: hwcodec ram FFI missing force_i"; exit 1; }
           grep -qF 'AV_PICTURE_TYPE_I' "$CO/cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp" \
@@ -653,11 +653,11 @@ jobs:
 
       - name: Apply permanent password patch
         shell: bash
-        run: python3 patches/patch_permanent_password_new.py
+        run: python3 patches/security/patch_permanent_password_new.py
 
       - name: Apply unlock PIN patch
         shell: bash
-        run: python3 patches/patch_unlock_pin.py
+        run: python3 patches/security/patch_unlock_pin.py
 
       - name: Lock settings without install (unlock PIN gate)
         shell: bash
@@ -667,14 +667,14 @@ jobs:
           # 未安装（便携态）也锁定安全/网络设置：注入了 UNLOCK_PIN 即恒锁，
           # 需输 PIN 才能进设置（上游只看 mainIsInstalled，便携态裸奔）。
           # UNLOCK_PIN 未配置时补丁自动退化为上游行为。
-          python3 patches/patch_lock_settings_always.py
+          python3 patches/security/patch_lock_settings_always.py
           grep -q "_lockAlwaysInjected" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] 设置锁定补丁未生效"; exit 1; }
 
       - name: allow custom _.txt + remove Flutter "setup your own server" tip
         run: |
-          python3 patches/allowCustom.py
+          python3 patches/update/allowCustom.py
           git apply patches/removeSetupServerTip.diff || true
-          python3 patches/patch_inject_build_number.py
+          python3 patches/update/patch_inject_build_number.py
 
       - name: Set monitor switch button defaults
         shell: bash
@@ -682,18 +682,18 @@ jobs:
           EXTRAS: '${{ inputs.extras }}'
         run: |
           # 显示器切换按钮构建期默认值注入（见 generator-windows.yml 同名步骤说明）。
-          python3 patches/patch_monitor_switch.py .
+          python3 patches/ui/patch_monitor_switch.py .
 
       - name: disable_e2ee
         if: fromJson(inputs.extras).disable_e2ee == 'true'
         shell: bash
-        run: python3 patches/patch_common_client_disable_e2ee.py
+        run: python3 patches/network/patch_common_client_disable_e2ee.py
 
       - name: enable websocket
         if: ${{ fromJson(inputs.extras || '{}').ws_port != '' }}
         shell: bash
         run: |
-          python3 patches/patch_websocket_custom_port.py
+          python3 patches/network/patch_websocket_custom_port.py
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true'
@@ -703,7 +703,7 @@ jobs:
         run: |
           # 内网 IP 直连看板：patch_direct_access.py 注入（direct-server 强制启用 +
           # LAN IP 发现 + desktop_home_page 内网看板 + 双语 key）。
-          python3 patches/patch_direct_access.py . "${{ inputs.ui_mode }}"
+          python3 patches/network/patch_direct_access.py . "${{ inputs.ui_mode }}"
           grep -q "buildDirectAccessBoard" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] desktop_home_page.dart 缺少 buildDirectAccessBoard"; exit 1; }
           echo "[OK] 内网 IP 直连看板注入完成"
 
@@ -715,7 +715,7 @@ jobs:
         run: |
           # v70: 把本机 lan-ipv6 上报到 API 服务器心跳，供设备菜单"IPv6 直连"使用。
           # 必须在 patch_direct_access.py 之后运行（它写入 lan-ipv6 选项）。
-          python3 patches/patch_ipv6_heartbeat.py .
+          python3 patches/network/patch_ipv6_heartbeat.py .
           grep -q 'v\["ipv6"\]' src/hbbs_http/sync.rs || { echo "[FAIL] sync.rs 缺少 ipv6 心跳上报"; exit 1; }
 
       - name: Inject direct connection E2EE (IPv4/IPv6)
@@ -723,7 +723,7 @@ jobs:
         shell: bash
         run: |
           # IP 直连端到端加密（含 IPv6）：服务端 secure=true + 客户端 secure_direct_connection。
-          python3 patches/patch_direct_e2ee.py .
+          python3 patches/network/patch_direct_e2ee.py .
           grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
           grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
           grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
@@ -734,7 +734,7 @@ jobs:
         run: |
           # IP 直连 UDP(KCP) 传输：主控端 UDP 优先（2s 超时自动回退 TCP）；
           # 被控端 direct_server 同端口 UDP 监听（KcpStream::accept -> create_tcp_connection 同一入口）。
-          python3 patches/patch_direct_udp.py .
+          python3 patches/network/patch_direct_udp.py .
           grep -q "fn direct_udp_server" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct_udp_server"; exit 1; }
           grep -q "via UDP(KCP)" src/client.rs || { echo "[FAIL] client.rs 缺少 direct udp 分支"; exit 1; }
 
@@ -744,7 +744,7 @@ jobs:
         run: |
           # 在线设备同步（可访问的设备 tab）与设备菜单"IP直连"/"删除设备"
           # 依赖 allinone API v61 服务端改造（/api/peers status 语义 + last_online_ip/row_id）
-          python3 patches/patch_online_devices.py .
+          python3 patches/network/patch_online_devices.py .
           grep -q "void startOnlinePoll" flutter/lib/models/group_model.dart || { echo "[FAIL] group_model.dart 缺少 startOnlinePoll"; exit 1; }
           grep -q "_directAction" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card.dart 缺少 _directAction"; exit 1; }
           echo "[OK] IP 直连 E2EE 注入完成"
@@ -756,25 +756,25 @@ jobs:
         run: |
           # v79: 终端按键移回"更多"菜单（移除控制栏独立按钮）。校验 Terminal 入口仍在
           # （位于 more 菜单，含 onConnect(isTerminal: true)）。
-          python3 patches/patch_connection_terminal.py .
+          python3 patches/ui/patch_connection_terminal.py .
           grep -qF 'onConnect(isTerminal: true)' flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] connection_page.dart 缺少 Terminal 入口"; exit 1; }
 
       - name: fix connection delay
         if: ${{ fromJson(inputs.extras).delayFix == 'true' }}
         shell: bash
         run: |
-          python3 patches/patch_delay_fix.py .
+          python3 patches/quality/patch_delay_fix.py .
           grep -qF '// [LnDesk v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
 
       - name: Apply silent-install & cert patches
         shell: bash
         run: |
-          python3 patches/patch_silent_install.py .
-          python3 patches/patch_install_cert.py .
+          python3 patches/install/patch_silent_install.py .
+          python3 patches/install/patch_install_cert.py .
 
       - name: hide RustDesk branding
         shell: bash
-        run: python3 patches/hide_rustdesk_branding.py
+        run: python3 patches/ui/hide_rustdesk_branding.py
 
       - name: input hover fix (v177)
         shell: bash
@@ -788,7 +788,7 @@ jobs:
         if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
         shell: bash
         run: |
-          python3 patches/patch_server_otp.py .
+          python3 patches/security/patch_server_otp.py .
           # [v120] OTP auto-retry. patch_server_otp.py injects the armOtpRetry()
           # CALLS into peer_card.dart and leaves the "[LNDESK_OTP_AUTORETRY_HOOK]"
           # markers that this line consumes; patch_otp_autoretry.py DEFINES
@@ -798,7 +798,7 @@ jobs:
           # isn't defined for the class 'BasePeerCard'" (run #20,
           # peer_card.dart:616). Linux-only fix: no shared patch script is
           # modified and the other targets keep their existing chains.
-          python3 patches/patch_otp_autoretry.py .
+          python3 patches/security/patch_otp_autoretry.py .
           # Gates. patch_*_otp.py skips an absent anchor silently (SKIP-ABSENT),
           # so a drifted anchor would drop the OTP wiring while CI stays green.
           # Assert the definition and the import that makes it visible here.
@@ -826,7 +826,7 @@ jobs:
           # Response, so _requestOtp() compiles unchanged and now uses the same
           # Rust-backed HttpService path as the rest of the fork). No shared
           # patch script is modified, so the other targets keep their chains.
-          python3 patches/patch_linux_otp_http_alias.py .
+          python3 patches/security/patch_linux_otp_http_alias.py .
           # Hard gate: fail at patch time, not 20 minutes into the Dart build.
           if grep -q "utils/http_service.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart \
              && grep -q "package:http/http.dart' as http;" ./flutter/lib/common/widgets/peer_card.dart; then
@@ -920,7 +920,7 @@ jobs:
           # 于是握手成功（249ms）后仍钻进 10s 迁移等待，吃掉 client.rs 的
           # 8000ms auto-iroh 预算，白等 8 秒才回落。v301 把等待条件收紧为
           # 「纯 Relay」，mixed 直接放行；等待上限 10s -> 3s。
-          python3 patches/patch_iroh_mixed_ok.py .
+          python3 patches/iroh/patch_iroh_mixed_ok.py .
           grep -qF 'HOLD_MS_DIRECT_FIRST: u64 = 3_000' ./src/iroh_transport.rs \
             || { echo "[FAIL] v301: iroh hold not bounded to 3s"; exit 1; }
           grep -qF 'ConnectionType::Relay { .. }' ./src/iroh_transport.rs \
@@ -1053,11 +1053,11 @@ jobs:
           # longer hover-only (touch / quick-glance observability). Idempotent
           # via the 'prod-line v94 tab-conn-badge' marker.
           # [v170] add-to-ab auto rename + desktop toolbar toggles
-          python3 patches/patch_add_to_ab_rename.py .
-          python3 patches/patch_peer_card_alias.py .
-          python3 patches/patch_desktop_toolbar_toggles.py .
-          python3 patches/patch_add_address_book.py .
-          python3 patches/patch_quality_monitor_c.py .
+          python3 patches/ui/patch_add_to_ab_rename.py .
+          python3 patches/ui/patch_peer_card_alias.py .
+          python3 patches/ui/patch_desktop_toolbar_toggles.py .
+          python3 patches/ui/patch_add_address_book.py .
+          python3 patches/quality/patch_quality_monitor_c.py .
           python3 patches/iroh/iroh_badge.py .
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # commit 2026-05-26
         name: Build rustdesk (cargo lib + flutter + deb + rpm + suse-rpm)
