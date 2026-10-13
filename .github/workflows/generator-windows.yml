@@ -2281,7 +2281,8 @@ jobs:
           grep -q "_v314SanitizeDownMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v314: _v314SanitizeDownMask helper missing"; exit 1; }
           grep -q "LnDesk v318] up mask guard" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: up mask guard marker missing in input_model.dart"; exit 1; }
           grep -q "_v318SanitizeUpMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: _v318SanitizeUpMask helper missing"; exit 1; }
-          grep -q "buttonsOverride: _v318SanitizeUpMask" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v318: up path does not plumb the sanitized mask"; exit 1; }
+          _v318_up_calls=$(grep -c "_v318SanitizeUpMask(e.buttons)" ./flutter/lib/models/input_model.dart || true)
+          [ "$_v318_up_calls" -ge 2 ] || { echo "[FAIL] v318: up mask guard not plumbed into both up paths (got $_v318_up_calls, expect >=2: absolute + relative)"; exit 1; }
           # [v118/v177] OTP delivery settle must exist and be 3000ms. Guard these
           # (a drifted anchor would otherwise stay green), then log the real line.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: kOtpDeliverySettleMs missing in peer_card.dart"; exit 1; }
