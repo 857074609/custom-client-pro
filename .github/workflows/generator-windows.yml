@@ -193,7 +193,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 99a792677ce5cdaaa45bd90892ee47546381d56c
+          ref: 2eb8d391c4d8506fcaf9fa7b06958bb0dad8ace0
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1667,6 +1667,39 @@ jobs:
           grep -qF "|| handler.rebuild_fail_streak >= MAX_REBUILD_FAIL_STREAK" src/client.rs || { echo "[FAIL] v307b: R3 dead-decoder check was disturbed"; exit 1; }
           echo "[OK] v307b: refresh throttled -- one bad frame no longer rebuilds the whole pipeline"
 
+      - name: File transfer resilience (v320)
+        shell: bash
+        run: |
+          # [LnDesk v320] file-transfer resilience (client send timeout + pump stall guard)
+          #
+          # Two client-side guards so a stalled upload fails
+          # VISIBLY instead of freezing the progress bar forever.
+          #
+          # Symptom: uploading a file freezes partway (seen at 98%); after
+          # that there is no transfer log at all, the session stays alive,
+          # and it reproduces identically over relay and direct P2P (so it
+          # is not a network-path problem).
+          #
+          # Root cause: the controlled side sets a send timeout on its
+          # stream, but the CONTROLLING side never did, so a peer that
+          # stops consuming file blocks wedges our send forever on a full
+          # socket buffer with no deadline.
+          #   v320-1: set a client send timeout (120s, matches the
+          #           controlled side's SEND_TIMEOUT_OTHER).
+          #   v320-2: bound one pump tick (60s) so zero forward progress
+          #           breaks the io_loop and triggers a reconnect.
+          python3 patches/patch_client_send_timeout.py .
+          python3 patches/patch_transfer_stall_timeout.py .
+          # Guards: both markers, the actual timeout wire-ups, and the
+          # timeout constant typed as u64 milliseconds (hbb_common::timeout
+          # takes ms, not a Duration -- a Duration here fails to compile).
+          grep -qF "[LnDesk v320] client send timeout" src/client/io_loop.rs || { echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "peer.set_send_timeout(V320_CLIENT_SEND_TIMEOUT_MS);" src/client/io_loop.rs || { echo "[FAIL] v320: client set_send_timeout call missing"; exit 1; }
+          grep -qF "[LnDesk v320] transfer stall timeout" src/client/io_loop.rs || { echo "[FAIL] v320: transfer stall-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "const V320_TRANSFER_STALL_TIMEOUT_MS: u64 = 60_000;" src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout constant must be u64 milliseconds"; exit 1; }
+          grep -qF "V320_TRANSFER_STALL_TIMEOUT_MS," src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout not passed to timeout()"; exit 1; }
+          echo "[OK] v320: client send timeout + transfer pump stall guard in place"
+
 
       # [LnDesk v302b -> v307a] the hwcodec fork now carries force_i all the way
       # down: 944e5e8 widened EncodeCall to 6 args, 11f1b3a made
@@ -2155,6 +2188,16 @@ jobs:
           python3 patches/patch_input_btn_selfheal.py .
           python3 patches/patch_input_mask_guard.py .
           python3 patches/patch_input_up_mask_guard.py .
+          # [v321] Diagnostic build for the taskbar-restore "first left click
+          # acts as right click" defect (still reproduces on run #2224 which
+          # already carries v313/v314/v318). Inert unless the client is
+          # launched with LNDESK_MOUSE_DIAG set in its environment; logs every
+          # mouse funnel event to %TEMP%\lndesk_mouse_diag.log.
+          python3 patches/patch_mouse_diag.py .
+          grep -q "LnDesk v321] mouse diagnostics" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v321: mouse diagnostics missing in input_model.dart"; exit 1; }
+          grep -q "_v321DiagOn" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v321: runtime gate (_v321DiagOn) missing"; exit 1; }
+          grep -q "peer-send" ./flutter/lib/models/input_model.dart || { echo "[FAIL] v321: peer-send funnel not instrumented"; exit 1; }
+          echo "[OK] v321 mouse diagnostics wired"
 
       - name: server_otp (v86)
         if: fromJson(inputs.extras).enable_otp != 'false'  # 默认启用OTP，仅显式 false 才跳过（兼容旧 generator / 手动 API）
