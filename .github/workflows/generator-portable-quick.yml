@@ -1165,6 +1165,7 @@ jobs:
           python3 patches/server/set_server.py
 
       - name: Apply v325 fps fast ramp
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_fps_fast_ramp.py .

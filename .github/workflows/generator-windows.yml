@@ -103,9 +103,6 @@ jobs:
     with:
       version: ${{ fromJson(inputs.extras).version }}
       patches_sha: 42d6fde9ace6b999ad396cc78eddcec23cd9fa18
-      # Same expression as the per-step gate below: missing key -> 'false',
-      # i.e. the bridge stays upstream-clean for unpatched builds.
-      image_quality_opt: ${{ fromJson(inputs.extras || '{}').image_quality_opt == 'true' && 'true' || 'false' }}
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -1182,6 +1179,7 @@ jobs:
           python3 patches/server/set_server.py
 
       - name: Apply v325 fps fast ramp
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           python3 patches/quality/patch_fps_fast_ramp.py .
@@ -1199,45 +1197,38 @@ jobs:
         # [LnDesk v308] This is an image-quality change, so it is gated behind the
         # builder's "image quality optimisation" checkbox -- unchecking it must
         # leave the upstream keyframe behaviour untouched for A/B isolation.
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           echo "[SKIP] Apply keyframe interval patch (v259): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply hwcodec zerolatency fork patch (v260)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           echo "[SKIP] Apply hwcodec zerolatency fork patch (v260): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply AV1 hardware encoding patch (v275)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply AV1 hardware encoding patch (v275): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Bump vendored ffmpeg overlay to 9.0.2 (v275)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Bump vendored ffmpeg overlay to 9.0.2 (v275): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply privacy virtual-display cursor-embedded patch (v261)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply privacy virtual-display cursor-embedded patch (v261): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply privacy cursor-by-encoder patch (v263)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply privacy cursor-by-encoder patch (v263): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply low-latency pipeline patch (v269)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           EXTRAS: '${{ inputs.extras }}'
@@ -1245,63 +1236,54 @@ jobs:
         run: |
           echo "[SKIP] Apply low-latency pipeline patch (v269): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply QoS ratio asymmetry patch (v297)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply QoS ratio asymmetry patch (v297): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply cursor prediction patch (v269)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply cursor prediction patch (v269): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply fps240 patch (v270)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply fps240 patch (v270): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply qmax guard patch (v289)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply qmax guard patch (v289): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply GOP continuity patch (v302)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply GOP continuity patch (v302): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply rebuild-window qmax floor (v306 R1)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply rebuild-window qmax floor (v306 R1): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply decoder rebuild guard (v306 R3)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply decoder rebuild guard (v306 R3): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Apply VRAM force-IDR wiring (v307a)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           echo "[SKIP] Apply VRAM force-IDR wiring (v307a): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Throttle refresh on decode failure (v307b)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           echo "[SKIP] Throttle refresh on decode failure (v307b): image-quality patch chain removed (V324), step kept as placeholder"
@@ -2200,7 +2182,6 @@ jobs:
           echo "[OK] v309: H264/H265 GPU sharpening wired"
 
       - name: video tile-diff (v243)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
           echo "[SKIP] video tile-diff (v243): image-quality patch chain removed (V324), step kept as placeholder"
@@ -2234,7 +2215,6 @@ jobs:
             cargo fetch
           fi
       - name: gate hwcodec zerolatency fork IS in lock (v260)
-        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         # [LnDesk v260] INVERTS the v116 NOT-in-lock gate: hwcodec is now
         # rerouted to our zerolatency fork (H264/H265 mouse-smear root fix)
         # via a root-Cargo.toml [patch] + a rewritten Cargo.lock source line
