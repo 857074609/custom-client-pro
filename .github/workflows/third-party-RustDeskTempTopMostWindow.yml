@@ -98,7 +98,7 @@ jobs:
           $workspace = "$env:GITHUB_WORKSPACE"
           $pngPath = Join-Path $workspace "RustDeskTempTopMostWindow" "WindowInjection" "privacy_wallpaper.png"
           $outDir = Join-Path $workspace "RustDeskTempTopMostWindow" "WindowInjection"
-          $script = Join-Path $workspace "patches" "generate_img_cpp.py"
+          $script = Join-Path $workspace "patches" "install" "generate_img_cpp.py"
           python $script --input-png $pngPath --output-dir $outDir
 
       - name: Validate img.cpp file size
