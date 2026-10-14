@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 62e03372921b6ef4d40a3a3aad1d6b3fa4cc3264
+      patches_sha: 818e4a36d5fd010124a6a677ff32a4c7e5f6e0f7
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 62e03372921b6ef4d40a3a3aad1d6b3fa4cc3264
+          ref: 818e4a36d5fd010124a6a677ff32a4c7e5f6e0f7
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1319,6 +1319,32 @@ jobs:
           grep -qF "const V320_TRANSFER_STALL_TIMEOUT_MS: u64 = 60_000;" src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout constant must be u64 milliseconds"; exit 1; }
           grep -qF "V320_TRANSFER_STALL_TIMEOUT_MS," src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout not passed to timeout()"; exit 1; }
           echo "[OK] v320: client send timeout + transfer pump stall guard in place"
+
+      - name: File-transfer version race (v334)
+        shell: bash
+        run: |
+          # [LnDesk v334] floor the peer version with our own at the overwrite-
+          # detection (od) and resume gates. lc.version is 0 until PeerInfo lands,
+          # so a file dragged in the first seconds of a session silently lost od
+          # + resume and every retry restarted from byte 0. The resume offset is
+          # also honoured for a fresh job (digest.is_identical already proves the
+          # peer holds a prefix of the same source), so a matching partial
+          # .download resumes instead of overwriting.
+          python3 patches/file_transfer/patch_transfer_version_race.py .
+          # Semantic guards (counts + absence of the old form, NOT text-match of
+          # intermediate layout) so a later harmless reformat cannot false-FAIL.
+          grep -qF "[LnDesk v334]" src/client/io_loop.rs || { echo "[FAIL] v334: marker missing in io_loop.rs"; exit 1; }
+          _v334_m=$(grep -c "\[LnDesk v334\]" src/client/io_loop.rs)
+          [ "$_v334_m" -eq 6 ] || { echo "[FAIL] v334: expected 6 markers, got $_v334_m"; exit 1; }
+          _v334_floor=$(grep -c "peer_ver_floor" src/client/io_loop.rs)
+          [ "$_v334_floor" -eq 4 ] || { echo "[FAIL] v334: expected 4 peer_ver_floor refs, got $_v334_floor"; exit 1; }
+          grep -qF "can_enable_overwrite_detection(peer_ver_floor);" src/client/io_loop.rs || { echo "[FAIL] v334: od gates must consume the floored value"; exit 1; }
+          grep -qF "is_support_resume," src/client/io_loop.rs || { echo "[FAIL] v334: NeedConfirm input must drop job.is_resume"; exit 1; }
+          grep -qF "is_support_resume && job.is_resume" src/client/io_loop.rs && { echo "[FAIL] v334: old NeedConfirm arg still present"; exit 1; }
+          grep -qF "if digest.is_identical && job.is_resume {" src/client/io_loop.rs && { echo "[FAIL] v334: old sender resume condition still present"; exit 1; }
+          _v334_res=$(grep -c "&& digest.transferred_size > 0" src/client/io_loop.rs)
+          [ "$_v334_res" -ge 2 ] || { echo "[FAIL] v334: expected >=2 resume-offset sites, got $_v334_res"; exit 1; }
+          echo "[OK] v334: peer-version floor + fresh-job resume in place"
 
 
       # [LnDesk v302b -> v307a] the hwcodec fork now carries force_i all the way
