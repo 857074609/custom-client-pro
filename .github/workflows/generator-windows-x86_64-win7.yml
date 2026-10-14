@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f38dd75ac8bcebc373d547099286224e18dcfc60
+      patches_sha: 889627245b3b46df3ebf0af48f1490e45eeca6a0
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f38dd75ac8bcebc373d547099286224e18dcfc60
+          ref: 889627245b3b46df3ebf0af48f1490e45eeca6a0
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2159,6 +2159,13 @@ jobs:
           grep -qF "[LnDesk v335] auto-resume on Login" src/ui_cm_interface.rs || { echo "[FAIL] v335: resume marker missing in ui_cm_interface.rs"; exit 1; }
           grep -qF "[LnDesk v335] overwrite_detection getter" libs/hbb_common/src/fs.rs || { echo "[FAIL] v335: getter marker missing in fs.rs"; exit 1; }
           echo "[OK] v335: file transfer auto-resume wired"
+      - name: File transfer auto-resume retry (v335b)
+        shell: bash
+        run: |
+          python3 patches/file_transfer/patch_ft_resume_retry.py .
+          grep -qF "[LnDesk v335b] resume retry helpers" src/ui_cm_interface.rs || { echo "[FAIL] v335b: retry helpers marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[LnDesk v335b] cancel stops resume retry" src/ui_cm_interface.rs || { echo "[FAIL] v335b: cancel hook marker missing in ui_cm_interface.rs"; exit 1; }
+          echo "[OK] v335b: file transfer auto-resume retry wired"
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
         env:
