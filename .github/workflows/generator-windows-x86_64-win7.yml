@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 65c053d675cf20709d6b8362d161c99b32d26dcf
+      patches_sha: d625ba869206f01e83747acd44b021e531e5bd9b
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 65c053d675cf20709d6b8362d161c99b32d26dcf
+          ref: d625ba869206f01e83747acd44b021e531e5bd9b
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1616,9 +1616,14 @@ jobs:
           echo "[OK] v309: H264/H265 GPU sharpening wired"
 
       - name: video tile-diff (v243)
+        if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
-          echo "[SKIP] video tile-diff (v243): image-quality patch chain removed (V324), step kept as placeholder"
+          python3 patches/quality/patch_video_tile_diff.py .
+          grep -q "convert_to_yuv_tiled" ./libs/scrap/src/common/convert.rs || { echo "[FAIL] v243 tiled conversion missing"; exit 1; }
+          grep -qF "convert_to_yuv_tiled(&pixelbuffer" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 tiled call site missing"; exit 1; }
+          grep -q "sampled_equal" ./libs/scrap/src/common/mod.rs || { echo "[FAIL] v243 sampled compare missing"; exit 1; }
+          grep -qF "crate::Pixfmt::I444) => ARGBToI444," ./libs/scrap/src/common/convert.rs || { echo "[FAIL] v243 I444 tile support missing"; exit 1; }
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
