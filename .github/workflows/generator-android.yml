@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: 73d34929c92b8c753d050c2942c20c66d0918aa5
+      patches_sha: f38dd75ac8bcebc373d547099286224e18dcfc60
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 73d34929c92b8c753d050c2942c20c66d0918aa5
+          ref: f38dd75ac8bcebc373d547099286224e18dcfc60
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -685,6 +685,13 @@ jobs:
           grep -qF "[LnDesk v334x] read block checksum" libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
           grep -qF "bytes checksum = 6" libs/hbb_common/protos/message.proto || { echo "[FAIL] v334x: checksum field missing in proto"; exit 1; }
           echo "[OK] v334x: file transfer per-block integrity wired"
+      - name: File transfer auto-resume after reconnect (v335)
+        shell: bash
+        run: |
+          python3 patches/file_transfer/patch_ft_resume.py .
+          grep -qF "[LnDesk v335] auto-resume on Login" src/ui_cm_interface.rs || { echo "[FAIL] v335: resume marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[LnDesk v335] overwrite_detection getter" libs/hbb_common/src/fs.rs || { echo "[FAIL] v335: getter marker missing in fs.rs"; exit 1; }
+          echo "[OK] v335: file transfer auto-resume wired"
       - name: set permanent password (preset, via patches/security/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
         shell: bash
