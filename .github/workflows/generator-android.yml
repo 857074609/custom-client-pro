@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: 818e4a36d5fd010124a6a677ff32a4c7e5f6e0f7
+      patches_sha: 151bed2ea43e5d7de493797e450382288e750246
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 818e4a36d5fd010124a6a677ff32a4c7e5f6e0f7
+          ref: 151bed2ea43e5d7de493797e450382288e750246
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -677,6 +677,14 @@ jobs:
       # patch is needed -- cargo re-resolves to 11f1b3a and recompiles hwcodec
       # with the force_i API that libs/scrap::{encode(yuv, ms, force_i)} expects.
 
+
+      - name: File transfer per-block integrity verify (v334x)
+        shell: bash
+        run: |
+          python3 patches/file_transfer/patch_file_integrity.py .
+          grep -qF "[LnDesk v334x] read block checksum" src/libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
+          grep -qF "bytes checksum = 6" libs/hbb_common/protos/message.proto || { echo "[FAIL] v334x: checksum field missing in proto"; exit 1; }
+          echo "[OK] v334x: file transfer per-block integrity wired"
       - name: set permanent password (preset, via patches/security/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
         shell: bash
