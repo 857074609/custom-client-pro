@@ -682,7 +682,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/file_transfer/patch_file_integrity.py .
-          grep -qF "[LnDesk v334x] read block checksum" src/libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
+          grep -qF "[LnDesk v334x] read block checksum" libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
           grep -qF "bytes checksum = 6" libs/hbb_common/protos/message.proto || { echo "[FAIL] v334x: checksum field missing in proto"; exit 1; }
           echo "[OK] v334x: file transfer per-block integrity wired"
       - name: set permanent password (preset, via patches/security/set_password.py)
