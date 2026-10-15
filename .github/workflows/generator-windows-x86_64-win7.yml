@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: b021e66d9acc91e02232c4f55007114cf8b48a8e
+      patches_sha: be9f0b23e7960042cf83f5781eefc6dbd7325123
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: b021e66d9acc91e02232c4f55007114cf8b48a8e
+          ref: be9f0b23e7960042cf83f5781eefc6dbd7325123
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -807,7 +807,7 @@ jobs:
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
           grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
           echo "[OK] v227: tab bar no background, icons visible, screen-wall icon restored (FA faThLarge)"
-      - name: both-mode heading card mark + logo container (v225/v336)
+      - name: both-mode heading card mark + logo container, text removed (v225/v336)
         if: env.UI_VARIANT == 'control_custom'
         shell: bash
         env:
@@ -818,10 +818,12 @@ jobs:
           CARD_MARK: ${{ fromJson(inputs.extras || '{}').card_mark_link }}
           LOGO_LINK: ${{ inputs.logolink }}
         run: |
-          # 「控制远程桌面」标题区（v336 定稿，patch_both_gear_and_notice.py）：
-          #   标题前 = 客户上传的卡片标识 card_mark.png（--card-mark；未上传则
-          #             标题顶左、无图标，D1）；上游 Icons.help_outline_outlined
-          #             恒删除（v225 起，含未上传组合）。
+          # 「控制远程桌面」标题区（v336 定稿 + 修订：标题文字删除，
+          # patch_both_gear_and_notice.py）：
+          #   标题文字 = 已删除（客户要求，v336 修订；下方 tripwire 断言）。
+          #   标题前 = 客户上传的卡片标识 card_mark.png（--card-mark；未上传且
+          #             未传 logo 时该行不可见，D1）；上游
+          #             Icons.help_outline_outlined 恒删除（v225 起，含未上传组合）。
           #   标题后 = 客户上传的品牌标识 logo.png 容器（--logo，仅
           #             logolink=true 时注入，D2；Expanded 撑满文字后留白、
           #             高 32 随标题行、BoxFit.contain 等比不裁切，D3）。
@@ -850,12 +852,15 @@ jobs:
             echo "[FAIL] v224: old help glyph still present"; exit 1
           fi
           grep -qF "[LnDesk v336 both title]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v336: title marker missing"; exit 1; }
+          if grep -q "Control Remote Desktop" flutter/lib/common/widgets/connection_page_title.dart; then
+            echo "[FAIL] v336: heading text not removed"; exit 1
+          fi
           if grep -qF "'assets/logo_v15_cn.png'" flutter/lib/desktop/pages/connection_page.dart; then
             echo "[FAIL] v244: right-card LOGO container still present"; exit 1
           fi
           grep -q "_cardHeight = 172" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v245: card height not 172"; exit 1; }
           grep -q 'Official Website' src/lang/en.rs || { echo "[FAIL] v224: Official Website key missing in en.rs"; exit 1; }
-          echo "[OK] v336: heading rebuilt (card_mark=$CARD_MARK, logo=$LOGO_LINK)"
+          echo "[OK] v336: heading rebuilt, text removed (card_mark=$CARD_MARK, logo=$LOGO_LINK)"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true' && (env.UI_VARIANT != 'upstream' || env.CLIENT_TYPE == 'incoming')
