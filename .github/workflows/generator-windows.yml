@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 889627245b3b46df3ebf0af48f1490e45eeca6a0
+      patches_sha: b021e66d9acc91e02232c4f55007114cf8b48a8e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 889627245b3b46df3ebf0af48f1490e45eeca6a0
+          ref: b021e66d9acc91e02232c4f55007114cf8b48a8e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -845,29 +845,55 @@ jobs:
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
           grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
           echo "[OK] v227: tab bar no background, icons visible, screen-wall icon restored (FA faThLarge)"
-      - name: both-mode gear icon + compliance notice (v225)
+      - name: both-mode heading card mark + logo container (v225/v336)
         if: env.UI_VARIANT == 'control_custom'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
+          # [LnDesk v336] 标题前「卡片标识」门控来自 extras JSON（docker 前端
+          # 上传后 card_mark_link='true'，card_mark.png 由下方 Download 步骤
+          # 落入运行期 bundle）；标题后「品牌标识」沿用既有 logolink input。
+          CARD_MARK: ${{ fromJson(inputs.extras || '{}').card_mark_link }}
+          LOGO_LINK: ${{ inputs.logolink }}
         run: |
-          # 「控制远程桌面」标题前的产品图标：上游是 Icons.help_outline_outlined，
-          # 这里换成客户提供的 64x64 产品图，渲染进 32x32 方框（BoxFit.contain
-          # 自动等比缩小，2x DPI 下 1:1 不再放大糊边）。
-          cp -f patches/assets/icon_64.png flutter/assets/icon_64.png
-          test -s flutter/assets/icon_64.png || { echo "[FAIL] v244: icon_64.png missing/empty"; exit 1; }
-          python3 patches/ui/patch_both_gear_and_notice.py .
-          grep -q "assets/icon_64.png" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v244: gear image not injected"; exit 1; }
+          # 「控制远程桌面」标题区（v336 定稿，patch_both_gear_and_notice.py）：
+          #   标题前 = 客户上传的卡片标识 card_mark.png（--card-mark；未上传则
+          #             标题顶左、无图标，D1）；上游 Icons.help_outline_outlined
+          #             恒删除（v225 起，含未上传组合）。
+          #   标题后 = 客户上传的品牌标识 logo.png 容器（--logo，仅
+          #             logolink=true 时注入，D2；Expanded 撑满文字后留白、
+          #             高 32 随标题行、BoxFit.contain 等比不裁切，D3）。
+          #   card_mark.png / logo.png 由本 job 后续 Download 步骤落入
+          #   ./rustdesk/data/flutter_assets/assets/（运行期 bundle）。
+          ARGS=""
+          if [ "$CARD_MARK" = "true" ]; then ARGS="$ARGS --card-mark"; fi
+          if [ "$LOGO_LINK" = "true" ]; then ARGS="$ARGS --logo"; fi
+          python3 patches/ui/patch_both_gear_and_notice.py . $ARGS
+          # ---- 断言按门控分流（v244 起恒查 icon_64；v336 起 icon_64 退役，改为按开关比对）----
+          if [ "$CARD_MARK" = "true" ]; then
+            grep -q "assets/card_mark.png" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v336: card mark not injected"; exit 1; }
+          else
+            if grep -q "assets/card_mark.png" flutter/lib/common/widgets/connection_page_title.dart; then
+              echo "[FAIL] v336: card mark injected without upload"; exit 1
+            fi
+          fi
+          if [ "$LOGO_LINK" = "true" ]; then
+            grep -q "assets/logo.png" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v336: logo container not injected"; exit 1; }
+          else
+            if grep -q "assets/logo.png" flutter/lib/common/widgets/connection_page_title.dart; then
+              echo "[FAIL] v336: logo container injected without logolink"; exit 1
+            fi
+          fi
           if grep -q "Icons.help_outline_outlined" flutter/lib/common/widgets/connection_page_title.dart; then
             echo "[FAIL] v224: old help glyph still present"; exit 1
           fi
-                    grep -qF "[LnDesk v225 both gear]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v225: gear marker not injected"; exit 1; }
+          grep -qF "[LnDesk v336 both title]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v336: title marker missing"; exit 1; }
           if grep -qF "'assets/logo_v15_cn.png'" flutter/lib/desktop/pages/connection_page.dart; then
             echo "[FAIL] v244: right-card LOGO container still present"; exit 1
           fi
           grep -q "_cardHeight = 172" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v245: card height not 172"; exit 1; }
           grep -q 'Official Website' src/lang/en.rs || { echo "[FAIL] v224: Official Website key missing in en.rs"; exit 1; }
-          echo "[OK] v225: 齿轮已移到标题前"
+          echo "[OK] v336: heading rebuilt (card_mark=$CARD_MARK, logo=$LOGO_LINK)"
 
       - name: Inject LAN IP direct access board
         if: fromJson(inputs.extras).ip_direct_board == 'true' && (env.UI_VARIANT != 'upstream' || env.CLIENT_TYPE == 'incoming')
@@ -2994,6 +3020,24 @@ jobs:
           }
           $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
           Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
+
+      # [LnDesk v336] 卡片标识（both 标题前小图标）：与 logo.png 同一投递链
+      # （docker 前端上传 -> MEDIA_ROOT/png/{uuid}/card_mark.png -> GET /png/
+      # {uuid}/card_mark.png -> 运行期 bundle）。门控取自 extras 的
+      # card_mark_link；未上传时本步骤与标题区注入一并跳过（D1）。
+      - name: Download card_mark.png
+        if: ${{ fromJson(inputs.extras || '{}').card_mark_link == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          $outDir = "./rustdesk/data/flutter_assets/assets"
+          if (!(Test-Path $outDir)) {
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          }
+          $uri = "${env:GENURL}/png/${env:UUID}/card_mark.png"
+          Invoke-WebRequest -Uri $uri -OutFile "$outDir/card_mark.png" -TimeoutSec 30
       
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res
