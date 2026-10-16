@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras || '{}').version }}
-      patches_sha: 889627245b3b46df3ebf0af48f1490e45eeca6a0
+      patches_sha: 3d5b7d7fc4fbd97d5a9297a80e2c658a5a652aca
     secrets:
       REPO: ${{ secrets.REPO }}
   build-rustdesk-android:
@@ -345,7 +345,7 @@ jobs:
           repository: 857074609/patches
           path: patches
           token: ${{ secrets.REPO }}
-          ref: 889627245b3b46df3ebf0af48f1490e45eeca6a0
+          ref: 3d5b7d7fc4fbd97d5a9297a80e2c658a5a652aca
           clean: false
 
       - name: Apply activate_os no-right-click patch
@@ -1166,6 +1166,24 @@ jobs:
           python3 patches/network/patch_android_direct_server.py .
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/quality/patch_quality_monitor_c.py .
+          python3 patches/quality/patch_quality_monitor_sysload.py .
+          # V337: quality panel fully Chinese + 5 system-load rows below 色彩 (Chroma).
+          # Anchors on the post-V277 state, so it must run after patch_quality_monitor_c.py.
+          # (Android is not Windows: sys_usage::sample() is a stub, the 5 rows show '-'.)
+          grep -qF "pub cpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v337: QualityStatus cpu field missing"; exit 1; }
+          grep -qF "pub gpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v337: QualityStatus gpu field missing"; exit 1; }
+          grep -qF "pub mod sys_usage;" src/client.rs || { echo "[FAIL] v337: sys_usage module not registered"; exit 1; }
+          grep -qF "sys_usage::sample()" src/client/io_loop.rs || { echo "[FAIL] v337: io_loop sample call missing"; exit 1; }
+          grep -qF '("cpu", &status.cpu.map_or(NULL, |it| format!("{:.1}%", it)))' src/flutter.rs || { echo "[FAIL] v337: flutter cpu key missing"; exit 1; }
+          grep -qF "String? cpu;" flutter/lib/models/model.dart || { echo "[FAIL] v337: model cpu field missing"; exit 1; }
+          grep -qF "evt.containsKey('gpu')" flutter/lib/models/model.dart || { echo "[FAIL] v337: model gpu parser missing"; exit 1; }
+          grep -qF '_row("色彩"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 色彩 label missing"; exit 1; }
+          grep -qF '_row("处理器"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 处理器 row missing"; exit 1; }
+          grep -qF '_row("显卡"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 显卡 row missing"; exit 1; }
+          [ "$(grep -c '_sysColor(' flutter/lib/common/widgets/overlay.dart)" -ge 5 ] || { echo "[FAIL] v337: _sysColor not wired to 5 rows"; exit 1; }
+          if grep -qF '_row("Chroma"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v337: old Chroma label still present"; exit 1; fi
+          if grep -qF '_row("Speed"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v337: old Speed label still present"; exit 1; fi
+          echo "[OK] v337 system-load rows applied"
           grep -qF '[LnDesk v125]' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: marker missing in rendezvous_mediator.rs"; exit 1; }
           grep -q 'Config::get_option(OPTION_DIRECT_SERVER) != "Y"' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: direct-server guard missing in rendezvous_mediator.rs"; exit 1; }
           [ "$(grep -c 'force enabling direct-server (android)' ./src/rendezvous_mediator.rs)" = "1" ] || { echo "[FAIL] v125: expected exactly 1 forced enable in rendezvous_mediator.rs"; exit 1; }

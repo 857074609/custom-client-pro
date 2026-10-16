@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 0bae8b0edad3c2607f64c4ea590cae9c14078bd9
+      patches_sha: 3d5b7d7fc4fbd97d5a9297a80e2c658a5a652aca
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 0bae8b0edad3c2607f64c4ea590cae9c14078bd9
+          ref: 3d5b7d7fc4fbd97d5a9297a80e2c658a5a652aca
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2730,6 +2730,23 @@ jobs:
           # 看不出板块轮廓——客户要求轮廓清晰）。
           python3 patches/ui/patch_settings_card_border.py .
           python3 patches/quality/patch_quality_monitor_c.py .
+          python3 patches/quality/patch_quality_monitor_sysload.py .
+          # V337: quality panel fully Chinese + 5 system-load rows below 色彩 (Chroma).
+          # Anchors on the post-V277 state, so it must run after patch_quality_monitor_c.py.
+          grep -qF "pub cpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v337: QualityStatus cpu field missing"; exit 1; }
+          grep -qF "pub gpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v337: QualityStatus gpu field missing"; exit 1; }
+          grep -qF "pub mod sys_usage;" src/client.rs || { echo "[FAIL] v337: sys_usage module not registered"; exit 1; }
+          grep -qF "sys_usage::sample()" src/client/io_loop.rs || { echo "[FAIL] v337: io_loop sample call missing"; exit 1; }
+          grep -qF '("cpu", &status.cpu.map_or(NULL, |it| format!("{:.1}%", it)))' src/flutter.rs || { echo "[FAIL] v337: flutter cpu key missing"; exit 1; }
+          grep -qF "String? cpu;" flutter/lib/models/model.dart || { echo "[FAIL] v337: model cpu field missing"; exit 1; }
+          grep -qF "evt.containsKey('gpu')" flutter/lib/models/model.dart || { echo "[FAIL] v337: model gpu parser missing"; exit 1; }
+          grep -qF '_row("色彩"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 色彩 label missing"; exit 1; }
+          grep -qF '_row("处理器"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 处理器 row missing"; exit 1; }
+          grep -qF '_row("显卡"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 显卡 row missing"; exit 1; }
+          [ "$(grep -c '_sysColor(' flutter/lib/common/widgets/overlay.dart)" -ge 5 ] || { echo "[FAIL] v337: _sysColor not wired to 5 rows"; exit 1; }
+          if grep -qF '_row("Chroma"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v337: old Chroma label still present"; exit 1; fi
+          if grep -qF '_row("Speed"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v337: old Speed label still present"; exit 1; fi
+          echo "[OK] v337 system-load rows applied"
           grep -qF "[LnDesk v227c settings outline]" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings outline marker missing"; exit 1; }
           grep -q "elevation: 0," flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings card elevation 0 missing"; exit 1; }
           echo "[OK] settings section outlines applied"
