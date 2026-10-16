@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: cb8ce8316042627f4f5b5c228fd631dc70d520e3
+      patches_sha: 9d6adc4630adb20108e3a108f5f0bc462c95b93f
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: cb8ce8316042627f4f5b5c228fd631dc70d520e3
+          ref: 9d6adc4630adb20108e3a108f5f0bc462c95b93f
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2360,23 +2360,44 @@ jobs:
           echo "[OK] v300: probe short-circuits predicted once a candidate is validated"
           python3 patches/quality/patch_quality_monitor_c.py .
           python3 patches/quality/patch_quality_monitor_sysload.py .
-          # V337: quality panel fully Chinese + 5 system-load rows below 色彩 (Chroma).
-          # Anchors on the post-V277 state, so it must run after patch_quality_monitor_c.py.
+          # V338: the 5 system-load rows (CPU/mem/disk/net/GPU) are now sampled on the
+          # CONTROLLED end (server) and carried to the controlling end over the V277
+          # TestDelay telemetry channel; all overlay rows are re-ordered by label
+          # length (shortest first). Anchors on the post-V277 state, so it must run
+          # after patch_quality_monitor_c.py.
           # (Windows 7 has no GPU Engine counters -> 显卡 shows '-'; the other 4 work.)
-          grep -qF "pub cpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v337: QualityStatus cpu field missing"; exit 1; }
-          grep -qF "pub gpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v337: QualityStatus gpu field missing"; exit 1; }
-          grep -qF "pub mod sys_usage;" src/client.rs || { echo "[FAIL] v337: sys_usage module not registered"; exit 1; }
-          grep -qF "sys_usage::sample()" src/client/io_loop.rs || { echo "[FAIL] v337: io_loop sample call missing"; exit 1; }
-          grep -qF '("cpu", &status.cpu.map_or(NULL, |it| format!("{:.1}%", it)))' src/flutter.rs || { echo "[FAIL] v337: flutter cpu key missing"; exit 1; }
-          grep -qF "String? cpu;" flutter/lib/models/model.dart || { echo "[FAIL] v337: model cpu field missing"; exit 1; }
-          grep -qF "evt.containsKey('gpu')" flutter/lib/models/model.dart || { echo "[FAIL] v337: model gpu parser missing"; exit 1; }
-          grep -qF '_row("色彩"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 色彩 label missing"; exit 1; }
-          grep -qF '_row("处理器"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 处理器 row missing"; exit 1; }
-          grep -qF '_row("显卡"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v337: overlay 显卡 row missing"; exit 1; }
-          [ "$(grep -c '_sysColor(' flutter/lib/common/widgets/overlay.dart)" -ge 5 ] || { echo "[FAIL] v337: _sysColor not wired to 5 rows"; exit 1; }
-          if grep -qF '_row("Chroma"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v337: old Chroma label still present"; exit 1; fi
-          if grep -qF '_row("Speed"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v337: old Speed label still present"; exit 1; fi
-          echo "[OK] v337 system-load rows applied"
+          grep -qF "float cpu_usage = 10;" libs/hbb_common/protos/message.proto || { echo "[FAIL] v338: TestDelay cpu_usage field missing"; exit 1; }
+          grep -qF "sys_usage::sample()" src/server/connection.rs || { echo "[FAIL] v338: server-side sample call missing"; exit 1; }
+          grep -qF "cpu: if t.cpu_usage >= 0.0" src/ui_session_interface.rs || { echo "[FAIL] v338: handle_test_delay read missing"; exit 1; }
+          if grep -qF "sys_usage::sample()" src/client/io_loop.rs; then echo "[FAIL] v338: V337 client-side sampling still present"; exit 1; fi
+          grep -qF "pub cpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v338: QualityStatus cpu field missing"; exit 1; }
+          grep -qF "pub gpu: Option<f32>," src/client/helper.rs || { echo "[FAIL] v338: QualityStatus gpu field missing"; exit 1; }
+          grep -qF "pub mod sys_usage;" src/client.rs || { echo "[FAIL] v338: sys_usage module not registered"; exit 1; }
+          grep -qF '("cpu", &status.cpu.map_or(NULL, |it| format!("{:.1}%", it)))' src/flutter.rs || { echo "[FAIL] v338: flutter cpu key missing"; exit 1; }
+          grep -qF "String? cpu;" flutter/lib/models/model.dart || { echo "[FAIL] v338: model cpu field missing"; exit 1; }
+          grep -qF "evt.containsKey('gpu')" flutter/lib/models/model.dart || { echo "[FAIL] v338: model gpu parser missing"; exit 1; }
+          grep -qF '_row("色彩"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v338: overlay 色彩 label missing"; exit 1; }
+          grep -qF '_row("处理器"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v338: overlay 处理器 row missing"; exit 1; }
+          grep -qF '_row("显卡"' flutter/lib/common/widgets/overlay.dart || { echo "[FAIL] v338: overlay 显卡 row missing"; exit 1; }
+          [ "$(grep -c '_sysColor(' flutter/lib/common/widgets/overlay.dart)" -ge 5 ] || { echo "[FAIL] v338: _sysColor not wired to 5 rows"; exit 1; }
+          if grep -qF '_row("Chroma"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v338: old Chroma label still present"; exit 1; fi
+          if grep -qF '_row("Speed"' flutter/lib/common/widgets/overlay.dart; then echo "[FAIL] v338: old Speed label still present"; exit 1; fi
+          # row order must be label-length ascending (shortest first)
+          python3 - <<'PY'
+          import re, sys
+          o = open('flutter/lib/common/widgets/overlay.dart', encoding='utf-8').read()
+          labels = re.findall(r'_row\(\s*"([^"]+)"', o)
+          exp = ["速度", "帧率", "延迟", "色彩", "内存", "硬盘", "网络", "显卡", "通道",
+                 "处理器",
+                 "编解码器", "编码模式", "理论码率", "理论帧率", "解码模式",
+                 "目标比特率",
+                 "被控端编码器", "主控端解码器",
+                 "Surface直显"]
+          if labels != exp:
+              print("[FAIL] v338 row order mismatch"); print("  got:", labels); sys.exit(1)
+          print("[OK] v338 row order (label length ascending)")
+          PY
+          echo "[OK] v338 controlled-end system-load rows applied"
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
