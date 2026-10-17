@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 9d6adc4630adb20108e3a108f5f0bc462c95b93f
+      patches_sha: 7ea9681f55e94cc797e303ae09aaef387e5f67b7
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 9d6adc4630adb20108e3a108f5f0bc462c95b93f
+          ref: 7ea9681f55e94cc797e303ae09aaef387e5f67b7
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2063,6 +2063,25 @@ jobs:
           python3 patches/ui/patch_add_to_ab_rename.py .
           python3 patches/ui/patch_peer_card_alias.py .
           python3 patches/ui/patch_desktop_toolbar_toggles.py .
+          # V339: one-click privacy-mode toggle, between the block-input toggle and
+          # the record button. Its registration anchor is injected by
+          # patch_desktop_toolbar_toggles.py (v170), so it MUST run after it.
+          python3 patches/ui/patch_privacy_mode_toggle.py .
+          grep -qF "class _PrivacyModeToggleButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v339: privacy-mode toggle class missing"; exit 1; }
+          grep -qF "toolbarItems.add(_PrivacyModeToggleButton(" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v339: privacy-mode toggle not registered"; exit 1; }
+          test -f flutter/assets/privacy_mode.svg || { echo "[FAIL] v339: privacy_mode.svg missing"; exit 1; }
+          # order must be block-input -> privacy -> record
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          order = ['_BlockInputToggleButton(', '_PrivacyModeToggleButton(', '_RecordMenu(']
+          pos = [s.find('toolbarItems.add(%s' % o) for o in order]
+          if any(p < 0 for p in pos) or not (pos[0] < pos[1] < pos[2]):
+              print('[FAIL] v339 toolbar order must be block-input -> privacy -> record', pos)
+              sys.exit(1)
+          print('[OK] v339 privacy-mode toggle sits between block-input and record')
+          PY
+          echo "[OK] v339 privacy-mode toolbar toggle applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
