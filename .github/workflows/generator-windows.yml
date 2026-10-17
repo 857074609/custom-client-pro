@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 7ea9681f55e94cc797e303ae09aaef387e5f67b7
+      patches_sha: d5d3335694c4dda14dea37233309dc6103cd374e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 7ea9681f55e94cc797e303ae09aaef387e5f67b7
+          ref: d5d3335694c4dda14dea37233309dc6103cd374e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2491,6 +2491,7 @@ jobs:
           grep -qF "class _PrivacyModeToggleButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v339: privacy-mode toggle class missing"; exit 1; }
           grep -qF "toolbarItems.add(_PrivacyModeToggleButton(" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v339: privacy-mode toggle not registered"; exit 1; }
           test -f flutter/assets/privacy_mode.svg || { echo "[FAIL] v339: privacy_mode.svg missing"; exit 1; }
+          grep -qF "privacy_mode_impl_virtual_display" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v339: privacy-mode toggle does not use the virtual-display impl"; exit 1; }
           # order must be block-input -> privacy -> record
           python3 - <<'PY' || exit 1
           import sys
@@ -2503,6 +2504,27 @@ jobs:
           print('[OK] v339 privacy-mode toggle sits between block-input and record')
           PY
           echo "[OK] v339 privacy-mode toolbar toggle applied"
+          # V340: one-click "turn off the peer's physical display" switch, between
+          # the privacy-mode toggle and the record button. Its registration anchor
+          # is injected by patch_privacy_mode_toggle.py (v339), so it MUST run
+          # after it. Behaviour, state map and visibility gate are reused from
+          # common/widgets/toolbar.dart, so no Rust or bridge change is involved.
+          python3 patches/ui/patch_turn_off_monitor_button.py .
+          grep -qF "class _TurnOffMonitorButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v340: turn-off-display class missing"; exit 1; }
+          grep -qF "toolbarItems.add(_TurnOffMonitorButton(" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v340: turn-off-display button not registered"; exit 1; }
+          test -f flutter/assets/turn_off_monitor.svg || { echo "[FAIL] v340: turn_off_monitor.svg missing"; exit 1; }
+          # order must be block-input -> privacy -> turn-off-display -> record
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          order = ['_BlockInputToggleButton(', '_PrivacyModeToggleButton(', '_TurnOffMonitorButton(', '_RecordMenu(']
+          pos = [s.find('toolbarItems.add(%s' % o) for o in order]
+          if any(p < 0 for p in pos) or not (pos[0] < pos[1] < pos[2] < pos[3]):
+              print('[FAIL] v340 toolbar order must be block-input -> privacy -> turn-off-display -> record', pos)
+              sys.exit(1)
+          print('[OK] v340 turn-off-display button sits between privacy-mode and record')
+          PY
+          echo "[OK] v340 turn-off-display toolbar button applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
