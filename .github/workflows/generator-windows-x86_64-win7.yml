@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d5d3335694c4dda14dea37233309dc6103cd374e
+      patches_sha: b09c1804f48f3341e2d5208f7dfca771c46ff861
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d5d3335694c4dda14dea37233309dc6103cd374e
+          ref: b09c1804f48f3341e2d5208f7dfca771c46ff861
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2060,6 +2060,18 @@ jobs:
           print('[OK] v339 privacy-mode toggle sits between block-input and record')
           PY
           echo "[OK] v339 privacy-mode toolbar toggle applied"
+          # V343: make "copy the screenshot to the clipboard" pasteable.
+          #
+          # The cached screenshot is written as ClipboardFormat::ImagePng, which
+          # arboard turns into ImageData::png(..) and writes as the PNG format
+          # only. Most Windows apps look for CF_DIB / CF_DIBV5, so pasting
+          # yields nothing. Feeding arboard RGBA makes it write both formats.
+          # The Dart side also swallowed the result; it now surfaces errors.
+          python3 patches/ui/patch_screenshot_clipboard.py .
+          grep -qF "[v343 screenshot-clipboard]" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot clipboard not patched"; exit 1; }
+          grep -qF "into_rgba8()" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot is not decoded to RGBA"; exit 1; }
+          grep -qF "[v343 screenshot-clipboard]" flutter/lib/models/model.dart || { echo "[FAIL] v343: copyToClipboard does not surface errors"; exit 1; }
+          echo "[OK] v343 screenshot clipboard applied"
           # V340: one-click "turn off the peer's physical display" switch, between
           # the privacy-mode toggle and the record button. Its registration anchor
           # is injected by patch_privacy_mode_toggle.py (v339), so it MUST run

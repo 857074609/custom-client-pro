@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: c5e15aea8666cbb44e72c9aacd15584754b327f8
+      patches_sha: b09c1804f48f3341e2d5208f7dfca771c46ff861
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c5e15aea8666cbb44e72c9aacd15584754b327f8
+          ref: b09c1804f48f3341e2d5208f7dfca771c46ff861
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2603,6 +2603,18 @@ jobs:
           print('[OK] v342 view-only no longer disables toolbar actions')
           PY
           echo "[OK] v342 view-only unlock applied"
+          # V343: make "copy the screenshot to the clipboard" pasteable.
+          #
+          # The cached screenshot is written as ClipboardFormat::ImagePng, which
+          # arboard turns into ImageData::png(..) and writes as the PNG format
+          # only. Most Windows apps look for CF_DIB / CF_DIBV5, so pasting
+          # yields nothing. Feeding arboard RGBA makes it write both formats.
+          # The Dart side also swallowed the result; it now surfaces errors.
+          python3 patches/ui/patch_screenshot_clipboard.py .
+          grep -qF "[v343 screenshot-clipboard]" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot clipboard not patched"; exit 1; }
+          grep -qF "into_rgba8()" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot is not decoded to RGBA"; exit 1; }
+          grep -qF "[v343 screenshot-clipboard]" flutter/lib/models/model.dart || { echo "[FAIL] v343: copyToClipboard does not surface errors"; exit 1; }
+          echo "[OK] v343 screenshot clipboard applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
