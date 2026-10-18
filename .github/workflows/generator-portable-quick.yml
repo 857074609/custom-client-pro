@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: fbe4d7c50833573a00742adb3be9baf22e8d2ffb
+      patches_sha: c5e15aea8666cbb44e72c9aacd15584754b327f8
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: fbe4d7c50833573a00742adb3be9baf22e8d2ffb
+          ref: c5e15aea8666cbb44e72c9aacd15584754b327f8
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2145,6 +2145,43 @@ jobs:
           print('[OK] v341 terminal and camera buttons sit between turn-off-display and record')
           PY
           echo "[OK] v341 terminal readability and session shortcuts applied"
+          # V342: view-only must not disable toolbar actions.
+          #
+          # View-only is one client-side flag whose only job is to stop forwarding
+          # local input. Upstream also reads it to grey out toolbar items and menu
+          # entries; this step removes those gates so every toolbar action stays
+          # usable, while the input path keeps dropping events. The view-only
+          # toggle itself is deliberately left alone.
+          python3 patches/ui/patch_view_only_unlock.py .
+          grep -qF "[v342 view-only-unlock-toolbar]" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v342: remote_toolbar gates not unlocked"; exit 1; }
+          grep -qF "[v342 view-only-unlock-toolbar]" flutter/lib/common/widgets/toolbar.dart || { echo "[FAIL] v342: toolbar gates not unlocked"; exit 1; }
+          grep -qF "evenodd" flutter/assets/view_camera.svg || { echo "[FAIL] v342: view_camera.svg is not the round webcam"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          rt = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          tb = open('flutter/lib/common/widgets/toolbar.dart', encoding='utf-8').read()
+          bad = []
+          if 'viewOnly ? null' in rt:
+              bad.append('remote_toolbar still has a viewOnly ? null gate')
+          for gate in ('final enabled = !ffi.ffiModel.viewOnly;', 'final enabled = !ffiModel.viewOnly;'):
+              if gate in rt or gate in tb:
+                  bad.append('enabled gate left: ' + gate)
+          # the four custom buttons must not consult viewOnly at all
+          for cls in ('_PrivacyModeToggleButton', '_TurnOffMonitorButton', '_TerminalAdminButton', '_ViewCameraButton'):
+              i = rt.find('class ' + cls + 'State')
+              if i < 0:
+                  bad.append('missing ' + cls)
+                  continue
+              block = rt[i:i + 4000]
+              if 'viewOnly' in block:
+                  bad.append(cls + ' still gated on viewOnly')
+          if bad:
+              for b in bad:
+                  print('[FAIL] v342:', b)
+              sys.exit(1)
+          print('[OK] v342 view-only no longer disables toolbar actions')
+          PY
+          echo "[OK] v342 view-only unlock applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
