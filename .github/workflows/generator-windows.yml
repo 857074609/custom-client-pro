@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d5d3335694c4dda14dea37233309dc6103cd374e
+      patches_sha: 2d080ac918fe1a918364db9559de73d4a79687d5
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d5d3335694c4dda14dea37233309dc6103cd374e
+          ref: 2d080ac918fe1a918364db9559de73d4a79687d5
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2525,6 +2525,47 @@ jobs:
           print('[OK] v340 turn-off-display button sits between privacy-mode and record')
           PY
           echo "[OK] v340 turn-off-display toolbar button applied"
+          # V341: terminal readability + two session shortcuts.
+          #
+          # Contrast: PSReadLine draws the inline prediction (the grey rest of the
+          # command line) with ESC[38;5;238m, and xterm builds index 238 as
+          # #444444 from its own hardcoded grayscale ramp -- not from
+          # TerminalTheme -- so command parameters are invisible on a dark
+          # background. patch_terminal_contrast.py rewrites those foreground
+          # indices on the way in; patch_terminal_theme.py replaces xterm's
+          # default palette with GitHub Dark and sets 16px / 1.25.
+          #
+          # Admin terminal: the credential prompt is a gate the CONTROLLING side
+          # puts in front of a shell that already runs as the peer's service
+          # account. Terminal.as_admin carries the intent instead; an installed
+          # peer then skips the prompt, an uninstalled one keeps the old path.
+          python3 patches/ui/patch_terminal_theme.py .
+          python3 patches/terminal/patch_terminal_contrast.py .
+          python3 patches/ui/patch_session_tools_buttons.py .
+          python3 patches/terminal/patch_terminal_admin_skip.py .
+          grep -qF "kTerminalThemeGithubDark" flutter/lib/desktop/pages/terminal_page.dart || { echo "[FAIL] v341: terminal theme not wired"; exit 1; }
+          grep -qF "fontSize: 16" flutter/lib/common/widgets/terminal_theme.dart || { echo "[FAIL] v341: terminal font size missing"; exit 1; }
+          grep -qF "0xFF8B949E" flutter/lib/common/widgets/terminal_theme.dart || { echo "[FAIL] v341: brightBlack not raised"; exit 1; }
+          grep -qF "_remapDarkForegrounds" flutter/lib/models/terminal_model.dart || { echo "[FAIL] v341: 256-colour remap missing"; exit 1; }
+          grep -qF "class _TerminalAdminButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v341: terminal button class missing"; exit 1; }
+          grep -qF "class _ViewCameraButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v341: camera button class missing"; exit 1; }
+          test -f flutter/assets/terminal_admin.svg || { echo "[FAIL] v341: terminal_admin.svg missing"; exit 1; }
+          test -f flutter/assets/view_camera.svg || { echo "[FAIL] v341: view_camera.svg missing"; exit 1; }
+          grep -qF "terminal_admin_skip_verify" src/client.rs || { echo "[FAIL] v341: admin skip not wired"; exit 1; }
+          grep -qF "bool as_admin = 2;" libs/hbb_common/protos/message.proto || { echo "[FAIL] v341: Terminal.as_admin missing"; exit 1; }
+          grep -qF "self.terminal_admin = terminal.as_admin;" src/server/connection.rs || { echo "[FAIL] v341: as_admin not read"; exit 1; }
+          # order must be turn-off-display -> terminal -> camera -> record
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          order = ['_TurnOffMonitorButton(', '_TerminalAdminButton(', '_ViewCameraButton(', '_RecordMenu(']
+          pos = [s.find('toolbarItems.add(%s' % o) for o in order]
+          if any(p < 0 for p in pos) or not (pos[0] < pos[1] < pos[2] < pos[3]):
+              print('[FAIL] v341 toolbar order must be turn-off-display -> terminal -> camera -> record', pos)
+              sys.exit(1)
+          print('[OK] v341 terminal and camera buttons sit between turn-off-display and record')
+          PY
+          echo "[OK] v341 terminal readability and session shortcuts applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
