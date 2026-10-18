@@ -2060,18 +2060,6 @@ jobs:
           print('[OK] v339 privacy-mode toggle sits between block-input and record')
           PY
           echo "[OK] v339 privacy-mode toolbar toggle applied"
-          # V343: make "copy the screenshot to the clipboard" pasteable.
-          #
-          # The cached screenshot is written as ClipboardFormat::ImagePng, which
-          # arboard turns into ImageData::png(..) and writes as the PNG format
-          # only. Most Windows apps look for CF_DIB / CF_DIBV5, so pasting
-          # yields nothing. Feeding arboard RGBA makes it write both formats.
-          # The Dart side also swallowed the result; it now surfaces errors.
-          python3 patches/ui/patch_screenshot_clipboard.py .
-          grep -qF "[v343 screenshot-clipboard]" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot clipboard not patched"; exit 1; }
-          grep -qF "into_rgba8()" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot is not decoded to RGBA"; exit 1; }
-          grep -qF "[v343 screenshot-clipboard]" flutter/lib/models/model.dart || { echo "[FAIL] v343: copyToClipboard does not surface errors"; exit 1; }
-          echo "[OK] v343 screenshot clipboard applied"
           # V340: one-click "turn off the peer's physical display" switch, between
           # the privacy-mode toggle and the record button. Its registration anchor
           # is injected by patch_privacy_mode_toggle.py (v339), so it MUST run
@@ -2093,6 +2081,96 @@ jobs:
           print('[OK] v340 turn-off-display button sits between privacy-mode and record')
           PY
           echo "[OK] v340 turn-off-display toolbar button applied"
+          # V341: terminal readability + two session shortcuts.
+          #
+          # Contrast: PSReadLine draws the inline prediction (the grey rest of the
+          # command line) with ESC[38;5;238m, and xterm builds index 238 as
+          # #444444 from its own hardcoded grayscale ramp -- not from
+          # TerminalTheme -- so command parameters are invisible on a dark
+          # background. patch_terminal_contrast.py rewrites those foreground
+          # indices on the way in; patch_terminal_theme.py replaces xterm's
+          # default palette with GitHub Dark and sets 16px / 1.25.
+          #
+          # Admin terminal: the credential prompt is a gate the CONTROLLING side
+          # puts in front of a shell that already runs as the peer's service
+          # account. Terminal.as_admin carries the intent instead; an installed
+          # peer then skips the prompt, an uninstalled one keeps the old path.
+          python3 patches/ui/patch_terminal_theme.py .
+          python3 patches/terminal/patch_terminal_contrast.py .
+          python3 patches/ui/patch_session_tools_buttons.py .
+          python3 patches/terminal/patch_terminal_admin_skip.py .
+          grep -qF "kTerminalThemeGithubDark" flutter/lib/desktop/pages/terminal_page.dart || { echo "[FAIL] v341: terminal theme not wired"; exit 1; }
+          grep -qF "fontSize: 16" flutter/lib/common/widgets/terminal_theme.dart || { echo "[FAIL] v341: terminal font size missing"; exit 1; }
+          grep -qF "0xFF8B949E" flutter/lib/common/widgets/terminal_theme.dart || { echo "[FAIL] v341: brightBlack not raised"; exit 1; }
+          grep -qF "_remapDarkForegrounds" flutter/lib/models/terminal_model.dart || { echo "[FAIL] v341: 256-colour remap missing"; exit 1; }
+          grep -qF "class _TerminalAdminButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v341: terminal button class missing"; exit 1; }
+          grep -qF "class _ViewCameraButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v341: camera button class missing"; exit 1; }
+          test -f flutter/assets/terminal_admin.svg || { echo "[FAIL] v341: terminal_admin.svg missing"; exit 1; }
+          test -f flutter/assets/view_camera.svg || { echo "[FAIL] v341: view_camera.svg missing"; exit 1; }
+          grep -qF "terminal_admin_skip_verify" src/client.rs || { echo "[FAIL] v341: admin skip not wired"; exit 1; }
+          grep -qF "bool as_admin = 2;" libs/hbb_common/protos/message.proto || { echo "[FAIL] v341: Terminal.as_admin missing"; exit 1; }
+          grep -qF "self.terminal_admin = terminal.as_admin;" src/server/connection.rs || { echo "[FAIL] v341: as_admin not read"; exit 1; }
+          # order must be turn-off-display -> terminal -> camera -> record
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          order = ['_TurnOffMonitorButton(', '_TerminalAdminButton(', '_ViewCameraButton(', '_RecordMenu(']
+          pos = [s.find('toolbarItems.add(%s' % o) for o in order]
+          if any(p < 0 for p in pos) or not (pos[0] < pos[1] < pos[2] < pos[3]):
+              print('[FAIL] v341 toolbar order must be turn-off-display -> terminal -> camera -> record', pos)
+              sys.exit(1)
+          print('[OK] v341 terminal and camera buttons sit between turn-off-display and record')
+          PY
+          echo "[OK] v341 terminal readability and session shortcuts applied"
+          # V342: view-only must not disable toolbar actions.
+          #
+          # View-only is one client-side flag whose only job is to stop forwarding
+          # local input. Upstream also reads it to grey out toolbar items and menu
+          # entries; this step removes those gates so every toolbar action stays
+          # usable, while the input path keeps dropping events. The view-only
+          # toggle itself is deliberately left alone.
+          python3 patches/ui/patch_view_only_unlock.py .
+          grep -qF "[v342 view-only-unlock-toolbar]" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v342: remote_toolbar gates not unlocked"; exit 1; }
+          grep -qF "[v342 view-only-unlock-toolbar]" flutter/lib/common/widgets/toolbar.dart || { echo "[FAIL] v342: toolbar gates not unlocked"; exit 1; }
+          grep -qF "evenodd" flutter/assets/view_camera.svg || { echo "[FAIL] v342: view_camera.svg is not the round webcam"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          rt = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          tb = open('flutter/lib/common/widgets/toolbar.dart', encoding='utf-8').read()
+          bad = []
+          if 'viewOnly ? null' in rt:
+              bad.append('remote_toolbar still has a viewOnly ? null gate')
+          for gate in ('final enabled = !ffi.ffiModel.viewOnly;', 'final enabled = !ffiModel.viewOnly;'):
+              if gate in rt or gate in tb:
+                  bad.append('enabled gate left: ' + gate)
+          # the four custom buttons must not consult viewOnly at all
+          for cls in ('_PrivacyModeToggleButton', '_TurnOffMonitorButton', '_TerminalAdminButton', '_ViewCameraButton'):
+              i = rt.find('class ' + cls + 'State')
+              if i < 0:
+                  bad.append('missing ' + cls)
+                  continue
+              block = rt[i:i + 4000]
+              if 'viewOnly' in block:
+                  bad.append(cls + ' still gated on viewOnly')
+          if bad:
+              for b in bad:
+                  print('[FAIL] v342:', b)
+              sys.exit(1)
+          print('[OK] v342 view-only no longer disables toolbar actions')
+          PY
+          echo "[OK] v342 view-only unlock applied"
+          # V343: make "copy the screenshot to the clipboard" pasteable.
+          #
+          # The cached screenshot is written as ClipboardFormat::ImagePng, which
+          # arboard turns into ImageData::png(..) and writes as the PNG format
+          # only. Most Windows apps look for CF_DIB / CF_DIBV5, so pasting
+          # yields nothing. Feeding arboard RGBA makes it write both formats.
+          # The Dart side also swallowed the result; it now surfaces errors.
+          python3 patches/ui/patch_screenshot_clipboard.py .
+          grep -qF "[v343 screenshot-clipboard]" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot clipboard not patched"; exit 1; }
+          grep -qF "into_rgba8()" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot is not decoded to RGBA"; exit 1; }
+          grep -qF "[v343 screenshot-clipboard]" flutter/lib/models/model.dart || { echo "[FAIL] v343: copyToClipboard does not surface errors"; exit 1; }
+          echo "[OK] v343 screenshot clipboard applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
