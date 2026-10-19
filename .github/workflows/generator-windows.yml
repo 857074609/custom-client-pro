@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: bbc361e6abfb0befe68b964a23dbdc48253f05b2
+      patches_sha: be773b127498b45af3e8a8ed0fce7b6ae5c11885
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: bbc361e6abfb0befe68b964a23dbdc48253f05b2
+          ref: be773b127498b45af3e8a8ed0fce7b6ae5c11885
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2679,7 +2679,7 @@ jobs:
           # terminal ends up with); a narrow block list stops the handful of
           # irreversible commands.
           python3 patches/ai/patch_ai_buddy_core.py .
-          for f in ai_state ai_models ai_settings ai_terminal ai_tools ai_client ai_agent ai_attach ai_page; do
+          for f in ai_state ai_models ai_settings ai_terminal ai_tools ai_client ai_agent ai_attach ai_clipboard ai_page; do
             test -f flutter/lib/ai/$f.dart || { echo "[FAIL] v346: flutter/lib/ai/$f.dart missing"; exit 1; }
           done
           test -f flutter/assets/ai_buddy.svg || { echo "[FAIL] v346: ai_buddy.svg missing"; exit 1; }
@@ -2739,6 +2739,38 @@ jobs:
               print('[FAIL] v347 composer still uses IconButton (48x48 hit area overlaps the field)')
               sys.exit(1)
           print('[OK] v347 composer icons separated, no IconButton overlap')
+          PY
+          grep -qF "RegisterClipboardFormatW" flutter/lib/ai/ai_clipboard.dart || { echo "[FAIL] v348: clipboard bitmap reader missing"; exit 1; }
+          grep -qF "CloseClipboard" flutter/lib/ai/ai_clipboard.dart || { echo "[FAIL] v348: clipboard handle not released"; exit 1; }
+          grep -qF "GlobalUnlock" flutter/lib/ai/ai_clipboard.dart || { echo "[FAIL] v348: clipboard memory not unlocked"; exit 1; }
+          grep -qF "aiReadClipboardImagePng" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: ctrl+v paste not wired"; exit 1; }
+          grep -qF "LogicalKeyboardKey.keyV" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: ctrl+v key not handled"; exit 1; }
+          grep -qF "textSelectionTheme" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: selection highlight not tamed"; exit 1; }
+          grep -qF "listModels" flutter/lib/ai/ai_client.dart || { echo "[FAIL] v348: model discovery missing"; exit 1; }
+          grep -qF "maxSteps <= 0" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v348: step limit is not optional"; exit 1; }
+          grep -qF "_copyIcon" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: copy button missing"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          page = open('flutter/lib/ai/ai_page.dart', encoding='utf-8').read()
+          if 'labelText:' in page:
+              print('[FAIL] v348: settings fields must not use labelText (title overlaps the field)')
+              sys.exit(1)
+          settings = open('flutter/lib/ai/ai_settings.dart', encoding='utf-8').read()
+          if "_get(kAiOptionMaxSteps, '0')" not in settings:
+              print('[FAIL] v348: max steps must default to 0 (unlimited)')
+              sys.exit(1)
+          agent = open('flutter/lib/ai/ai_agent.dart', encoding='utf-8').read()
+          if 'unlimited || step < cfg.maxSteps' not in agent:
+              print('[FAIL] v348: loop is not unbounded when maxSteps is 0')
+              sys.exit(1)
+          if 'if (repeat >= 3) {' not in agent:
+              print('[FAIL] v348: repeated-command guard missing')
+              sys.exit(1)
+          clip = open('flutter/lib/ai/ai_clipboard.dart', encoding='utf-8').read()
+          for token in ('GlobalLock', 'GlobalSize', 'CF_DIB', 'aiDibToPng'):
+              if token not in clip:
+                  print('[FAIL] v348: clipboard helper incomplete, missing ' + token)
+                  sys.exit(1)
           PY
           echo "[OK] v347 assistant usability applied"
           python3 patches/ui/patch_add_address_book.py .
