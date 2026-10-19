@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 4f1aff0c6f923b4c8b91bb46261496ef3dc4531e
+      patches_sha: 1f9a4d6519c50e4503cd76f4a3c5d23310bceaf1
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 4f1aff0c6f923b4c8b91bb46261496ef3dc4531e
+          ref: 1f9a4d6519c50e4503cd76f4a3c5d23310bceaf1
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2345,6 +2345,21 @@ jobs:
           settings = open('flutter/lib/ai/ai_settings.dart', encoding='utf-8').read()
           if 'static List<String> get models {' not in settings:
               print('[FAIL] v349: cached model list missing')
+              sys.exit(1)
+          PY
+          grep -qF "backgroundColor: _kDialogBg" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v350: settings card is not dark"; exit 1; }
+          grep -qF "surfaceTintColor: Colors.transparent" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v350: M3 tint still washes the card"; exit 1; }
+          grep -qF "_kLabelFg" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v350: labels not re-coloured for dark"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          raw = open('flutter/lib/ai/ai_page.dart', encoding='utf-8').read()
+          page = '\n'.join(l for l in raw.splitlines() if not l.strip().startswith('//'))
+          for light in ('0xFFF4F4F4', '0xFFEFEFF2', '0xFFD8D8D8', '0xFF333333'):
+              if light in page:
+                  print('[FAIL] v350: light surface %s still used in the settings dialog' % light)
+                  sys.exit(1)
+          if page.count('_kDialogBg') < 2:
+              print('[FAIL] v350: dialog surface not pinned')
               sys.exit(1)
           PY
           grep -qF "_copyIcon" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: copy button missing"; exit 1; }
