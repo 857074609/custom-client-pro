@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 1cc71a3be963ecd83a9ac37da7ad9925a35f89f6
+      patches_sha: f128a3ccd36013a608ce3b69bc6812200e080759
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 1cc71a3be963ecd83a9ac37da7ad9925a35f89f6
+          ref: f128a3ccd36013a608ce3b69bc6812200e080759
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2194,6 +2194,26 @@ jobs:
           grep -qF "into_rgba8()" src/client/screenshot.rs || { echo "[FAIL] v343: screenshot is not decoded to RGBA"; exit 1; }
           grep -qF "[v343 screenshot-clipboard]" flutter/lib/models/model.dart || { echo "[FAIL] v343: copyToClipboard does not surface errors"; exit 1; }
           echo "[OK] v343 screenshot clipboard applied"
+          # V344: "take screenshot" icon on the remote toolbar, before the record
+          # button. Screenshot already exists in the "more" menu; this only adds
+          # a second entry point, reusing the same capability check and the same
+          # FfiModel.timerScreenshot, so the two can never disagree.
+          python3 patches/ui/patch_screenshot_button.py .
+          grep -qF "class _ScreenshotButton extends StatefulWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v344: screenshot button class missing"; exit 1; }
+          grep -qF "toolbarItems.add(_ScreenshotButton(" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v344: screenshot button not registered"; exit 1; }
+          test -f flutter/assets/screenshot.svg || { echo "[FAIL] v344: screenshot.svg missing"; exit 1; }
+          # order must be view-camera -> screenshot -> record
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          order = ['_ViewCameraButton(', '_ScreenshotButton(', '_RecordMenu(']
+          pos = [s.find('toolbarItems.add(%s' % o) for o in order]
+          if any(p < 0 for p in pos) or not (pos[0] < pos[1] < pos[2]):
+              print('[FAIL] v344 toolbar order must be view-camera -> screenshot -> record', pos)
+              sys.exit(1)
+          print('[OK] v344 screenshot button sits between view-camera and record')
+          PY
+          echo "[OK] v344 screenshot toolbar button applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
