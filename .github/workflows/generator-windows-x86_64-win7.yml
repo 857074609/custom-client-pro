@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: a4233a9f44ce4ccabb68fedff6b4ce03c6ce305f
+      patches_sha: eff0129dd94f2b3045a2f8c7a20d69f7ecc0bfb3
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: a4233a9f44ce4ccabb68fedff6b4ce03c6ce305f
+          ref: eff0129dd94f2b3045a2f8c7a20d69f7ecc0bfb3
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2235,7 +2235,7 @@ jobs:
           # terminal ends up with); a narrow block list stops the handful of
           # irreversible commands.
           python3 patches/ai/patch_ai_buddy_core.py .
-          for f in ai_state ai_models ai_settings ai_terminal ai_tools ai_client ai_agent ai_page; do
+          for f in ai_state ai_models ai_settings ai_terminal ai_tools ai_client ai_agent ai_attach ai_page; do
             test -f flutter/lib/ai/$f.dart || { echo "[FAIL] v346: flutter/lib/ai/$f.dart missing"; exit 1; }
           done
           test -f flutter/assets/ai_buddy.svg || { echo "[FAIL] v346: ai_buddy.svg missing"; exit 1; }
@@ -2267,6 +2267,36 @@ jobs:
           print('[OK] v346 ai-buddy button sits between screenshot and record, blue')
           PY
           echo "[OK] v346 ai buddy applied"
+          # V347: assistant usability. The composer paints its own background
+          # (the desktop theme fills every input with near-white), the two action
+          # icons sit in fixed boxes on opposite ends of a Spacer, the panel stops
+          # above the peer taskbar, any file type can be attached, and Enter sends
+          # while Shift+Enter breaks the line.
+          grep -qF "const Color _kInputBg" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v347: composer does not paint its own background"; exit 1; }
+          grep -qF "filled: false" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v347: composer still inherits the near-white fill"; exit 1; }
+          grep -qF "bottomInsetFor" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v347: panel does not reserve space above the peer taskbar"; exit 1; }
+          grep -qF "LogicalKeyboardKey.numpadEnter" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v347: enter-to-send not wired"; exit 1; }
+          grep -qF "composing.isValid" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v347: IME composition not excluded from enter-to-send"; exit 1; }
+          grep -qF "isShiftPressed" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v347: shift+enter does not fall through to newline"; exit 1; }
+          grep -qF "aiLoadAttachment" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v347: attachment picker not wired"; exit 1; }
+          grep -qF "class AiAttachment" flutter/lib/ai/ai_models.dart || { echo "[FAIL] v347: attachment model missing"; exit 1; }
+          grep -qF "aiClassify" flutter/lib/ai/ai_attach.dart || { echo "[FAIL] v347: attachment classifier missing"; exit 1; }
+          grep -qF "image_url" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v347: vision part not sent"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/ai/ai_page.dart', encoding='utf-8').read()
+          a = s.find('Icons.add_photo_alternate_outlined')
+          b = s.find('const Spacer(),', a)
+          c = s.find('Icons.send_rounded', b)
+          if a < 0 or b < 0 or c < 0 or not (a < b < c):
+              print('[FAIL] v347 attach and send icons must be separated by a Spacer', a, b, c)
+              sys.exit(1)
+          if 'IconButton(' in s[s.find('Widget _buildComposer'):]:
+              print('[FAIL] v347 composer still uses IconButton (48x48 hit area overlaps the field)')
+              sys.exit(1)
+          print('[OK] v347 composer icons separated, no IconButton overlap')
+          PY
+          echo "[OK] v347 assistant usability applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
