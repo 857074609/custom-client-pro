@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f128a3ccd36013a608ce3b69bc6812200e080759
+      patches_sha: 3d3739ee886f725a71af0822f6adfdf627e63c21
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f128a3ccd36013a608ce3b69bc6812200e080759
+          ref: 3d3739ee886f725a71af0822f6adfdf627e63c21
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2214,6 +2214,44 @@ jobs:
           print('[OK] v344 screenshot button sits between view-camera and record')
           PY
           echo "[OK] v344 screenshot toolbar button applied"
+          # V345: one-shot action icons are always blue.
+          #
+          # The upstream toolbar uses blueColor for actions and panels (monitor
+          # switch, chat, settings) and the grey/blue transition only for state
+          # toggles. Terminal, view camera and screenshot are one-shot actions,
+          # so they must be blue and must not consult inactiveColor.
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          bad = []
+          for cls in ('_TerminalAdminButtonState', '_ViewCameraButtonState', '_ScreenshotButtonState'):
+              i = s.find('class ' + cls)
+              if i < 0:
+                  bad.append('missing ' + cls)
+                  continue
+              block = s[i:i + 2600]
+              if '_ToolbarTheme.blueColor' not in block:
+                  bad.append(cls + ' is not blue')
+              if 'hoverBlueColor' not in block:
+                  bad.append(cls + ' has no blue hover colour')
+              if 'inactiveColor' in block:
+                  bad.append(cls + ' still uses inactiveColor')
+          # the state toggles must keep the grey/blue transition
+          for cls in ('_PrivacyModeToggleButton', '_TurnOffMonitorButton', '_BlockInputToggleButton'):
+              i = s.find('class ' + cls)
+              if i < 0:
+                  bad.append('missing ' + cls)
+                  continue
+              block = s[i:i + 4200]
+              if 'inactiveColor' not in block or '_ToolbarTheme.blueColor' not in block:
+                  bad.append(cls + ' lost its state colours')
+          if bad:
+              for b in bad:
+                  print('[FAIL] v345:', b)
+              sys.exit(1)
+          print('[OK] v345 action icons blue, state toggles keep grey/blue')
+          PY
+          echo "[OK] v345 icon colour rule applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
