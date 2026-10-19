@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 3d3739ee886f725a71af0822f6adfdf627e63c21
+      patches_sha: 129650cfe4bf101bdcf0fb118782807fa356ac86
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 3d3739ee886f725a71af0822f6adfdf627e63c21
+          ref: 129650cfe4bf101bdcf0fb118782807fa356ac86
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2252,6 +2252,44 @@ jobs:
           print('[OK] v345 action icons blue, state toggles keep grey/blue')
           PY
           echo "[OK] v345 icon colour rule applied"
+          # V346: AI Buddy -- an assistant panel inside the remote session that
+          # drives the peer through the terminal channel. Read and write are both
+          # allowed (the peer shell already runs with the rights the administrator
+          # terminal ends up with); a narrow block list stops the handful of
+          # irreversible commands.
+          python3 patches/ai/patch_ai_buddy_core.py .
+          for f in ai_state ai_models ai_settings ai_terminal ai_tools ai_client ai_agent ai_page; do
+            test -f flutter/lib/ai/$f.dart || { echo "[FAIL] v346: flutter/lib/ai/$f.dart missing"; exit 1; }
+          done
+          test -f flutter/assets/ai_buddy.svg || { echo "[FAIL] v346: ai_buddy.svg missing"; exit 1; }
+          grep -qF "class AiTerminal extends TerminalModel" flutter/lib/ai/ai_terminal.dart || { echo "[FAIL] v346: terminal channel missing"; exit 1; }
+          grep -qF -- "-EncodedCommand" flutter/lib/ai/ai_terminal.dart || { echo "[FAIL] v346: terminal channel does not use -EncodedCommand"; exit 1; }
+          grep -qF "class AiAgent extends ChangeNotifier" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v346: agent loop missing"; exit 1; }
+          grep -qF "ai_buddy_audit.jsonl" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v346: local audit log missing"; exit 1; }
+          python3 patches/ai/patch_ai_buddy_terminal.py .
+          grep -qF "[v346 ai-buddy-terminal]" src/server/connection.rs || { echo "[FAIL] v346: remote session terminal not authorised"; exit 1; }
+          python3 patches/ai/patch_ai_buddy_ui.py .
+          grep -qF "[v346 ai-buddy-panel]" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] v346: assistant panel not mounted"; exit 1; }
+          grep -qF "AiBuddyPanel(ffi: _ffi)" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] v346: assistant panel widget missing"; exit 1; }
+          grep -qF "class _AiBuddyButton extends StatelessWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v346: assistant toolbar button missing"; exit 1; }
+          grep -qF "toolbarItems.add(_AiBuddyButton(" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v346: assistant button not registered"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
+          order = ['_ScreenshotButton(', '_AiBuddyButton(', '_RecordMenu(']
+          pos = [s.find('toolbarItems.add(%s' % o) for o in order]
+          if any(p < 0 for p in pos) or not (pos[0] < pos[1] < pos[2]):
+              print('[FAIL] v346 toolbar order must be screenshot -> ai-buddy -> record', pos)
+              sys.exit(1)
+          start = s.find('class _AiBuddyButton')
+          end = s.find('class _ControlMenu')
+          block = s[start:end] if start >= 0 and end > start else ''
+          if 'blueColor' not in block or 'inactiveColor' in block:
+              print('[FAIL] v346 ai-buddy button must be blue (v345 colour rule)')
+              sys.exit(1)
+          print('[OK] v346 ai-buddy button sits between screenshot and record, blue')
+          PY
+          echo "[OK] v346 ai buddy applied"
           python3 patches/ui/patch_add_address_book.py .
           python3 patches/iroh/iroh_badge.py .
 
