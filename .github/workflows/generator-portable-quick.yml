@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: be773b127498b45af3e8a8ed0fce7b6ae5c11885
+      patches_sha: 75b9d930bff0b7a3a3566e3489e96a236b3a2a0f
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: be773b127498b45af3e8a8ed0fce7b6ae5c11885
+          ref: 75b9d930bff0b7a3a3566e3489e96a236b3a2a0f
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2326,6 +2326,8 @@ jobs:
           grep -qF "LogicalKeyboardKey.keyV" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: ctrl+v key not handled"; exit 1; }
           grep -qF "textSelectionTheme" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: selection highlight not tamed"; exit 1; }
           grep -qF "listModels" flutter/lib/ai/ai_client.dart || { echo "[FAIL] v348: model discovery missing"; exit 1; }
+          grep -qF "import 'ai_client.dart';" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: ai_page does not import ai_client"; exit 1; }
+          grep -qF "_transcriptTheme" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: transcript text is not selectable-safe"; exit 1; }
           grep -qF "maxSteps <= 0" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v348: step limit is not optional"; exit 1; }
           grep -qF "_copyIcon" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: copy button missing"; exit 1; }
           python3 - <<'PY' || exit 1
