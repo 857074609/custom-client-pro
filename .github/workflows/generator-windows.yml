@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 75b9d930bff0b7a3a3566e3489e96a236b3a2a0f
+      patches_sha: 9f1284237f8d7d8054b469a2eb2c59c9595e60d3
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 75b9d930bff0b7a3a3566e3489e96a236b3a2a0f
+          ref: 9f1284237f8d7d8054b469a2eb2c59c9595e60d3
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2750,6 +2750,24 @@ jobs:
           grep -qF "import 'ai_client.dart';" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: ai_page does not import ai_client"; exit 1; }
           grep -qF "_transcriptTheme" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: transcript text is not selectable-safe"; exit 1; }
           grep -qF "maxSteps <= 0" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v348: step limit is not optional"; exit 1; }
+          grep -qF "inputDecorationTheme" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v349: field fill is not pinned by the dialog theme"; exit 1; }
+          grep -qF "focusedErrorBorder" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v349: not every field state pins the fill"; exit 1; }
+          grep -qF "_modelSuggest" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v349: model autocomplete missing"; exit 1; }
+          grep -qF "kAiOptionModels" flutter/lib/ai/ai_settings.dart || { echo "[FAIL] v349: model cache missing"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          page = open('flutter/lib/ai/ai_page.dart', encoding='utf-8').read()
+          if 'fillColor: _kInputBg' not in page:
+              print('[FAIL] v349: settings fields must pin the dark fill (light gray hides the text)')
+              sys.exit(1)
+          if '_modelList(' in page:
+              print('[FAIL] v349: model picker still renders an unfiltered list')
+              sys.exit(1)
+          settings = open('flutter/lib/ai/ai_settings.dart', encoding='utf-8').read()
+          if 'static List<String> get models {' not in settings:
+              print('[FAIL] v349: cached model list missing')
+              sys.exit(1)
+          PY
           grep -qF "_copyIcon" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: copy button missing"; exit 1; }
           python3 - <<'PY' || exit 1
           import sys
