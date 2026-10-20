@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 0931f00ab8e9fdb9123aaf1ad79bb847feb4acbf
+      patches_sha: 6dd1b41ab8e9fdb9123aaf1ad79bb847feb4acbf
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 0931f00ab8e9fdb9123aaf1ad79bb847feb4acbf
+          ref: 6dd1b41ab8e9fdb9123aaf1ad79bb847feb4acbf
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2346,7 +2346,12 @@ jobs:
           grep -qF "_gateText" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: gate question missing"; exit 1; }
           grep -qF "kAiOptionRiskGate" flutter/lib/ai/ai_settings.dart || { echo "[FAIL] v351: risk gate option missing"; exit 1; }
           grep -qF "AiSettings.riskGate" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: gate ignores its option"; exit 1; }
-          grep -qF "只给结果、建议、选择" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: output style not pinned"; exit 1; }
+          grep -qF "只给结果，不贴过程" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: output style not pinned"; exit 1; }
+          grep -qF "_writeVerbs" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v352: write-verb table missing"; exit 1; }
+          grep -qF "_looksReadOnly" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v352: read-only shortcut missing"; exit 1; }
+          grep -qF "aiRiskFamily" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v352: risk family lookup missing"; exit 1; }
+          grep -qF "family != _approveFamily" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v352: approved command is asked again"; exit 1; }
+          grep -qF "final Set<int> _openCards" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v352: tool cards are not collapsible"; exit 1; }
           python3 - <<'PY' || exit 1
           import sys
           page = open('flutter/lib/ai/ai_page.dart', encoding='utf-8').read()
@@ -2355,13 +2360,34 @@ jobs:
               sys.exit(1)
           tools = open('flutter/lib/ai/ai_tools.dart', encoding='utf-8').read()
           risk_seg = tools.split('_riskyRules = <_RiskRule>[', 1)[-1].split('];', 1)[0]
-          if risk_seg.count('RegExp(') < 12:
-              print('[FAIL] v351: risk list shrank below 12 rules')
+          if risk_seg.count('RegExp(') != 8:
+              print('[FAIL] v352: risk list must stay at eight rules')
               sys.exit(1)
-          for hard in (r'format\s+[a-z]:', r'\bdiskpart\b', r'\bbcdedit\b', r'\bshutdown\b'):
+          for hard in (r'format\s+[a-z]:', r'\bdiskpart\b', r'\bbcdedit\b',
+                       r'vssadmin\s+delete', r'cipher\s+/w', r'\bshutdown\b',
+                       r'stop-computer', r'net\s+user\s+\S+\s+/delete',
+                       r'reg\s+delete\s+hklm', r'remove-item', r'\brd\s+/s\s+/q'):
               if hard not in tools:
-                  print('[FAIL] v351: hard block pattern dropped: %s' % hard)
+                  print('[FAIL] v352: hard block pattern dropped: %s' % hard)
                   sys.exit(1)
+          agent = open('flutter/lib/ai/ai_agent.dart', encoding='utf-8').read()
+          fam = tools.split('int? aiRiskFamily', 1)[-1].split('\n}', 1)[0]
+          if '_looksReadOnly' not in fam:
+              print('[FAIL] v352: read-only commands still reach the risk table')
+              sys.exit(1)
+          if fam.find('_looksReadOnly') > fam.find('_riskyRules'):
+              print('[FAIL] v352: read-only check must run before the risk table')
+              sys.exit(1)
+          gate = agent.split('static String _gateText', 1)[-1].split('\n  }', 1)[0]
+          if '$cmd' in gate:
+              print('[FAIL] v352: gate bubble still echoes the raw command line')
+              sys.exit(1)
+          if '1）执行' not in agent or '2）跳过' not in agent:
+              print('[FAIL] v352: gate options lost their numbering')
+              sys.exit(1)
+          if 'final Set<int> _openCards' not in page:
+              print('[FAIL] v352: tool cards are not collapsible')
+              sys.exit(1)
           agent = open('flutter/lib/ai/ai_agent.dart', encoding='utf-8').read()
           if '不可逆操作' not in agent:
               print('[FAIL] v351: irreversible-operation rule was trimmed away')
