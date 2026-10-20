@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 1f9a4d6519c50e4503cd76f4a3c5d23310bceaf1
+      patches_sha: 0931f00ab8e9fdb9123aaf1ad79bb847feb4acbf
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 1f9a4d6519c50e4503cd76f4a3c5d23310bceaf1
+          ref: 0931f00ab8e9fdb9123aaf1ad79bb847feb4acbf
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2337,6 +2337,37 @@ jobs:
                   sys.exit(1)
           if page.count('_kDialogBg') < 2:
               print('[FAIL] v350: dialog surface not pinned')
+              sys.exit(1)
+          PY
+          grep -qF "_riskyRules" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v351: risk list missing"; exit 1; }
+          grep -qF "aiRiskReason" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v351: risk lookup missing"; exit 1; }
+          grep -qF "NEEDS_CONFIRMATION" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: gate does not tell the model to wait"; exit 1; }
+          grep -qF "_skipRest" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: unanswered tool calls not filled"; exit 1; }
+          grep -qF "_gateText" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: gate question missing"; exit 1; }
+          grep -qF "kAiOptionRiskGate" flutter/lib/ai/ai_settings.dart || { echo "[FAIL] v351: risk gate option missing"; exit 1; }
+          grep -qF "AiSettings.riskGate" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: gate ignores its option"; exit 1; }
+          grep -qF "只给结果、建议、选择" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: output style not pinned"; exit 1; }
+          python3 - <<'PY' || exit 1
+          import sys
+          page = open('flutter/lib/ai/ai_page.dart', encoding='utf-8').read()
+          if 'maxWidth: 330' in page:
+              print('[FAIL] v351: transcript bubbles are still capped at 330px')
+              sys.exit(1)
+          tools = open('flutter/lib/ai/ai_tools.dart', encoding='utf-8').read()
+          risk_seg = tools.split('_riskyRules = <_RiskRule>[', 1)[-1].split('];', 1)[0]
+          if risk_seg.count('RegExp(') < 12:
+              print('[FAIL] v351: risk list shrank below 12 rules')
+              sys.exit(1)
+          for hard in (r'format\s+[a-z]:', r'\bdiskpart\b', r'\bbcdedit\b', r'\bshutdown\b'):
+              if hard not in tools:
+                  print('[FAIL] v351: hard block pattern dropped: %s' % hard)
+                  sys.exit(1)
+          agent = open('flutter/lib/ai/ai_agent.dart', encoding='utf-8').read()
+          if '不可逆操作' not in agent:
+              print('[FAIL] v351: irreversible-operation rule was trimmed away')
+              sys.exit(1)
+          if 'SKIPPED' not in agent:
+              print('[FAIL] v351: skipped tool calls are left unanswered')
               sys.exit(1)
           PY
           grep -qF "_copyIcon" flutter/lib/ai/ai_page.dart || { echo "[FAIL] v348: copy button missing"; exit 1; }
