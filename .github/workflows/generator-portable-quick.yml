@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: c57e2c7325761ffe4d17ccf1edc8ae13ad79ec7a
+      patches_sha: dbbf6803cc2a53e3392fb8ae5f627fd3c9f3f4c4
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c57e2c7325761ffe4d17ccf1edc8ae13ad79ec7a
+          ref: dbbf6803cc2a53e3392fb8ae5f627fd3c9f3f4c4
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -748,6 +748,8 @@ jobs:
           grep -q "scanLanForWall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan entry missing"; exit 1; }
           grep -q "Scan LAN" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: Scan LAN button missing"; exit 1; }
           grep -q "Add Device to Screen Wall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual add path lost"; exit 1; }
+          grep -q "Widget _buildPeerList" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: recent/address lists lost"; exit 1; }
+          grep -q "Widget _buildScanList" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan result list lost"; exit 1; }
           grep -q "final Set<String> kSilentProbePeerIds" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: silent probe registry missing"; exit 1; }
           grep -q "kSilentProbePeerIds.contains(peerId)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe msgbox guard missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/cn.rs || { echo "[FAIL] cn.rs: Scan LAN key missing"; exit 1; }
