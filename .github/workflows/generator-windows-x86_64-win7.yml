@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 6dd1b41a5b8f5a1c4e067ed9401cbd138f613fbd
+      patches_sha: 33767a3cc01ef1b9c9cb9ef5b28c0f9b9da9643e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 6dd1b41a5b8f5a1c4e067ed9401cbd138f613fbd
+          ref: 33767a3cc01ef1b9c9cb9ef5b28c0f9b9da9643e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -711,6 +711,32 @@ jobs:
           grep -q "_ffi.ffiModel.viewOnly" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution button lacks the view-only guard"; exit 1; }
           grep -q "Unsupported resolution" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution precheck missing"; exit 1; }
           echo "[OK] screen wall v132 verified (Escape passthrough + resolution guard)"
+
+      - name: Screen wall v353 LAN scan (discover + shared-password probe)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v353] Add-dialog "Scan LAN": reuse the upstream LAN discovery
+          # (src/lan.rs, UDP broadcast on RENDEZVOUS_PORT + 3) through the
+          # existing mainDiscover / mainGetLanPeers bridge entries, then probe
+          # every candidate with the password typed in the dialog and offer
+          # only the peers that accept it.
+          # No Rust change on purpose: bridge.yml generates generated_bridge.dart
+          # from the upstream src/flutter_ffi.rs, so a patched FFI entry would be
+          # invisible to Dart and fail to compile.
+          python3 patches/ui/patch_screen_wall_v353.py .
+          grep -q "kLanScanSettle" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: discovery helper missing"; exit 1; }
+          grep -q "probePeerPassword" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: password probe missing"; exit 1; }
+          grep -q "scanLanForWall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan entry missing"; exit 1; }
+          grep -q "Scan LAN" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: Scan LAN button missing"; exit 1; }
+          grep -q "Add Device to Screen Wall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual add path lost"; exit 1; }
+          grep -q "final Set<String> kSilentProbePeerIds" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: silent probe registry missing"; exit 1; }
+          grep -q "kSilentProbePeerIds.contains(peerId)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe msgbox guard missing"; exit 1; }
+          grep -q '("Scan LAN",' src/lang/cn.rs || { echo "[FAIL] cn.rs: Scan LAN key missing"; exit 1; }
+          grep -q '("Scan LAN",' src/lang/en.rs || { echo "[FAIL] en.rs: Scan LAN key missing"; exit 1; }
+          echo "[OK] screen wall v353 verified (LAN scan + shared-password probe)"
 
       - name: Force light-mode background to pure white (v224)
         # 值驱动补丁：extras.light_background_white != 'false' 时生效（默认开）。
