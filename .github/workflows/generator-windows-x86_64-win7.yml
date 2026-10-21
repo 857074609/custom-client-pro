@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 535fa2cbbd6ae19c2c6bc497536be25db0840093
+      patches_sha: e57abb645949ebbb4586ff2d0aedae6de036f0a3
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 535fa2cbbd6ae19c2c6bc497536be25db0840093
+          ref: e57abb645949ebbb4586ff2d0aedae6de036f0a3
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -775,7 +775,17 @@ jobs:
           grep -q "closeBroadcastWindow" flutter/lib/common.dart || { echo "[FAIL] common.dart: stop link not handled"; exit 1; }
           grep -q '("Broadcasting",' src/lang/cn.rs || { echo "[FAIL] cn.rs: broadcast key missing"; exit 1; }
           grep -q '("Broadcasting",' src/lang/en.rs || { echo "[FAIL] en.rs: broadcast key missing"; exit 1; }
-          echo "[OK] screen wall v354 verified (direct ip + remembered password + broadcast)"
+          # [v354b] The first build went silent on the peer side: the viewer dialled
+          # the controller by id (rendezvous server needed), nothing logged the
+          # helper chain, and the badge stayed green without a verdict.
+          grep -q "handle(&c.text, &self.ip)" src/server/connection.rs || { echo "[FAIL] connection.rs: peer address not passed to the broadcast handler"; exit 1; }
+          grep -q "crate::screen_broadcast::is_reply" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs: broadcast reply not intercepted"; exit 1; }
+          grep -q "crate::screen_broadcast::handle_reply" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs: reply not forwarded to the GUI"; exit 1; }
+          grep -q "pub const REPLY_PREFIX" src/screen_broadcast.rs || { echo "[FAIL] screen_broadcast.rs: reply codec missing"; exit 1; }
+          grep -q "deep link handed to the main window" src/core_main.rs || { echo "[FAIL] core_main.rs: helper link result not logged"; exit 1; }
+          grep -q "name == 'on_broadcast_reply'" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: broadcast reply event missing"; exit 1; }
+          grep -q "kWindowEventBroadcastReply" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: reply handler missing"; exit 1; }
+          echo "[OK] screen wall v354b verified (address dial + logging + reply verdict)"
 
       - name: Force light-mode background to pure white (v224)
         # 值驱动补丁：extras.light_background_white != 'false' 时生效（默认开）。
