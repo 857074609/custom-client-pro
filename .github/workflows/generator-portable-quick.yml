@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: dbbf6803cc2a53e3392fb8ae5f627fd3c9f3f4c4
+      patches_sha: 06563f27e2fea7845b77625c60635aefa715b821
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: dbbf6803cc2a53e3392fb8ae5f627fd3c9f3f4c4
+          ref: 06563f27e2fea7845b77625c60635aefa715b821
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -750,8 +750,10 @@ jobs:
           grep -q "Add Device to Screen Wall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual add path lost"; exit 1; }
           grep -q "Widget _buildPeerList" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: recent/address lists lost"; exit 1; }
           grep -q "Widget _buildScanList" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan result list lost"; exit 1; }
-          grep -q "final Set<String> kSilentProbePeerIds" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: silent probe registry missing"; exit 1; }
-          grep -q "kSilentProbePeerIds.contains(peerId)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe msgbox guard missing"; exit 1; }
+          grep -q "final Map<String, void Function(bool accepted)> kProbeCallbacks" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe registry missing"; exit 1; }
+          grep -q "kProbeCallbacks.containsKey(peerId)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe msgbox guard missing"; exit 1; }
+          grep -q "probeResolve(peerId, true)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe success verdict missing"; exit 1; }
+          grep -q "_retryWithPassword" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual retry path missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/cn.rs || { echo "[FAIL] cn.rs: Scan LAN key missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/en.rs || { echo "[FAIL] en.rs: Scan LAN key missing"; exit 1; }
           echo "[OK] screen wall v353 verified (LAN scan + shared-password probe)"
