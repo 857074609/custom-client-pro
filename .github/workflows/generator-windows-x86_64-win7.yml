@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 06563f27e2fea7845b77625c60635aefa715b821
+      patches_sha: fdeb3fa0c7dc97db6f6ad878d2d7566adabb6e81
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 06563f27e2fea7845b77625c60635aefa715b821
+          ref: fdeb3fa0c7dc97db6f6ad878d2d7566adabb6e81
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -741,6 +741,41 @@ jobs:
           grep -q '("Scan LAN",' src/lang/cn.rs || { echo "[FAIL] cn.rs: Scan LAN key missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/en.rs || { echo "[FAIL] en.rs: Scan LAN key missing"; exit 1; }
           echo "[OK] screen wall v353 verified (LAN scan + shared-password probe)"
+
+      - name: Screen wall v354 direct IP + remembered password + broadcast
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v354] Three changes that share the wall window:
+          #  1) a cell connects with the LAN address instead of the id, so the
+          #     core dials <ip>:21118 and never touches the ID server;
+          #  2) a cell paints its own password prompt (a sub window has no
+          #     overlay for the upstream dialog) and remembers what was accepted;
+          #  3) the wall pushes its own desktop to the peers sitting in it: a
+          #     control string over each session's chat channel, a helper
+          #     instance that hands the deep link to the GUI, and a full screen
+          #     viewer connected back to the controller.
+          python3 patches/network/patch_lan_peers_ip.py .
+          python3 patches/server/patch_screen_broadcast.py .
+          python3 patches/ui/patch_screen_wall_v354.py .
+          grep -q '("ip", ip),' src/ui_interface.rs || { echo "[FAIL] ui_interface.rs: peer address not exposed"; exit 1; }
+          grep -q "mod screen_broadcast;" src/lib.rs || { echo "[FAIL] lib.rs: broadcast module not declared"; exit 1; }
+          grep -q "crate::screen_broadcast::is_control" src/server/connection.rs || { echo "[FAIL] connection.rs: control string not intercepted"; exit 1; }
+          grep -q '"--broadcast-stop"' src/core_main.rs || { echo "[FAIL] core_main.rs: broadcast-stop argument missing"; exit 1; }
+          grep -q "broadcast=true" src/core_main.rs || { echo "[FAIL] core_main.rs: broadcast argument missing"; exit 1; }
+          grep -q "probeCandidate" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: address probe fallback missing"; exit 1; }
+          grep -q "class BroadcastViewer" flutter/lib/desktop/widgets/broadcast.dart || { echo "[FAIL] broadcast.dart: viewer missing"; exit 1; }
+          grep -q "_buildAuthOverlay" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: inline password prompt missing"; exit 1; }
+          grep -q "kCellAuthCallbacks" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: cell auth registry missing"; exit 1; }
+          grep -q "_startBroadcast" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: broadcast entry missing"; exit 1; }
+          grep -q "BroadcastViewer" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: viewer branch missing"; exit 1; }
+          grep -q "closeBroadcastWindow" flutter/lib/utils/multi_window_manager.dart || { echo "[FAIL] multi_window_manager.dart: viewer teardown missing"; exit 1; }
+          grep -q "closeBroadcastWindow" flutter/lib/common.dart || { echo "[FAIL] common.dart: stop link not handled"; exit 1; }
+          grep -q '("Broadcasting",' src/lang/cn.rs || { echo "[FAIL] cn.rs: broadcast key missing"; exit 1; }
+          grep -q '("Broadcasting",' src/lang/en.rs || { echo "[FAIL] en.rs: broadcast key missing"; exit 1; }
+          echo "[OK] screen wall v354 verified (direct ip + remembered password + broadcast)"
 
       - name: Force light-mode background to pure white (v224)
         # 值驱动补丁：extras.light_background_white != 'false' 时生效（默认开）。
