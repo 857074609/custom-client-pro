@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f63320b718a4be0eb1e7d6cfc1740d2e723ba546
+      patches_sha: 9fda68b466c90eeda3c7063a33807d6513b29b95
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f63320b718a4be0eb1e7d6cfc1740d2e723ba546
+          ref: 9fda68b466c90eeda3c7063a33807d6513b29b95
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -825,6 +825,22 @@ jobs:
           # prefixed name leaves the body referring to a value that is not there.
           grep -q "pub fn handle_reply(text: &str, peer: &str)" src/broadcast_push.rs || { echo "[FAIL] broadcast_push.rs: reply handler must name its peer argument"; exit 1; }
           [ "$(grep -c 'join_multicast_v4(&.*&Ipv4Addr::UNSPECIFIED)' src/broadcast_viewer.rs)" = "2" ] || { echo "[FAIL] broadcast_viewer.rs: multicast joins must borrow both the group and the interface"; exit 1; }
+           # [v356] process lifecycle: stop event + Ok(None) success + VP9 + watchdog
+           grep -q "signal_stop_event" src/broadcast_push.rs || { echo "[FAIL] v356: stop event missing"; exit 1; }
+           grep -q "reset_stop_event" src/broadcast_push.rs || { echo "[FAIL] v356: reset event missing"; exit 1; }
+           grep -q "STOP_EVENT_NAME" src/broadcast_push.rs || { echo "[FAIL] v356: stop event const"; exit 1; }
+           grep -q "launch_viewer() -> bool" src/broadcast_push.rs || { echo "[FAIL] v356: launch return type"; exit 1; }
+           grep -q "viewer launched" src/broadcast_push.rs || { echo "[FAIL] v356: Ok(None) success log"; exit 1; }
+           ! grep -q "viewer produced no handle" src/broadcast_push.rs || { echo "[FAIL] v356: old error still present"; exit 1; }
+           ! grep -q "h264-ram" src/broadcast_push.rs || { echo "[FAIL] v356: h264-ram not removed"; exit 1; }
+           grep -q "VpxDecoder" src/broadcast_viewer.rs || { echo "[FAIL] v356: software decoder missing"; exit 1; }
+           ! grep -q "HwRamDecoder" src/broadcast_viewer.rs || { echo "[FAIL] v356: HwRamDecoder not removed"; exit 1; }
+           grep -q "publish_bitmap" src/broadcast_viewer.rs || { echo "[FAIL] v356: publish_bitmap missing"; exit 1; }
+           grep -q "no video for 10s" src/broadcast_viewer.rs || { echo "[FAIL] v356: watchdog missing"; exit 1; }
+           grep -q "bview-stop" src/broadcast_viewer.rs || { echo "[FAIL] v356: stop event thread missing"; exit 1; }
+           grep -q "last_packet" src/broadcast_viewer.rs || { echo "[FAIL] v356: watchdog timestamp missing"; exit 1; }
+           grep -q 'init_log(false, "broadcast-viewer")' src/core_main.rs || { echo "[FAIL] v356: viewer logging missing"; exit 1; }
+           grep -q '"handleapi"' Cargo.toml || { echo "[FAIL] v356: handleapi feature missing"; exit 1; }
           echo "[OK] push broadcast v355 core verified (multicast send + listener)"
 
       - name: Push based screen broadcast v355, wall UI (push entry + audio)
