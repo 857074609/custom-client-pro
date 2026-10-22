@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 29c561dd4f4695de893b5f96409e2f34b6865adc
+      patches_sha: 40eb7a87ade925664ebbd749229fec4f40ecb6eb
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 29c561dd4f4695de893b5f96409e2f34b6865adc
+          ref: 40eb7a87ade925664ebbd749229fec4f40ecb6eb
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -996,6 +996,21 @@ jobs:
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
           grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
           echo "[OK] v227: tab bar no background, icons visible, screen-wall icon restored (FA faThLarge)"
+      - name: Address-book bulk import to screen walls (v362)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v362] 地址簿多选栏新增「添加到屏幕墙」图标：点一次弹密码框，
+          # 用输入的密码逐台验证（不用地址簿里记住的密码），按地址簿名建组，
+          # 一组满 9 台自动开下一组（地址簿名+序号，序号从 1 开始）。
+          python3 patches/ui/patch_peer_tab_page_wall_import.py .
+          grep -qF 'addSelectionToScreenWall(),' flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart: import icon not wired"; exit 1; }
+          grep -qF 'importPeersToScreenWalls(' flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] peer_tab_page.dart: import helper not called"; exit 1; }
+          test -f flutter/lib/desktop/widgets/wall_import.dart || { echo "[FAIL] wall_import.dart not copied"; exit 1; }
+          echo "[OK] v362: address-book bulk import to screen walls ready"
+
       - name: both-mode heading card mark + logo container (v225/v336)
         if: env.UI_VARIANT == 'control_custom'
         shell: bash
@@ -1101,6 +1116,16 @@ jobs:
           grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
           grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
           grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
+
+      - name: Log the login verdict (v362)
+        shell: bash
+        run: |
+          # [v362] 被控端拒绝登录时只说一次原因（msgbox），客户端侧一条日志都不写，
+          # 现场日志只剩一行 "Exit io_loop"，"密码错误 / 请一分钟后再试 / 离线" 三种
+          # 情况完全无法区分。这里在 handle_login_error() 开头补一行 warn。
+          python3 patches/network/patch_login_error_log.py .
+          grep -qF '[v362] login rejected: {}' src/client.rs || { echo "[FAIL] client.rs: login rejection log missing"; exit 1; }
+          echo "[OK] v362: login verdict is logged"
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
