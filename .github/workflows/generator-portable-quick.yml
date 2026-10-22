@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 64a449dc7caa59b50d10b1dfe0c1bc21d9230b25
+      patches_sha: 6b928202055519835d02763713ba33590be4a299
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 64a449dc7caa59b50d10b1dfe0c1bc21d9230b25
+          ref: 6b928202055519835d02763713ba33590be4a299
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -855,6 +855,7 @@ jobs:
           # bracket both breaks that anchor and stops the file compiling.
           grep -A1 '].iter().cloned().collect();' src/lang/cn.rs | grep -q '^}' || { echo "[FAIL] cn.rs: language map tail broken"; exit 1; }
           grep -A1 '].iter().cloned().collect();' src/lang/en.rs | grep -q '^}' || { echo "[FAIL] en.rs: language map tail broken"; exit 1; }
+grep -q "jsonDecode(call.arguments.toString())" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: push reply must decode call.arguments"; exit 1; }
           grep -q "crate::screen_broadcast::is_control" src/server/connection.rs || { echo "[FAIL] connection.rs: v354b fallback lost"; exit 1; }
           grep -q "_startBroadcast()" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: v354b fallback entry lost"; exit 1; }
           echo "[OK] push broadcast v355 wall UI verified (push entry + legacy fallback kept)"
