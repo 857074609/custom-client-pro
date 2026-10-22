@@ -855,7 +855,7 @@ jobs:
           # bracket both breaks that anchor and stops the file compiling.
           grep -A1 '].iter().cloned().collect();' src/lang/cn.rs | grep -q '^}' || { echo "[FAIL] cn.rs: language map tail broken"; exit 1; }
           grep -A1 '].iter().cloned().collect();' src/lang/en.rs | grep -q '^}' || { echo "[FAIL] en.rs: language map tail broken"; exit 1; }
-grep -q "jsonDecode(call.arguments.toString())" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: push reply must decode call.arguments"; exit 1; }
+          grep -q "jsonDecode(call.arguments.toString())" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: push reply must decode call.arguments"; exit 1; }
           grep -q "crate::screen_broadcast::is_control" src/server/connection.rs || { echo "[FAIL] connection.rs: v354b fallback lost"; exit 1; }
           grep -q "_startBroadcast()" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: v354b fallback entry lost"; exit 1; }
           echo "[OK] push broadcast v355 wall UI verified (push entry + legacy fallback kept)"
