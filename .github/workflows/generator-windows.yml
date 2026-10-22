@@ -861,7 +861,7 @@ jobs:
           # The reply handler must name the peer it was handed, an underscore
           # prefixed name leaves the body referring to a value that is not there.
           grep -q "pub fn handle_reply(text: &str, peer: &str)" src/broadcast_push.rs || { echo "[FAIL] broadcast_push.rs: reply handler must name its peer argument"; exit 1; }
-          [ "$(grep -c 'join_multicast_v4(&' src/broadcast_viewer.rs)" = "2" ] || { echo "[FAIL] broadcast_viewer.rs: multicast joins must borrow the group"; exit 1; }
+          [ "$(grep -c 'join_multicast_v4(&.*&Ipv4Addr::UNSPECIFIED)' src/broadcast_viewer.rs)" = "2" ] || { echo "[FAIL] broadcast_viewer.rs: multicast joins must borrow both the group and the interface"; exit 1; }
           echo "[OK] push broadcast v355 core verified (multicast send + listener)"
 
       - name: Push based screen broadcast v355, wall UI (push entry + audio)
