@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: fc3ef91b72080b23572e399a088d388a7ba98048
+      patches_sha: 566280bdf183faf5ed00bdc17fab80fe10a9fa77
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: fc3ef91b72080b23572e399a088d388a7ba98048
+          ref: 566280bdf183faf5ed00bdc17fab80fe10a9fa77
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -787,40 +787,56 @@ jobs:
           grep -q "kWindowEventBroadcastReply" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: reply handler missing"; exit 1; }
           echo "[OK] screen wall v354b verified (address dial + logging + reply verdict)"
 
-      - name: Push based screen broadcast v355 (multicast, no dial-in)
+      - name: Push based screen broadcast v355, core (multicast, no dial-in)
         # [v355] The push model replaces the reverse-connect viewer as the
         # default: the teacher encodes and multicasts its own desktop, a student
         # only listens, so a locked, logged off or "incoming only" machine
         # receives it and no password is involved. The v354b reverse-connect
         # path stays in the build and reachable from the wall's overflow menu.
-        # The gate is `screen_wall == 'true'` alone: the v354 step above is
-        # limited to `control_custom` because a viewer there has to dial the
-        # controller, while a listener here works in every variant.
+        #
+        # This half runs in EVERY variant on purpose: the student side is the
+        # one that starts the viewer window, and the students run the incoming
+        # package, where the wall page does not even exist. Only the entry
+        # button belongs to the teacher, which is why the UI half below is
+        # limited to `control_custom` like every other wall step.
         if: inputs.screen_wall == 'true'
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           python3 patches/server/patch_broadcast_push.py .
-          python3 patches/ui/patch_broadcast_push_ui.py .
           grep -q "mod broadcast_push;" src/lib.rs || { echo "[FAIL] lib.rs: push module not declared"; exit 1; }
           grep -q "mod broadcast_viewer;" src/lib.rs || { echo "[FAIL] lib.rs: viewer module not declared"; exit 1; }
           grep -q "crate::broadcast_push::is_control" src/server/connection.rs || { echo "[FAIL] connection.rs: push control not intercepted"; exit 1; }
-          grep -q "crate::broadcast_push::handle_reply" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs: push reply not intercepted"; exit 1; }
+          grep -q "crate::broadcast_push::is_reply" src/client/io_loop.rs || { echo "[FAIL] io_loop.rs: push reply not intercepted"; exit 1; }
           grep -q '"--broadcast-viewer"' src/core_main.rs || { echo "[FAIL] core_main.rs: viewer argument missing"; exit 1; }
           grep -q "crate::broadcast_viewer::run()" src/core_main.rs || { echo "[FAIL] core_main.rs: viewer entry missing"; exit 1; }
           grep -q "crate::platform::try_change_desktop()" src/broadcast_viewer.rs || { echo "[FAIL] broadcast_viewer.rs: input desktop attach missing"; exit 1; }
           grep -q "StretchDIBits" src/broadcast_viewer.rs || { echo "[FAIL] broadcast_viewer.rs: paint missing"; exit 1; }
           grep -q "239.255.43.22" src/broadcast_push.rs || { echo "[FAIL] broadcast_push.rs: multicast group missing"; exit 1; }
           grep -q '"wingdi"' Cargo.toml || { echo "[FAIL] Cargo.toml: winapi wingdi feature missing"; exit 1; }
+          # Dual homed teacher: the student echoes the address it dialled, and
+          # the multicast socket binds to it instead of trusting the routing
+          # table to pick the right card.
+          grep -q "handle(&c.text, Some(&self.ip))" src/server/connection.rs || { echo "[FAIL] connection.rs: student does not echo the teacher address"; exit 1; }
+          grep -q "let bind_ip: Option<std::net::Ipv4Addr>" src/broadcast_push.rs || { echo "[FAIL] broadcast_push.rs: no explicit bind address"; exit 1; }
+          [ "$(grep -c 'push_event(peer, \"viewer_up\"' src/broadcast_push.rs)" = "1" ] || { echo "[FAIL] broadcast_push.rs: viewer_up verdict emitted more than once"; exit 1; }
+          echo "[OK] push broadcast v355 core verified (multicast send + listener)"
+
+      - name: Push based screen broadcast v355, wall UI (push entry + audio)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python3 patches/ui/patch_broadcast_push_ui.py .
           grep -q "kPushControlPrefix" flutter/lib/desktop/widgets/broadcast_push.dart || { echo "[FAIL] broadcast_push.dart: codec missing"; exit 1; }
           grep -q "_startPushBroadcast" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: push entry missing"; exit 1; }
           grep -q "on_push_broadcast_reply" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: push reply event missing"; exit 1; }
           grep -q '("Push broadcast","' src/lang/cn.rs || { echo "[FAIL] cn.rs: push key missing"; exit 1; }
           grep -q "crate::screen_broadcast::is_control" src/server/connection.rs || { echo "[FAIL] connection.rs: v354b fallback lost"; exit 1; }
           grep -q "_startBroadcast()" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: v354b fallback entry lost"; exit 1; }
-          echo "[OK] push broadcast v355 verified (multicast send + listener + fallback kept)"
-
+          echo "[OK] push broadcast v355 wall UI verified (push entry + legacy fallback kept)"
       - name: Force light-mode background to pure white (v224)
         # 值驱动补丁：extras.light_background_white != 'false' 时生效（默认开）。
         # 不用 '==' true 是为了兼容不下发该键的旧 generator 提交。
