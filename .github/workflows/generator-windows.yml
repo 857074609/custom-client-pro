@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 6b928202055519835d02763713ba33590be4a299
+      patches_sha: 138bb6242014ddac8921fe9c988b2883e3f71393
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 6b928202055519835d02763713ba33590be4a299
+          ref: 138bb6242014ddac8921fe9c988b2883e3f71393
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -858,6 +858,10 @@ jobs:
           grep -q "handle(&c.text, Some(&self.ip))" src/server/connection.rs || { echo "[FAIL] connection.rs: student does not echo the teacher address"; exit 1; }
           grep -q "let bind_ip: Option<std::net::Ipv4Addr>" src/broadcast_push.rs || { echo "[FAIL] broadcast_push.rs: no explicit bind address"; exit 1; }
           [ "$(grep -c 'push_event(peer, \"viewer_up\"' src/broadcast_push.rs)" = "1" ] || { echo "[FAIL] broadcast_push.rs: viewer_up verdict emitted more than once"; exit 1; }
+          # The reply handler must name the peer it was handed, an underscore
+          # prefixed name leaves the body referring to a value that is not there.
+          grep -q "pub fn handle_reply(text: &str, peer: &str)" src/broadcast_push.rs || { echo "[FAIL] broadcast_push.rs: reply handler must name its peer argument"; exit 1; }
+          [ "$(grep -c 'join_multicast_v4(&' src/broadcast_viewer.rs)" = "2" ] || { echo "[FAIL] broadcast_viewer.rs: multicast joins must borrow the group"; exit 1; }
           echo "[OK] push broadcast v355 core verified (multicast send + listener)"
 
       - name: Push based screen broadcast v355, wall UI (push entry + audio)
