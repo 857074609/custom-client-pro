@@ -772,8 +772,9 @@ jobs:
           grep -q "Widget _buildPeerList" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: recent/address lists lost"; exit 1; }
           grep -q "Widget _buildScanList" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan result list lost"; exit 1; }
           grep -q "final Map<String, void Function(bool accepted)> kProbeCallbacks" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe registry missing"; exit 1; }
-          grep -q "kProbeCallbacks.containsKey(peerId)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe msgbox guard missing"; exit 1; }
-          grep -q "probeResolve(peerId, true)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe success verdict missing"; exit 1; }
+          grep -qF "if (probeOwns(sessionId.toString())) {" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe msgbox guard missing"; exit 1; }
+          grep -qF "probeResolve(sessionId.toString(), true)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe success verdict missing"; exit 1; }
+          grep -qF "void probeForget(String key) {" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe tombstone release missing"; exit 1; }
           grep -q "_retryWithPassword" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual retry path missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/cn.rs || { echo "[FAIL] cn.rs: Scan LAN key missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/en.rs || { echo "[FAIL] en.rs: Scan LAN key missing"; exit 1; }
