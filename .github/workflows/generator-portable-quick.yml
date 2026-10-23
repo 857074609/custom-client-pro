@@ -745,7 +745,7 @@ jobs:
           python3 patches/ui/patch_screen_wall_v353.py .
           grep -q "kLanScanSettle" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: discovery helper missing"; exit 1; }
           grep -q "discoverLanPeers" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: discovery entry missing"; exit 1; }
-          grep -q "scanLanForWall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan entry missing"; exit 1; }
+          grep -q "discoverLanPeers" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan entry missing"; exit 1; }
           grep -q "Scan LAN" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: Scan LAN button missing"; exit 1; }
           grep -q "Add Device to Screen Wall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual add path lost"; exit 1; }
           grep -q "Widget _buildPeerList" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: recent/address lists lost"; exit 1; }
