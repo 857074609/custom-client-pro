@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: c277898ed253b69903c09502817cdc169c1b6f00
+      patches_sha: e6b37c3eba1aae4d896194cfcefa35fc86983fbb
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c277898ed253b69903c09502817cdc169c1b6f00
+          ref: e6b37c3eba1aae4d896194cfcefa35fc86983fbb
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -831,6 +831,33 @@ jobs:
           grep -qF 'final VoidCallback? onOnline;' flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: online callback missing"; exit 1; }
           grep -qF 'final bool noSpace;' flutter/lib/desktop/widgets/wall_import.dart || { echo "[FAIL] wall_import.dart: full-wall verdict missing"; exit 1; }
           echo "[OK] v363: scan is discovery-only, cells report online, view modes wired"
+
+      - name: Screen wall cell login verdict (v364)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v364] Five field reports, four causes:
+          #  1) ScreenWall.devices defaulted to `const []`, so the first add on a
+          #     freshly created wall threw "Cannot add to an unmodifiable list".
+          #     A scan showed every row as "not added" and a manual add closed
+          #     its dialog without adding anything.
+          #  2) the cell login hooks sat BELOW `if (parent.target == null) return;`
+          #     in handleMsgBox. A wall sub window has no target FFI, so the cell
+          #     never heard `input-password` (no password box, stuck on
+          #     "connecting") nor "Connected, waiting for image..." and its own
+          #     15s timer then closed a healthy session and said "offline".
+          #  3) cells were laid out from the top with one slot per row, which
+          #     left a 76px gap between two rows plus 150px at the bottom.
+          python3 patches/ui/patch_cell_auth_head.py .
+          grep -qF "final cellType = evt['type'];" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: cell verdict is not dispatched before the guard"; exit 1; }
+          grep -qF "if (parent.target == null) return;" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: target guard missing"; exit 1; }
+          grep -qF "_onLoginAccepted" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: peer-info login signal missing"; exit 1; }
+          grep -qF "_peerInfoTimer" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: peer-info poll missing"; exit 1; }
+          grep -qF "devices ?? <WallDevice>[]" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: wall device list is still immutable"; exit 1; }
+          if grep -qF "this.devices = const []," flutter/lib/desktop/pages/screen_wall_page.dart; then echo "[FAIL] screen_wall_page.dart: devices still defaults to a const list"; exit 1; fi
+          grep -qF "_addAllScanned" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan rows are not actionable"; exit 1; }
+          grep -qF "final blockH = rows * cellH" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cell block is not centred"; exit 1; }
+          echo "[OK] v364: cell login verdict, growable wall, actionable scan rows, centred cells"
 
 
 
