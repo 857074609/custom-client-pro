@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: b8d89ede208bc7230ec70e98f96b4638b18bf7ff
+      patches_sha: 9d1746d7736460bf7cb3036edc28088f7825a00d
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: b8d89ede208bc7230ec70e98f96b4638b18bf7ff
+          ref: 9d1746d7736460bf7cb3036edc28088f7825a00d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1506,11 +1506,17 @@ jobs:
             || { echo "[FAIL] v367: dead STUN still in DEFAULT_ICE_SERVERS"; exit 1; }
           ! sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qE '106\.13\.248\.6|106\.12\.251\.193' \
             || { echo "[FAIL] v367: dead STUN address still in STUNS_V4"; exit 1; }
-          for host in '114.132.181.107:3478' 'stun.douyucdn.cn:18000' 'stun.miwifi.com:3478' 'stun.hitv.com:3478'; do
+          for host in '114.132.181.107:3478' 'stun.douyucdn.cn:18000' 'stun.miwifi.com:3478'; do
             sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qF "$host" \
               || { echo "[FAIL] v367: $host missing from STUNS_V4"; exit 1; }
           done
-          echo "[OK] v367: STUNS_V4 = self-hosted + douyu + miwifi + hitv, dead entries gone"
+          # [v368] hitv answered 0 of 11 probes on site (plus 6 family_skipped);
+          # rounds that included it spanned 935-1548ms against 553-724ms without.
+          ! sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qF 'stun.hitv.com' \
+            || { echo "[FAIL] v368: dead STUN still in STUNS_V4"; exit 1; }
+          ! sed -n '/^static DEFAULT_ICE_SERVERS/,/^\];/p' libs/hbb_common/src/webrtc.rs | grep -qF 'stun.hitv.com' \
+            || { echo "[FAIL] v368: dead STUN still in DEFAULT_ICE_SERVERS"; exit 1; }
+          echo "[OK] v368: STUNS_V4 + ICE = self-hosted + douyu + miwifi (hitv gone)"
 
       - name: Set server
         shell: bash
@@ -3106,9 +3112,9 @@ jobs:
             || { echo "[FAIL] v367: stun.douyucdn.cn missing from the super_p2p pool"; exit 1; }
           sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF '"stun.miwifi.com", 3478' \
             || { echo "[FAIL] v367: stun.miwifi.com missing from the super_p2p pool"; exit 1; }
-          sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF '"stun.hitv.com", 3478' \
-            || { echo "[FAIL] v367: stun.hitv.com missing from the super_p2p pool"; exit 1; }
-          echo "[OK] v367: super_p2p pool = self-hosted + douyu + miwifi + hitv"
+          ! sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF 'stun.hitv.com' \
+            || { echo "[FAIL] v368: dead STUN still in the super_p2p pool"; exit 1; }
+          echo "[OK] v368: super_p2p pool = self-hosted + douyu + miwifi (hitv gone)"
           # [V299] 删除 NAT 类型检测，无条件尝试打洞：原先 hbbs 把中继的
           # peer_nat_type 下发，对端 client.rs 一旦判为 SYMMETRIC 就直接放弃
           # 打洞改走 relay race。现场该判定频繁误伤（打洞本来能成），改为
