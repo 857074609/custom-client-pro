@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 096550913f4e495a104527be94e2124dfb34144e
+      patches_sha: b8d89ede208bc7230ec70e98f96b4638b18bf7ff
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 096550913f4e495a104527be94e2124dfb34144e
+          ref: b8d89ede208bc7230ec70e98f96b4638b18bf7ff
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -799,6 +799,15 @@ jobs:
           grep -qF 'pub fn push_global_event_all' src/flutter.rs || { echo "[FAIL] flutter.rs: online reply is not broadcast"; exit 1; }
           grep -qF 'push_global_event_all(' src/flutter.rs || { echo "[FAIL] flutter.rs: query_onlines still answers the main window only"; exit 1; }
           echo "[OK] v363: online reply is broadcast to every window"
+          # [v367] A closed window leaves its sink in the channel table; the
+          # broadcast used to keep feeding it for the life of the process, and
+          # get_global_event_channels() kept returning its name. Drop the dead
+          # entries on the way through.
+          grep -qF 'dead.push(channel.clone())' src/flutter.rs \
+            || { echo "[FAIL] v367: broadcasts never drop the sinks of closed windows"; exit 1; }
+          grep -qF 'lock.remove(&channel);' src/flutter.rs \
+            || { echo "[FAIL] v367: dead event channels are never removed"; exit 1; }
+          echo "[OK] v367: closed windows no longer leave dead event channels"
 
       - name: Screen wall view modes + live counters (v363)
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
@@ -922,6 +931,43 @@ jobs:
           grep -qF 'connectId: dial,' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cell still connects by the stored id"; exit 1; }
           grep -qF '_lanIpById' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: LAN address map missing"; exit 1; }
           echo "[OK] v366: six-slot pages use three columns, slots are keyed, LAN addresses are dialled"
+
+      - name: Screen wall one channel per window, nickname precedence (v367)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v367] Field report 4: a device that IS in the address book kept
+          # showing its LAN address once the cell dialled by IP, because the
+          # title preferred the address over everything else. Precedence is
+          # address-book nickname > address > id now. "Recent connections" does
+          # not count as a nickname, so a scanned peer that was never added to
+          # the book still shows the address it dials.
+          # Field report 7: every screen wall window registered the same global
+          # event channel ("screen wall"), so opening a second wall replaced the
+          # first one's sink -- that window went deaf while it kept painting,
+          # and the log said "Global event stream of type screen wall is started
+          # before, but now removed". The channel carries the window id now,
+          # exactly like the remote windows already did.
+          python3 patches/ui/patch_screen_wall_event_stream.py .
+          grep -qF 'final appType = (_appType == kAppTypeDesktopRemote ||' flutter/lib/models/native_model.dart \
+            || { echo "[FAIL] v367: screen wall windows still share one event channel"; exit 1; }
+          grep -qF '_appType == kAppTypeDesktopScreenWall)' flutter/lib/models/native_model.dart \
+            || { echo "[FAIL] v367: screen wall app type is not part of the channel name"; exit 1; }
+          if grep -qF 'kAppTypeDesktopRemote ?' flutter/lib/models/native_model.dart; then
+            echo "[FAIL] v367: old single-line channel expression is back"; exit 1;
+          fi
+          grep -qF 'String _resolveNickname(String id)' flutter/lib/desktop/pages/screen_wall_page.dart \
+            || { echo "[FAIL] v367: address-book nickname lookup missing"; exit 1; }
+          grep -qF 'name: _cellTitle(d.id, ip),' flutter/lib/desktop/pages/screen_wall_page.dart \
+            || { echo "[FAIL] v367: cell title still prefers the address over the nickname"; exit 1; }
+          if grep -qF 'name: ip.isNotEmpty ? ip :' flutter/lib/desktop/pages/screen_wall_page.dart; then
+            echo "[FAIL] v367: address-over-nickname title is back"; exit 1;
+          fi
+          grep -qF 'return ip.isNotEmpty ? ip : id;' flutter/lib/desktop/pages/screen_wall_page.dart \
+            || { echo "[FAIL] v367: title no longer falls back address -> id"; exit 1; }
+          grep -qF 'final rows = count <= 0 ? 1 : (count + cols - 1) ~/ cols;' flutter/lib/desktop/pages/screen_wall_page.dart \
+            || { echo "[FAIL] v367: row count is no longer ceil(devices / columns)"; exit 1; }
+          echo "[OK] v367: one event channel per window, nickname > address > id"
 
 
 
@@ -1453,6 +1499,23 @@ jobs:
           ! sed -n '/^static DEFAULT_ICE_SERVERS/,/^\];/p' libs/hbb_common/src/webrtc.rs | grep -qE 'cloudflare|nextcloud|google|twilio' \
             || { echo "[FAIL] v298-followup: foreign STUN still in DEFAULT_ICE_SERVERS"; exit 1; }
           echo "[OK] v298-followup: STUNS_V4 + DEFAULT_ICE_SERVERS are domestic-only"
+          # [v367] The bilibili STUN target timed out 22 / 15 times in the two
+          # teacher logs (its five A records are all unreachable from the
+          # classroom) while costing ~430ms per round. Replaced by the
+          # self-hosted node (24ms first answer on the office network) and
+          # douyu. Assertions read the table body, because the header comments
+          # still name the removed host.
+          ! sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qF 'stun.chat.bilibili.com' \
+            || { echo "[FAIL] v367: dead STUN still in STUNS_V4"; exit 1; }
+          ! sed -n '/^static DEFAULT_ICE_SERVERS/,/^\];/p' libs/hbb_common/src/webrtc.rs | grep -qF 'stun.chat.bilibili.com' \
+            || { echo "[FAIL] v367: dead STUN still in DEFAULT_ICE_SERVERS"; exit 1; }
+          ! sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qE '106\.13\.248\.6|106\.12\.251\.193' \
+            || { echo "[FAIL] v367: dead STUN address still in STUNS_V4"; exit 1; }
+          for host in '114.132.181.107:3478' 'stun.douyucdn.cn:18000' 'stun.miwifi.com:3478' 'stun.hitv.com:3478'; do
+            sed -n '/^static STUNS_V4/,/^\];/p' src/common.rs | grep -qF "$host" \
+              || { echo "[FAIL] v367: $host missing from STUNS_V4"; exit 1; }
+          done
+          echo "[OK] v367: STUNS_V4 = self-hosted + douyu + miwifi + hitv, dead entries gone"
 
       - name: Set server
         shell: bash
@@ -3011,6 +3074,18 @@ jobs:
           ! sed -n '/^const STUN_TARGETS/,/^];/p' src/super_p2p/mod.rs | grep -qF 'stun.cloudflare.com' \
             || { echo "[FAIL] v298: foreign STUN (cloudflare) still in pool"; exit 1; }
           echo "[OK] v298: STUN pool is domestic-only (google/cloudflare removed)"
+          # [v367] Same list, same order in the super_p2p pool (see hand_stun.py).
+          ! sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF 'stun.chat.bilibili.com' \
+            || { echo "[FAIL] v367: dead STUN still in the super_p2p pool"; exit 1; }
+          sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF '"114.132.181.107", 3478' \
+            || { echo "[FAIL] v367: 114.132.181.107 missing from the super_p2p pool"; exit 1; }
+          sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF '"stun.douyucdn.cn", 18000' \
+            || { echo "[FAIL] v367: stun.douyucdn.cn missing from the super_p2p pool"; exit 1; }
+          sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF '"stun.miwifi.com", 3478' \
+            || { echo "[FAIL] v367: stun.miwifi.com missing from the super_p2p pool"; exit 1; }
+          sed -n '/^const STUN_TARGETS/,/^\];/p' src/super_p2p/mod.rs | grep -qF '"stun.hitv.com", 3478' \
+            || { echo "[FAIL] v367: stun.hitv.com missing from the super_p2p pool"; exit 1; }
+          echo "[OK] v367: super_p2p pool = self-hosted + douyu + miwifi + hitv"
           # [V299] 删除 NAT 类型检测，无条件尝试打洞：原先 hbbs 把中继的
           # peer_nat_type 下发，对端 client.rs 一旦判为 SYMMETRIC 就直接放弃
           # 打洞改走 relay race。现场该判定频繁误伤（打洞本来能成），改为
