@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d11b46c8b656ae64f385cb28da0a6353dafb1326
+      patches_sha: c277898ed253b69903c09502817cdc169c1b6f00
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d11b46c8b656ae64f385cb28da0a6353dafb1326
+          ref: c277898ed253b69903c09502817cdc169c1b6f00
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -765,7 +765,7 @@ jobs:
           # invisible to Dart and fail to compile.
           python3 patches/ui/patch_screen_wall_v353.py .
           grep -q "kLanScanSettle" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: discovery helper missing"; exit 1; }
-          grep -q "probePeerPassword" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: password probe missing"; exit 1; }
+          grep -q "discoverLanPeers" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: discovery entry missing"; exit 1; }
           grep -q "scanLanForWall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan entry missing"; exit 1; }
           grep -q "Scan LAN" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: Scan LAN button missing"; exit 1; }
           grep -q "Add Device to Screen Wall" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual add path lost"; exit 1; }
@@ -775,7 +775,6 @@ jobs:
           grep -qF "if (probeOwns(sessionId.toString())) {" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe msgbox guard missing"; exit 1; }
           grep -qF "probeResolve(sessionId.toString(), true)" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe success verdict missing"; exit 1; }
           grep -qF "void probeForget(String key) {" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: probe tombstone release missing"; exit 1; }
-          grep -q "_retryWithPassword" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: manual retry path missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/cn.rs || { echo "[FAIL] cn.rs: Scan LAN key missing"; exit 1; }
           grep -q '("Scan LAN",' src/lang/en.rs || { echo "[FAIL] en.rs: Scan LAN key missing"; exit 1; }
           echo "[OK] screen wall v353 verified (LAN scan + shared-password probe)"
@@ -803,7 +802,7 @@ jobs:
           grep -q "crate::screen_broadcast::is_control" src/server/connection.rs || { echo "[FAIL] connection.rs: control string not intercepted"; exit 1; }
           grep -q '"--broadcast-stop"' src/core_main.rs || { echo "[FAIL] core_main.rs: broadcast-stop argument missing"; exit 1; }
           grep -q "broadcast=true" src/core_main.rs || { echo "[FAIL] core_main.rs: broadcast argument missing"; exit 1; }
-          grep -q "probeCandidate" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: address probe fallback missing"; exit 1; }
+          grep -q "isBareHost" flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: address validation missing"; exit 1; }
           grep -q "class BroadcastViewer" flutter/lib/desktop/widgets/broadcast.dart || { echo "[FAIL] broadcast.dart: viewer missing"; exit 1; }
           grep -q "_buildAuthOverlay" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: inline password prompt missing"; exit 1; }
           grep -q "kCellAuthCallbacks" flutter/lib/models/model.dart || { echo "[FAIL] model.dart: cell auth registry missing"; exit 1; }
@@ -1127,6 +1126,41 @@ jobs:
           python3 patches/network/patch_login_error_log.py .
           grep -qF '[v362] login rejected: {}' src/client.rs || { echo "[FAIL] client.rs: login rejection log missing"; exit 1; }
           echo "[OK] v362: login verdict is logged"
+
+      - name: Screen wall view modes + live counters (v363)
+        shell: bash
+        run: |
+          # [v363] Four field defects, one step:
+          #  1) the LAN scan probed every peer through a headless session whose
+          #     verdict never came back, so the dialog sat on "verifying
+          #     password 0/N" forever. Discovery only now: the cell dials and
+          #     the peer answers for itself.
+          #  2) the address-book bulk import stores the typed password and does
+          #     not verify it, so a machine that is offline right now still
+          #     lands on the wall and is checked when it comes up.
+          #  3) the per-group online counter was fed only by queryOnlines, whose
+          #     reply was pushed to the main window alone -- the wall never got
+          #     it. The reply is broadcast now, and a cell that paints a frame
+          #     reports itself online.
+          #  4) cells were sized to fill the canvas, so every 16:9 picture was
+          #     letterboxed and the two rows' slack merged into one wide gap.
+          #     A cell is now toolbar + 16:9 picture, packed from the top.
+          python3 patches/network/patch_online_broadcast.py .
+          grep -qF 'pub fn push_global_event_all' src/flutter.rs || { echo "[FAIL] flutter.rs: online reply is not broadcast"; exit 1; }
+          grep -qF 'push_global_event_all(' src/flutter.rs || { echo "[FAIL] flutter.rs: query_onlines still answers the main window only"; exit 1; }
+          grep -qF 'discoverLanPeers' flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: discovery entry missing"; exit 1; }
+          if grep -qF 'probePeerPassword' flutter/lib/desktop/widgets/lan_scan.dart; then echo "[FAIL] lan_scan.dart: password probe is still there"; exit 1; fi
+          if grep -qF 'probeCandidate' flutter/lib/desktop/widgets/wall_import.dart; then echo "[FAIL] wall_import.dart: import still probes every peer"; exit 1; fi
+          grep -qF 'discoverLanPeers' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan does not call the discovery entry"; exit 1; }
+          grep -qF 'kScreenWallViews' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: view modes missing"; exit 1; }
+          grep -qF 'void _cycleView()' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: view cycle button missing"; exit 1; }
+          grep -qF '_buildPageNav' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: page navigation missing"; exit 1; }
+          grep -qF '_liveOnline' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: live online map missing"; exit 1; }
+          grep -qF 'kCellToolbarHeight' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cell aspect sizing missing"; exit 1; }
+          grep -qF 'final VoidCallback? onOnline;' flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: online callback missing"; exit 1; }
+          grep -qF 'final bool noSpace;' flutter/lib/desktop/widgets/wall_import.dart || { echo "[FAIL] wall_import.dart: full-wall verdict missing"; exit 1; }
+          echo "[OK] v363: scan is discovery-only, cells report online, view modes wired"
+
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
