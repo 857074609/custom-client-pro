@@ -1127,7 +1127,21 @@ jobs:
           grep -qF '[v362] login rejected: {}' src/client.rs || { echo "[FAIL] client.rs: login rejection log missing"; exit 1; }
           echo "[OK] v362: login verdict is logged"
 
+      - name: Broadcast the online query reply (v363)
+        shell: bash
+        run: |
+          # [v363] queryOnlines answered only the main window
+          # (push_global_event(APP_TYPE_MAIN, ...)), so the screen wall never saw
+          # the reply and its per-group counter stayed at 0/N. One helper that
+          # feeds every registered channel; the main window is one of them, so
+          # its behaviour is unchanged.
+          python3 patches/network/patch_online_broadcast.py .
+          grep -qF 'pub fn push_global_event_all' src/flutter.rs || { echo "[FAIL] flutter.rs: online reply is not broadcast"; exit 1; }
+          grep -qF 'push_global_event_all(' src/flutter.rs || { echo "[FAIL] flutter.rs: query_onlines still answers the main window only"; exit 1; }
+          echo "[OK] v363: online reply is broadcast to every window"
+
       - name: Screen wall view modes + live counters (v363)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
         run: |
           # [v363] Four field defects, one step:
@@ -1145,9 +1159,6 @@ jobs:
           #  4) cells were sized to fill the canvas, so every 16:9 picture was
           #     letterboxed and the two rows' slack merged into one wide gap.
           #     A cell is now toolbar + 16:9 picture, packed from the top.
-          python3 patches/network/patch_online_broadcast.py .
-          grep -qF 'pub fn push_global_event_all' src/flutter.rs || { echo "[FAIL] flutter.rs: online reply is not broadcast"; exit 1; }
-          grep -qF 'push_global_event_all(' src/flutter.rs || { echo "[FAIL] flutter.rs: query_onlines still answers the main window only"; exit 1; }
           grep -qF 'discoverLanPeers' flutter/lib/desktop/widgets/lan_scan.dart || { echo "[FAIL] lan_scan.dart: discovery entry missing"; exit 1; }
           if grep -qF 'probePeerPassword' flutter/lib/desktop/widgets/lan_scan.dart; then echo "[FAIL] lan_scan.dart: password probe is still there"; exit 1; fi
           if grep -qF 'probeCandidate' flutter/lib/desktop/widgets/wall_import.dart; then echo "[FAIL] wall_import.dart: import still probes every peer"; exit 1; fi
