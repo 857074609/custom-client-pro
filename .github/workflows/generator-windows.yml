@@ -2636,22 +2636,6 @@ jobs:
         shell: bash
         run: |
           python3 patches/network/patch_super_p2p.py .
-          # [v366] LAN fast path for bare ids. A peer that answered the last
-          # LAN discovery round is dialled at the address it answered from
-          # instead of walking the id ladder (auto-iroh, rendezvous, STUN, then
-          # up to ten seconds of port probing). The dial is bounded to 2s and
-          # falls through to the untouched ladder, so a stale table entry costs
-          # one short wait and never turns a working id connection into a
-          # failure.
-          python3 patches/network/patch_lan_fast_path.py .
-          grep -qF 'crate::lan::cached_lan_address(peer)' src/client.rs \
-            || { echo "[FAIL] v366: client.rs does not dial cached LAN addresses"; exit 1; }
-          grep -qF 'pub fn cached_lan_address(id: &str) -> Option<String>' src/lan.rs \
-            || { echo "[FAIL] v366: lan.rs cached_lan_address missing"; exit 1; }
-          grep -qF '[v366 lan] LAN address {} for id {} failed' src/client.rs \
-            || { echo "[FAIL] v366: LAN fast path has no fallback"; exit 1; }
-          grep -qF 'interface.update_lan_quality_hint(true);' src/client.rs \
-            || { echo "[FAIL] v366: LAN fast path drops the LAN quality hint"; exit 1; }
           # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
           # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
           # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
@@ -2707,6 +2691,27 @@ jobs:
           grep -qF 'short_circuit_on_validated' src/super_p2p/probe.rs \
             || { echo "[FAIL] v300: probe.rs short-circuit switch missing"; exit 1; }
           echo "[OK] v300: probe short-circuits predicted once a candidate is validated"
+      - name: LAN fast path for bare ids (v366)
+        shell: bash
+        run: |
+          # [v366] A peer that answered the last LAN discovery round is dialled
+          # at the address it answered from instead of walking the id ladder
+          # (auto-iroh, rendezvous, STUN, then up to ten seconds of port
+          # probing). Bounded to 2s with a fall-through, so a stale table entry
+          # costs one short wait and never turns a working id connection into a
+          # failure. Deliberately its own step, not part of the super-p2p one:
+          # this has nothing to do with that toggle, and an "observe" build must
+          # still reach LAN peers directly.
+          python3 patches/network/patch_lan_fast_path.py .
+          grep -qF 'crate::lan::cached_lan_address(peer)' src/client.rs \
+            || { echo "[FAIL] v366: client.rs does not dial cached LAN addresses"; exit 1; }
+          grep -qF 'pub fn cached_lan_address(id: &str) -> Option<String>' src/lan.rs \
+            || { echo "[FAIL] v366: lan.rs cached_lan_address missing"; exit 1; }
+          grep -qF '[v366 lan] LAN address {} for id {} failed' src/client.rs \
+            || { echo "[FAIL] v366: LAN fast path has no fallback"; exit 1; }
+          grep -qF 'interface.update_lan_quality_hint(true);' src/client.rs \
+            || { echo "[FAIL] v366: LAN fast path drops the LAN quality hint"; exit 1; }
+
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
         # happy-eyeballs, V102 happy-eyeballs-lift + DNS timeout) all live in the
