@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 1f1144ec28bb279179dae7fe3154cfd843037514
+      patches_sha: 096550913f4e495a104527be94e2124dfb34144e
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 1f1144ec28bb279179dae7fe3154cfd843037514
+          ref: 096550913f4e495a104527be94e2124dfb34144e
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -914,6 +914,31 @@ jobs:
           if grep -qF 'const double gap' flutter/lib/desktop/pages/screen_wall_page.dart; then echo "[FAIL] screen_wall_page.dart: cell spacing is back"; exit 1; fi
           if grep -qF 'final blockH = rows * cellH' flutter/lib/desktop/pages/screen_wall_page.dart; then echo "[FAIL] screen_wall_page.dart: cell block is still centred"; exit 1; fi
           echo "[OK] v365: password box is topmost and owns the keyboard, cells pack top-left with no gaps"
+      - name: Screen wall six-slot columns, keyed cells, LAN address dial (v366)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v366] Field report 5: five devices on a six-slot page were laid out
+          # 2/2/1, because the six-slot view reported two columns and capped the
+          # three-per-row rule. Row width now follows the page capacity: four
+          # slots are 2x2, six slots are 3x2, nine slots are 3x3.
+          # Field report 8: deleting one device re-dialled every cell behind it.
+          # The Stack matches children by position, so the tail shifted one slot,
+          # every shifted cell got a different device and a new key, and its
+          # session was torn down and rebuilt. Slots are keyed by device now.
+          # Field report 7: a wall row only carried an address when it came from
+          # a scan; rows added from the address book or by id dialled the id and
+          # paid the whole id ladder. The discovery table is the fallback now,
+          # and the cell title shows the address it actually dials.
+          grep -qF 'int _colsForView(int view) => view >= 6 ? 3 : (view >= 4 ? 2 : 1);' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: six-slot view still reports two columns"; exit 1; }
+          if grep -qF 'view >= 9 ? 3 : (view >= 4 ? 2 : 1)' flutter/lib/desktop/pages/screen_wall_page.dart; then echo "[FAIL] screen_wall_page.dart: old column rule is back"; exit 1; fi
+          grep -qF "key: ValueKey('cell_" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cells are unkeyed, deleting one re-dials the tail"; exit 1; }
+          grep -qF "key: ValueKey('\${d.id}#\$dial#" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cell key ignores the dialled address"; exit 1; }
+          grep -qF 'final dial = ip.isNotEmpty ? ip : d.id;' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cell does not dial the discovered address"; exit 1; }
+          grep -qF 'connectId: dial,' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cell still connects by the stored id"; exit 1; }
+          grep -qF '_lanIpById' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: LAN address map missing"; exit 1; }
+          echo "[OK] v366: six-slot pages use three columns, slots are keyed, LAN addresses are dialled"
+
 
 
 
@@ -2973,6 +2998,22 @@ jobs:
         shell: bash
         run: |
           python3 patches/network/patch_super_p2p.py .
+          # [v366] LAN fast path for bare ids. A peer that answered the last
+          # LAN discovery round is dialled at the address it answered from
+          # instead of walking the id ladder (auto-iroh, rendezvous, STUN, then
+          # up to ten seconds of port probing). The dial is bounded to 2s and
+          # falls through to the untouched ladder, so a stale table entry costs
+          # one short wait and never turns a working id connection into a
+          # failure.
+          python3 patches/network/patch_lan_fast_path.py .
+          grep -qF 'crate::lan::cached_lan_address(peer)' src/client.rs \
+            || { echo "[FAIL] v366: client.rs does not dial cached LAN addresses"; exit 1; }
+          grep -qF 'pub fn cached_lan_address(id: &str) -> Option<String>' src/lan.rs \
+            || { echo "[FAIL] v366: lan.rs cached_lan_address missing"; exit 1; }
+          grep -qF '[v366 lan] LAN address {} for id {} failed' src/client.rs \
+            || { echo "[FAIL] v366: LAN fast path has no fallback"; exit 1; }
+          grep -qF 'interface.update_lan_quality_hint(true);' src/client.rs \
+            || { echo "[FAIL] v366: LAN fast path drops the LAN quality hint"; exit 1; }
           # V200: drop the hbbs-trusting native test_nat_type (RFC-incorrect
           # same-host-2-port symmetric heuristic) and feed startup/mediator NAT
           # refresh from super_p2p::refresh_my_nat_type(). MUST run AFTER the
