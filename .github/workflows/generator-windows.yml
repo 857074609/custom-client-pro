@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 13e5e94534a80b7eea5f658844098ce4f34b7519
+      patches_sha: 1f1144ec28bb279179dae7fe3154cfd843037514
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 13e5e94534a80b7eea5f658844098ce4f34b7519
+          ref: 1f1144ec28bb279179dae7fe3154cfd843037514
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1196,8 +1196,48 @@ jobs:
           grep -qF "devices ?? <WallDevice>[]" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: wall device list is still immutable"; exit 1; }
           if grep -qF "this.devices = const []," flutter/lib/desktop/pages/screen_wall_page.dart; then echo "[FAIL] screen_wall_page.dart: devices still defaults to a const list"; exit 1; fi
           grep -qF "_addAllScanned" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: scan rows are not actionable"; exit 1; }
-          grep -qF "final blockH = rows * cellH" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cell block is not centred"; exit 1; }
-          echo "[OK] v364: cell login verdict, growable wall, actionable scan rows, centred cells"
+          grep -qF "left = col * cellW;" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cells are not packed to the top-left"; exit 1; }
+          echo "[OK] v364: cell login verdict, growable wall, actionable scan rows"
+      - name: Screen wall auth box above the mask + zero-gap packing (v365)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v365] Field report A: a wall cell asked for a password, showed no
+          # box, and fell back to "offline" 15 seconds later. The prompt was
+          # mounted all along but sat BELOW the "connecting" mask, and a
+          # Container with a colour paints a ColoredBox that hit-tests
+          # opaquely, so the box was both invisible and unclickable. The rdev
+          # grab also owned the keyboard, so even a click could not have typed
+          # into it. Now: mask suspends while a password is pending, the box is
+          # the last (topmost) layer, and the prompt claims the keyboard back.
+          # Field report B: cells were centred as a block with 2px gutters, so
+          # five devices in a six-slot grid punched a hole in the middle of the
+          # wall. They now pack from the top-left with no spacing at all and a
+          # short last row keeps its empty slots on the right/bottom edge.
+          grep -qF 'final FocusNode _authFocus = FocusNode();' flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: password field has no focus node"; exit 1; }
+          grep -qF 'if (!_firstImage && !_authPrompt)' flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: connecting mask still covers the password box"; exit 1; }
+          grep -qF '_regainGrabIfHovering' flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: keyboard is never handed back after the prompt"; exit 1; }
+          python3 - <<'PY'
+          import io
+          p = 'flutter/lib/desktop/widgets/mini_remote_view.dart'
+          s = io.open(p, encoding='utf-8').read()
+          auth = s.find('_buildAuthOverlay(context)')
+          mask = s.find('if (!_firstImage && !_authPrompt)')
+          assert auth > 0, 'password overlay is not mounted in the cell'
+          assert mask > 0, 'connecting mask is gone'
+          assert auth > mask, 'password overlay still sits below the connecting mask'
+          ev = s.find('void _onAuthEvent(String type)')
+          pr = s.find('_authPrompt = true;', ev)
+          assert ev > 0 and pr > ev, 'auth prompt state machine is gone'
+          assert 'enterOrLeave(false)' in s[ev:pr], 'password prompt does not take the keyboard back'
+          print('[OK] mini_remote_view.dart: password box is topmost and owns the keyboard')
+          PY
+          grep -qF 'final maxH = H / rows;' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: row height still reserves spacing"; exit 1; }
+          grep -qF 'left = col * cellW;' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cells are not packed to the left edge"; exit 1; }
+          grep -qF 'top = row * cellH;' flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] screen_wall_page.dart: cells are not packed to the top edge"; exit 1; }
+          if grep -qF 'const double gap' flutter/lib/desktop/pages/screen_wall_page.dart; then echo "[FAIL] screen_wall_page.dart: cell spacing is back"; exit 1; fi
+          if grep -qF 'final blockH = rows * cellH' flutter/lib/desktop/pages/screen_wall_page.dart; then echo "[FAIL] screen_wall_page.dart: cell block is still centred"; exit 1; fi
+          echo "[OK] v365: password box is topmost and owns the keyboard, cells pack top-left with no gaps"
 
 
       - name: Patch direct access UDP transport
