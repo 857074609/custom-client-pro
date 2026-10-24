@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 0c02c585d4e6584fa91008333435662da1f9e60b
+      patches_sha: 6b341a27c63e4463afaacecb617de6f224220d5b
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 0c02c585d4e6584fa91008333435662da1f9e60b
+          ref: 6b341a27c63e4463afaacecb617de6f224220d5b
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1320,6 +1320,84 @@ jobs:
            grep -q '"handleapi"' Cargo.toml || { echo "[FAIL] v356: handleapi feature missing"; exit 1; }
           echo "[OK] push broadcast v355 core verified (multicast send + listener)"
 
+      - name: Multicast file share, core (v374)
+        if: inputs.screen_wall == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v374] The wall sends a set of files to every student over the group
+          # and repairs from the receiving side, so a switch that drops multicast
+          # falls back to unicast without any capability negotiation.
+          #
+          # This half runs in EVERY variant on purpose: the student side is the
+          # one that binds the data socket and writes the files, and the students
+          # run the incoming package, where the wall page does not exist at all.
+          #
+          # Ports: 21129 data, 21130 management. 21126..21128 belong to the
+          # direct-access UDP pool (patch_direct_udp.py) and are already bound by
+          # every controlled side, so they cannot be reused here.
+          python3 patches/file-share/patch_file_share.py .
+          BF=src/broadcast_file.rs
+          grep -qF 'pub const DATA_PORT: u16 = 21129' "$BF" \
+            || { echo "[FAIL] v374: data port is not 21129"; exit 1; }
+          grep -qF 'pub const MGMT_PORT: u16 = 21130' "$BF" \
+            || { echo "[FAIL] v374: management port is not 21130"; exit 1; }
+          if grep -qE 'u16 = 2112[678]' "$BF"; then
+            echo "[FAIL] v374: file share took a direct-access port"; exit 1;
+          fi
+          grep -qF 'mod broadcast_file;' src/lib.rs \
+            || { echo "[FAIL] v374: lib.rs: module not declared"; exit 1; }
+          grep -qF 'if crate::broadcast_file::is_control(&c.text) {' src/server/connection.rs \
+            || { echo "[FAIL] v374: connection.rs: receiving side not wired"; exit 1; }
+          grep -qF 'crate::broadcast_file::rewrite_outgoing(text)' src/ui_session_interface.rs \
+            || { echo "[FAIL] v374: ui_session_interface.rs: sending side not wired"; exit 1; }
+          grep -qF 'Sha256' "$BF" \
+            || { echo "[FAIL] v374: no sha256 verification"; exit 1; }
+          grep -qF 'if !f.h.is_empty() && hash != f.h.to_lowercase() {' "$BF" \
+            || { echo "[FAIL] v374: the received file is never verified"; exit 1; }
+          grep -qF 'MAGIC_NAK' "$BF" \
+            || { echo "[FAIL] v374: no repair channel"; exit 1; }
+          echo "[OK] v374: file share wired on both ends"
+
+      - name: Multicast file share, wall UI, visible retry ladder (v374)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v374] Two field reports and one feature:
+          #   - a revoked NIC left the cell on a stale Offline saying nothing; the
+          #     ladder was in fact running (log: attempts at +34 s, +52 s, +61 s)
+          #   - closing the remote control window re-dialled after 4 s, into a
+          #     peer that had not released the session yet, so the cell blinked
+          #     Offline for no reason
+          #   - file distribution, multicast first, unicast by fallback
+          python3 patches/ui/check_bind_args.py .
+          python3 patches/ui/patch_file_share_ui.py .
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          M=flutter/lib/desktop/widgets/mini_remote_view.dart
+          D=flutter/lib/models/model.dart
+          grep -qF 'retryAttempt: _retryCount[d.id] ?? 0,' "$W" \
+            || { echo "[FAIL] v374: retry attempt is not passed to the cell"; exit 1; }
+          grep -qF '_fireAttempt(id, silent: (_retryCount[id] ?? 0) > 0);' "$W" \
+            || { echo "[FAIL] v374: the first attempt is still painted offline"; exit 1; }
+          grep -qF 'String _retryLine()' "$M" \
+            || { echo "[FAIL] v374: the cell shows no retry countdown"; exit 1; }
+          grep -qF "translate('Next retry')" "$M" \
+            || { echo "[FAIL] v374: no countdown label"; exit 1; }
+          grep -qF 'first attempt in 6s' "$W" \
+            || { echo "[FAIL] v374: hand-off still re-dials immediately"; exit 1; }
+          grep -qF 'Future<void> _sendFiles() async' "$W" \
+            || { echo "[FAIL] v374: the wall has no send-files entry"; exit 1; }
+          grep -qF 'bind.sessionSendChat(sessionId: entry.value, text: text)' "$W" \
+            || { echo "[FAIL] v374: the manifest is never sent"; exit 1; }
+          grep -qF "V374FD:" "$W" \
+            || { echo "[FAIL] v374: no control prefix on the dart side"; exit 1; }
+          grep -qF "case 'file_share':" "$W" \
+            || { echo "[FAIL] v374: progress events are not handled"; exit 1; }
+          grep -qF "name == 'on_file_share'" "$D" \
+            || { echo "[FAIL] v374: the main window does not forward progress"; exit 1; }
+          echo "[OK] v374: visible ladder, settled hand-off, file share UI"
+
       - name: Push based screen broadcast v355, wall UI (push entry + audio)
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
@@ -1569,7 +1647,7 @@ jobs:
             || { echo "[FAIL] v373: no reconnect reconciler"; exit 1; }
           grep -qF '_retryTicker = Timer.periodic(const Duration(seconds: 1)' "$W" \
             || { echo "[FAIL] v373: the reconciler is not 1 s"; exit 1; }
-          grep -qF 'if (!now.isBefore(due)) _fireAttempt(id);' "$W" \
+          grep -qF '_fireAttempt(id, silent: (_retryCount[id] ?? 0) > 0);' "$W" \
             || { echo "[FAIL] v373: the reconciler never fires an attempt"; exit 1; }
           grep -qF '_fireAttempt(id, silent: false);' "$W" \
             || { echo "[FAIL] v373: manual retry still renders as offline"; exit 1; }
