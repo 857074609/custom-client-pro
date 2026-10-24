@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 364a1ad9b9125195e2127002e854970208eb58ed
+      patches_sha: cd6d113177bc3401e7687d8afa0da098e0b19873
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 364a1ad9b9125195e2127002e854970208eb58ed
+          ref: cd6d113177bc3401e7687d8afa0da098e0b19873
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1199,6 +1199,11 @@ jobs:
             || { echo "[FAIL] v372: launcher window has no fixed size"; exit 1; }
           grep -qF 'case kWindowEventRunWallApp:' "$W" \
             || { echo "[FAIL] v372: wall does not handle run_wall_app"; exit 1; }
+          # The ipc handler sits on the window shell; the work sits on the body.
+          # A direct call across the two State classes is an undefined_method
+          # (run#2408), so the forward through _bodyKey is what makes it compile.
+          grep -qF 'final body = _bodyKey.currentState;' "$W" \
+            || { echo "[FAIL] v372: run_wall_app is not forwarded to the wall body"; exit 1; }
           grep -qF '_sendAppProgress' "$W" \
             || { echo "[FAIL] v372: wall does not report run progress"; exit 1; }
           # A retrying cell keeps showing Offline instead of flashing Connecting.
