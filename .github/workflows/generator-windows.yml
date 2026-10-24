@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 8e57cf73d5031e981b7b0e92f6ebe53d266d4bda
+      patches_sha: 8fd5b96c5828f1b15d2eb0bd55797fc3a2d90b67
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8e57cf73d5031e981b7b0e92f6ebe53d266d4bda
+          ref: 8fd5b96c5828f1b15d2eb0bd55797fc3a2d90b67
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -930,10 +930,22 @@ jobs:
             || { echo "[FAIL] v375: a repeat manifest starts a second stream"; exit 1; }
           grep -qF 'const PASSES: u32 = 3;' "$BF" \
             || { echo "[FAIL] v375: the multicast pass is sent only once"; exit 1; }
-          grep -qF 'status_back(&teacher, &xfer, &task, true, "ack");' "$BF" \
-            || { echo "[FAIL] v375: the receiver never acknowledges the manifest"; exit 1; }
-          grep -qF 'if why == "ack" {' "$BF" \
+          grep -qF 'let ack = reply("ack", &xfer, &task);' "$BF" \
+            || { echo "[FAIL] v375: the receiver never builds an acknowledgement"; exit 1; }
+          grep -qF 'crate::broadcast_file::handle(&c.text, Some(&self.ip))' src/server/connection.rs \
+            || { echo "[FAIL] v375: the receiver does not answer over the session"; exit 1; }
+          if grep -qF 'crate::broadcast_file::handle(&c.text, Some(&self.ip));' src/server/connection.rs; then
+            echo "[FAIL] v375: the receiver still throws the answer away"; exit 1
+          fi
+          grep -qF 'crate::broadcast_file::handle_reply(&c.text, &peer);' src/client/io_loop.rs \
+            || { echo "[FAIL] v375: the teacher side never reads the answer"; exit 1; }
+          grep -qF 'Ok(Mgmt::Ack { task }) => {' "$BF" \
             || { echo "[FAIL] v375: the sender ignores the acknowledgement"; exit 1; }
+          grep -qF 'if let Some(map) = guard.as_mut() {' "$BF" \
+            || { echo "[FAIL] v375: the stream is registered outside the lock"; exit 1; }
+          if grep -qF 'if why == "ack" {' "$BF"; then
+            echo "[FAIL] v375: the dead ack branch in the status arm is still there"; exit 1
+          fi
           grep -qF 'fn split_status(body: &[u8])' "$BF" \
             || { echo "[FAIL] v375: a status cannot be attributed to a device"; exit 1; }
           echo "[OK] v374+v375: file share wired on both ends, one stream per wall"
@@ -1021,6 +1033,9 @@ jobs:
           fi
           grep -qF '("Manifest received", "Manifest received", "已收到清单"),' patches/ui/patch_screen_wall.py \
             || { echo "[FAIL] v375: missing lang key for the acknowledgement"; exit 1; }
+          # [v376] Hovering the top edge in full screen must answer in a second.
+          grep -qF 'const Duration hoverDelay = Duration(seconds: 1);' "$W" \
+            || { echo "[FAIL] v376: the fullscreen toolbar still waits three seconds"; exit 1; }
           echo "[OK] v375: one stream per wall, ack first, names swapped, distinct glyphs"
 
       - name: Push based screen broadcast v355, wall UI (push entry + audio)
