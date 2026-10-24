@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: cd6d113177bc3401e7687d8afa0da098e0b19873
+      patches_sha: 0c02c585d4e6584fa91008333435662da1f9e60b
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: cd6d113177bc3401e7687d8afa0da098e0b19873
+          ref: 0c02c585d4e6584fa91008333435662da1f9e60b
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1223,8 +1223,9 @@ jobs:
           grep -qF '_sendAppProgress' "$W" \
             || { echo "[FAIL] v372: wall does not report run progress"; exit 1; }
           # A retrying cell keeps showing Offline instead of flashing Connecting.
-          grep -qF '_kRetryBackoffSeconds = <int>[2, 4, 8, 15]' "$W" \
-            || { echo "[FAIL] v372: retry ladder is not [2,4,8,15]"; exit 1; }
+          # [v373] The ladder assertion moved out: V373 replaced [2,4,8,15] with
+          # the field's 0/3/6/12/20/60, driven by a reconciler instead of
+          # per-device timers. The silent-reconnect flag stayed, so it stays here.
           grep -qF 'startDisconnected: _retrying.contains(d.id)' "$W" \
             || { echo "[FAIL] v372: cells are not opened in silent-reconnect mode"; exit 1; }
           grep -qF 'late bool _disconnected = widget.startDisconnected;' \
@@ -1518,6 +1519,68 @@ jobs:
           grep -q "async fn secure_direct_connection" src/client.rs || { echo "[FAIL] client.rs 缺少 secure_direct_connection"; exit 1; }
           grep -q "direct-e2ee: send long-term pk" src/rendezvous_mediator.rs || { echo "[FAIL] rendezvous_mediator.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
           grep -q "send_long_term_pk" src/server.rs || { echo "[FAIL] server.rs 缺少 direct-e2ee 标记 (send_long_term_pk)"; exit 1; }
+
+      - name: All address books from the API, reconnect ladder (v373)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v373] Assertions only - the Dart side ships inside patch_screen_wall.py
+          # and patch_cell_auth_head.py.
+          # Field report on V372:
+          #   - one address book group: _loadAbGroups read bind.mainLoadAb(), the
+          #     local cache, and _saveCache only stores the book the main window
+          #     last pulled, so an account with three books showed one
+          #   - a peer that came back was not re-dialled, and the Retry button did
+          #     nothing. Three silent breaks:
+          #       a) a re-created cell with online == false does not even dial
+          #       b) the 15 s fallback returned early, because V372 opened the
+          #          re-created cell with _disconnected = true
+          #       c) a direct-connection timeout arrives as "relay-hint", which
+          #          never reached the cell
+          python3 patches/ui/check_bind_args.py .
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          M=flutter/lib/desktop/widgets/mini_remote_view.dart
+          D=flutter/lib/models/model.dart
+          # Every address book comes from the API; the cache is only a fallback.
+          for p in 'api/ab/personal' 'api/ab/shared/profiles' 'api/ab/peers'; do
+            grep -qF "$p" "$W" || { echo "[FAIL] v373: $p is not requested"; exit 1; }
+          done
+          grep -qF 'Future<List<WallAbGroup>> _fetchAbGroupsFromApi()' "$W" \
+            || { echo "[FAIL] v373: no api address book loader"; exit 1; }
+          if ! sed -n '/Future<void> _loadAbGroups() async {/,/^  }/p' "$W" | grep -qF '_fetchAbGroupsFromApi()'; then
+            echo "[FAIL] v373: the wall still loads groups from the cache"; exit 1;
+          fi
+          if grep -qF 'bind.mainClearAb' "$W"; then
+            echo "[FAIL] v373: the wall must never clear the address book"; exit 1;
+          fi
+          # The ladder from the field: now, 3, 6, 12, 20, 60, then every 5 min.
+          grep -qF 'static const List<int> _kRetryLadderSeconds = <int>[0, 3, 6, 12, 20, 60];' "$W" \
+            || { echo "[FAIL] v373: retry ladder is not 0/3/6/12/20/60"; exit 1; }
+          grep -qF '_kRetryForeverSeconds = 300' "$W" \
+            || { echo "[FAIL] v373: no five minute tail"; exit 1; }
+          grep -qF '_kAttemptTimeout = Duration(seconds: 20)' "$W" \
+            || { echo "[FAIL] v373: no per-attempt watchdog"; exit 1; }
+          if grep -qF '_retryTimers' "$W"; then
+            echo "[FAIL] v373: per-device retry timers still present"; exit 1;
+          fi
+          # One reconciler drives every attempt, so a cell that reports nothing
+          # cannot stop the ladder.
+          grep -qF 'void _retryTick() {' "$W" \
+            || { echo "[FAIL] v373: no reconnect reconciler"; exit 1; }
+          grep -qF '_retryTicker = Timer.periodic(const Duration(seconds: 1)' "$W" \
+            || { echo "[FAIL] v373: the reconciler is not 1 s"; exit 1; }
+          grep -qF 'if (!now.isBefore(due)) _fireAttempt(id);' "$W" \
+            || { echo "[FAIL] v373: the reconciler never fires an attempt"; exit 1; }
+          grep -qF '_fireAttempt(id, silent: false);' "$W" \
+            || { echo "[FAIL] v373: manual retry still renders as offline"; exit 1; }
+          # A re-created cell must report a failure even in silent-reconnect mode.
+          grep -qF 'if (_firstImage || !mounted || _reportedOffline) return;' "$M" \
+            || { echo "[FAIL] v373: 15 s fallback still gated on _disconnected"; exit 1; }
+          grep -qF "type == 'relay-hint' ||" "$M" \
+            || { echo "[FAIL] v373: relay-hint is not treated as a failure"; exit 1; }
+          grep -qF "cellType == 'relay-hint' ||" "$D" \
+            || { echo "[FAIL] v373: relay-hint never reaches the cell"; exit 1; }
+          echo "[OK] v373: all address books from the api, the ladder survives a silent cell"
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
