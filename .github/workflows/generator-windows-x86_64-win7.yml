@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 2796d53b54e38c35975aed99f7fc9f3b87c91721
+      patches_sha: cf9a8f7de02744d9313d0b70e8923c59124e0be2
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2796d53b54e38c35975aed99f7fc9f3b87c91721
+          ref: cf9a8f7de02744d9313d0b70e8923c59124e0be2
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1056,6 +1056,12 @@ jobs:
             || { echo "[FAIL] v370: hand-off does not wait for the wall session to close"; exit 1; }
           grep -qF 'Duration(milliseconds: 800)' "$W" \
             || { echo "[FAIL] v370: hand-off reconnect has no settle delay"; exit 1; }
+          # patch_broadcast_push_ui.py anchors this exact line at 18 spaces of
+          # indent. `dart format` in write mode folds it into
+          # `onPressed: () => unawaited(` + the argument, and the v355 step then
+          # dies with "anchor missing for toolbar entry" (run#2402 step 37).
+          grep -qF '                  unawaited(_broadcasting ? _stopBroadcast() : _startBroadcast()),' "$W" \
+            || { echo "[FAIL] v370: the v355 broadcast toolbar anchor is gone"; exit 1; }
           echo "[OK] v370: task manager key, app launcher, wol, hand-off settle"
 
       - name: Parallel UDP probe, wol mac learning, session close log (v370)
