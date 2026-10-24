@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 9d1746d7736460bf7cb3036edc28088f7825a00d
+      patches_sha: f7a4c85ff90908cae51e704e106229e6f55be4fa
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 9d1746d7736460bf7cb3036edc28088f7825a00d
+          ref: f7a4c85ff90908cae51e704e106229e6f55be4fa
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -672,7 +672,12 @@ jobs:
           # [v120] 屏幕墙工具栏保留隐私模式手动开关（默认关、可手动开）：icon 仍调用
           # sessionTogglePrivacyMode；与 v119 握手期跳过自动进隐私（io_loop.rs）配合 = 默认关 + 图标可手动开。
           grep -q "sessionTogglePrivacyMode" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私模式手动开关"; exit 1; }
-          grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 隐私/zoom 图标间隔加大"; exit 1; }
+          # [v369] The old 2x gap in front of the zoom button is gone: every
+          # icon in both toolbars now sits on the same 14 px pitch (the
+          # "block input -> mute" template). Guard the negative.
+          if grep -q "kScreenWallToolbarGap \* 2" flutter/lib/desktop/widgets/mini_remote_view.dart; then
+            echo "[FAIL] mini_remote_view.dart: uneven 2x icon gap is back (v369 wants one pitch)"; exit 1;
+          fi
           grep -q "_viewOriginal" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 view-style 切换"; exit 1; }
           # 首帧强制关闭隐私模式（清掉主窗口残留的全局 PrivacyModeState 单例，避免图标错显「已开隐私」）。
           grep -q "MiniRemoteView force privacy-off error" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart 缺少 v120 屏幕墙首帧强制关闭隐私模式"; exit 1; }
@@ -971,6 +976,47 @@ jobs:
 
 
 
+
+      - name: Screen wall toolbars - hand-off, terminal, distribute, sort, cruise (v369)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v369] Field report: a wall cell could not reach the device's own
+          # session tools (task manager, admin terminal, full remote control),
+          # the wall had no file distribution, no online-first ordering and no
+          # way to walk the pages of a group that does not fit on one page.
+          # Six items, all Dart; the only upstream edits are the pick-files IPC
+          # handler and the one-shot terminal command.
+          python3 patches/ui/patch_screen_wall_v369.py .
+          grep -qF 'kWindowEventPickFiles' flutter/lib/consts.dart \
+            || { echo "[FAIL] v369: pick-files IPC constant missing"; exit 1; }
+          grep -qF 'kTerminalAutoCommandEnv' flutter/lib/models/terminal_model.dart \
+            || { echo "[FAIL] v369: terminal does not consume the one-shot command"; exit 1; }
+          grep -qF 'kWindowEventPickFiles) {' flutter/lib/desktop/pages/desktop_home_page.dart \
+            || { echo "[FAIL] v369: main window has no pick-files handler"; exit 1; }
+          for t in _openRemoteControl _openTerminalCommand _openTaskManager \
+                   _openTerminalAdmin _distributeFiles _sortOnlineFirst _toggleCruise; do
+            grep -qF "$t" flutter/lib/desktop/pages/screen_wall_page.dart \
+              || { echo "[FAIL] v369: $t missing from the wall"; exit 1; }
+          done
+          for t in onTaskManager onTerminalAdmin onRemoteControl compactToolbar; do
+            grep -qF "$t" flutter/lib/desktop/widgets/mini_remote_view.dart \
+              || { echo "[FAIL] v369: $t missing from the cell toolbar"; exit 1; }
+          done
+          # One icon pitch everywhere: 14 px, the "block input -> mute" template.
+          grep -qF 'const double kWallToolbarGap = 14;' flutter/lib/desktop/pages/screen_wall_page.dart \
+            || { echo "[FAIL] v369: wall toolbar gap constant missing"; exit 1; }
+          if grep -qF 'kScreenWallToolbarGap * 2' flutter/lib/desktop/widgets/mini_remote_view.dart; then
+            echo "[FAIL] v369: uneven 2x icon gap is back in the cell toolbar"; exit 1;
+          fi
+          # Cells fill their slot now. The old "keep the cell at 16:9 and shrink
+          # the grid" rule left a 248 px black band on the right in 4 view.
+          grep -qF 'final cellW = slotW;' flutter/lib/desktop/pages/screen_wall_page.dart \
+            || { echo "[FAIL] v369: cells no longer fill their slot"; exit 1; }
+          if grep -qF 'cellW = (cellH - kCellToolbarHeight) * 16 / 9;' flutter/lib/desktop/pages/screen_wall_page.dart; then
+            echo "[FAIL] v369: old shrink-to-fit cell rule is back"; exit 1;
+          fi
+          echo "[OK] v369: cell actions, wall tools, one icon pitch, cells fill the slot"
 
       - name: Push based screen broadcast v355, core (multicast, no dial-in)
         # [v355] The push model replaces the reverse-connect viewer as the
