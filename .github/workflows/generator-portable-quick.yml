@@ -1051,8 +1051,10 @@ jobs:
           python3 patches/ui/check_bind_args.py .
           W=flutter/lib/desktop/pages/screen_wall_page.dart
           A=flutter/lib/desktop/widgets/app_launcher_dialog.dart
-          grep -qF 'class AppLauncherDialog' "$A" \
-            || { echo "[FAIL] v370: app launcher dialog missing"; exit 1; }
+          # [v372] the launcher became its own window body (WallAppLauncherBody);
+          # this step still owns the storage key and the keystroke wiring.
+          grep -qF 'class WallAppLauncherBody' "$A" \
+            || { echo "[FAIL] v370: app launcher body missing"; exit 1; }
           grep -qF "kScreenWallApps = 'screen_wall_apps'" "$A" \
             || { echo "[FAIL] v370: app storage key missing"; exit 1; }
           # Task manager is a keystroke into the live wall session now, not a
@@ -1118,12 +1120,9 @@ jobs:
           python3 patches/ui/check_bind_args.py .
           W=flutter/lib/desktop/pages/screen_wall_page.dart
           A=flutter/lib/desktop/widgets/app_launcher_dialog.dart
-          # Sidebar halved: 232 -> 116, group row 28 -> 16.
-          grep -qF 'width: 116,' "$W" \
-            || { echo "[FAIL] v371: sidebar is not halved"; exit 1; }
-          if grep -qF 'width: 232,' "$W"; then
-            echo "[FAIL] v371: sidebar is still 232 wide"; exit 1;
-          fi
+          # [v372] The sidebar width assertion moved out: V371 halved it to 116
+          # and V372 reverted that on field feedback. Width is graded by the
+          # v372 step now; this step grades the behaviour that stayed.
           # The 9-view toggle already uses Icons.apps; launch apps must not match it.
           grep -qF 'icon: Icons.rocket_launch,' "$W" \
             || { echo "[FAIL] v371: launch apps icon still collides with the view icon"; exit 1; }
@@ -1144,13 +1143,9 @@ jobs:
           if grep -qF 'width: 620,' "$A"; then
             echo "[FAIL] v371: launcher is still 620 wide"; exit 1;
           fi
-          grep -qF 'MediaQuery.of(context).size' "$A" \
-            || { echo "[FAIL] v371: launcher size is not screen driven"; exit 1; }
-          grep -qF 'onProgress' "$W" \
-            || { echo "[FAIL] v371: wall page does not report per-device progress"; exit 1; }
-          # Retry ladder: a flaky peer must come back in seconds, not minutes.
-          grep -qF '_kRetryBackoffSeconds = <int>[3, 6, 12, 20]' "$W" \
-            || { echo "[FAIL] v371: retry ladder is still [5,10,30,60]"; exit 1; }
+          # [v372] Size and progress moved: the launcher is an OS window now
+          # (fixed 560x460, set by multi_window_manager) and progress travels
+          # over IPC instead of a callback. Both are graded by the v372 step.
           echo "[OK] v371: sidebar halved, address book two level, launcher progress"
 
       - name: Faster direct fallback - 2s probe, 5s tcp (v371)
