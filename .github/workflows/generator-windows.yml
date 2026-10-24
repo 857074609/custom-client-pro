@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 8e0f1894353d749ba16ac23de67db5a1d076e1f1
+      patches_sha: 364a1ad9b9125195e2127002e854970208eb58ed
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8e0f1894353d749ba16ac23de67db5a1d076e1f1
+          ref: 364a1ad9b9125195e2127002e854970208eb58ed
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1496,6 +1496,93 @@ jobs:
             echo "[FAIL] v371: direct tcp fallback still uses CONNECT_TIMEOUT"; exit 1;
           fi
           echo "[OK] v371: 2 s probe round two, 5 s direct tcp fallback"
+
+      - name: Wall sidebar restored, address book groups, launcher window (v372)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v372] Assertions only - the Dart side ships inside patch_screen_wall.py.
+          # Field report on V371:
+          #   - the halved sidebar (116) was too small -> back to 232
+          #   - the address book still showed one flat list: the group fill lived
+          #     inside `if (_abPeers.isEmpty)`, and initState already filled
+          #     _abPeers from the window params, so _abGroups stayed empty
+          #   - the launch-apps window was a showDialog inside the wall window:
+          #     one task-bar entry, sized with the wall -> now a real OS window
+          python3 patches/ui/check_bind_args.py .
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          A=flutter/lib/desktop/widgets/app_launcher_dialog.dart
+          M=flutter/lib/utils/multi_window_manager.dart
+          L=src/lang/cn.rs
+          grep -qF 'width: 232,' "$W" \
+            || { echo "[FAIL] v372: sidebar is not back to 232"; exit 1; }
+          if grep -qF 'width: 116,' "$W"; then
+            echo "[FAIL] v372: sidebar is still halved"; exit 1;
+          fi
+          # Address book groups must be loaded by their own function, not from
+          # inside the _abPeers fallback branch.
+          grep -qF 'Future<void> _loadAbGroups() async' "$W" \
+            || { echo "[FAIL] v372: no independent address book group loader"; exit 1; }
+          if ! sed -n '/Future<void> _loadAbGroups() async/,/^  }/p' "$W" | grep -qF '_abGroups = groups'; then
+            echo "[FAIL] v372: address book groups are never assigned"; exit 1;
+          fi
+          grep -qF '_buildAbGroupList(ctx, setDlgState, abExpanded)' "$W" \
+            || { echo "[FAIL] v372: address book not wired to the group list"; exit 1; }
+          # Launch apps is its own window now.
+          grep -qF 'class WallAppLauncherBody' "$A" \
+            || { echo "[FAIL] v372: launcher is not an independent window body"; exit 1; }
+          grep -qF 'newWallAppLauncherWindow(' "$W" \
+            || { echo "[FAIL] v372: wall does not open the launcher window"; exit 1; }
+          grep -qF 'newWallAppLauncherWindow' "$M" \
+            || { echo "[FAIL] v372: multi window manager has no launcher window"; exit 1; }
+          grep -qF "'mode': 'apps'" "$M" \
+            || { echo "[FAIL] v372: launcher window is not created in apps mode"; exit 1; }
+          grep -qF "Size(560, 460)" "$M" \
+            || { echo "[FAIL] v372: launcher window has no fixed size"; exit 1; }
+          grep -qF 'case kWindowEventRunWallApp:' "$W" \
+            || { echo "[FAIL] v372: wall does not handle run_wall_app"; exit 1; }
+          grep -qF '_sendAppProgress' "$W" \
+            || { echo "[FAIL] v372: wall does not report run progress"; exit 1; }
+          # A retrying cell keeps showing Offline instead of flashing Connecting.
+          grep -qF '_kRetryBackoffSeconds = <int>[2, 4, 8, 15]' "$W" \
+            || { echo "[FAIL] v372: retry ladder is not [2,4,8,15]"; exit 1; }
+          grep -qF 'startDisconnected: _retrying.contains(d.id)' "$W" \
+            || { echo "[FAIL] v372: cells are not opened in silent-reconnect mode"; exit 1; }
+          grep -qF 'late bool _disconnected = widget.startDisconnected;' \
+            flutter/lib/desktop/widgets/mini_remote_view.dart \
+            || { echo "[FAIL] v372: MiniRemoteView ignores startDisconnected"; exit 1; }
+          grep -qF '"Launch Apps", ' "$L" \
+            || { echo "[FAIL] v372: cn.rs lacks Launch Apps"; exit 1; }
+          echo "[OK] v372: sidebar restored, ab groups load, launcher is its own window"
+
+      - name: Dead link in 10 s, TestDelay keepalive (v372)
+        shell: bash
+        run: |
+          # [v372] Field report: pull the cable on a connected wall cell and it
+          # keeps the frozen frame for close to a minute. src/client/io_loop.rs
+          # ticked every SEC30 *and* compared against SEC30, so worst case was
+          # 30 s until the tick plus 30 s threshold = 59 s. A still desktop emits
+          # no video frames, so TestDelay is its only traffic - and the server
+          # guard `last_test_delay.is_none()` sent it exactly once, which is why
+          # the client watchdog could not simply be shortened. Now: tick 3 s,
+          # watchdog 10 s, TestDelay resent every 3 s.
+          python3 patches/network/patch_session_timeout.py .
+          grep -qF 'pub const SEC10: Duration = Duration::from_secs(10);' src/client.rs \
+            || { echo "[FAIL] v372: SEC10 missing"; exit 1; }
+          grep -qF 'pub const SEC3: Duration = Duration::from_secs(3);' src/client.rs \
+            || { echo "[FAIL] v372: SEC3 missing"; exit 1; }
+          grep -qF 'SEC10, SEC3, SEC30,' src/client/io_loop.rs \
+            || { echo "[FAIL] v372: io_loop import not updated"; exit 1; }
+          grep -qF 'time::interval(SEC3)' src/client/io_loop.rs \
+            || { echo "[FAIL] v372: client tick is not 3 s"; exit 1; }
+          grep -qF '>= SEC10 {' src/client/io_loop.rs \
+            || { echo "[FAIL] v372: client watchdog is not 10 s"; exit 1; }
+          if grep -qF '>= SEC30 {' src/client/io_loop.rs; then
+            echo "[FAIL] v372: client watchdog is still 30 s"; exit 1;
+          fi
+          grep -qF 'if resend_test_delay && !(conn.port_forward_socket.is_some() && conn.authorized) {' src/server/connection.rs \
+            || { echo "[FAIL] v372: TestDelay resend guard missing"; exit 1; }
+          echo "[OK] v372: 10 s watchdog, 3 s tick, TestDelay keepalive"
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
