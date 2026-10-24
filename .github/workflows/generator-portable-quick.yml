@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 74de9777786fd943072db8e48e118fd41a3b0e81
+      patches_sha: 2796d53b54e38c35975aed99f7fc9f3b87c91721
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 74de9777786fd943072db8e48e118fd41a3b0e81
+          ref: 2796d53b54e38c35975aed99f7fc9f3b87c91721
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1044,6 +1044,11 @@ jobs:
           # and never reached the controlled desktop; the remote window went black
           # after a hand-off; there was no way to start a program on every walled
           # device and no network wake-up.
+          # A missing required `bind` argument only surfaces at the analyze
+          # gate, and a red analyze gate costs a full build (run#2400: the task
+          # manager call omitted `command: false`). Check the three files this
+          # feature touches right here instead.
+          python3 patches/ui/check_bind_args.py .
           W=flutter/lib/desktop/pages/screen_wall_page.dart
           A=flutter/lib/desktop/widgets/app_launcher_dialog.dart
           grep -qF 'class AppLauncherDialog' "$A" \
