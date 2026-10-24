@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: ee20cd5d7d29175f67886f6f2f262aed47508ca5
+      patches_sha: f93bf9d2b7538c6ad0cd493ecb3002e7b555bcb3
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: ee20cd5d7d29175f67886f6f2f262aed47508ca5
+          ref: f93bf9d2b7538c6ad0cd493ecb3002e7b555bcb3
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -923,6 +923,14 @@ jobs:
             || { echo "[FAIL] v374: the received file is never verified"; exit 1; }
           grep -qF 'MAGIC_NAK' "$BF" \
             || { echo "[FAIL] v374: no repair channel"; exit 1; }
+          # [v377] The registry has to be allocated before the first insert.
+          # `if let Some(map) = guard.as_mut()` is a silent no-op on None, and
+          # that single line is why a wall of three had three senders, no
+          # acknowledgements and a repair channel nobody ever heard.
+          grep -qF '*guard = Some(HashMap::new());' "$BF" \
+            || { echo "[FAIL] v377: the transfer registry is never allocated"; exit 1; }
+          grep -qF 'guard.as_ref().and_then(|m| m.get(&r.x).cloned())' "$BF" \
+            || { echo "[FAIL] v377: an answer is looked up in a registry that holds nothing"; exit 1; }
           # [v375] One stream per wall, and the receiver answers first.
           grep -qF 'pub xfer: String,' "$BF" \
             || { echo "[FAIL] v375: no wall-wide transfer id"; exit 1; }
@@ -1022,6 +1030,8 @@ jobs:
             || { echo "[FAIL] v375: a silent peer is never reported"; exit 1; }
           grep -qF 'Future<void> _sendManifest(' "$W" \
             || { echo "[FAIL] v375: no single place that sends the manifest"; exit 1; }
+          grep -qF 'if (row._state == _ShareState.acked) {' "$W" \
+            || { echo "[FAIL] v377: a row that never acknowledged is shown as transferring"; exit 1; }
           grep -qF 'icon: Icons.cell_tower,' "$W" \
             || { echo "[FAIL] v375: the multicast button has no icon of its own"; exit 1; }
           grep -qF "tip: translate('Distribute Files')," "$W" \
