@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: cf9a8f7de02744d9313d0b70e8923c59124e0be2
+      patches_sha: 8e0f1894353d749ba16ac23de67db5a1d076e1f1
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: cf9a8f7de02744d9313d0b70e8923c59124e0be2
+          ref: 8e0f1894353d749ba16ac23de67db5a1d076e1f1
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1427,6 +1427,75 @@ jobs:
           grep -qF 'close requested locally' src/flutter_ffi.rs \
             || { echo "[FAIL] v370: session close source is still invisible"; exit 1; }
           echo "[OK] v370: parallel udp probe, wol mac learning, close log"
+
+      - name: Screen wall sidebar, address book, launcher progress (v371)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v371] Assertions only - the Dart side ships inside patch_screen_wall.py.
+          # Field report: the side group bar was too wide, the address book was one
+          # flat list with no grouping, and running an app blanked the window for
+          # two seconds while the controller waited for every walled device.
+          python3 patches/ui/check_bind_args.py .
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          A=flutter/lib/desktop/widgets/app_launcher_dialog.dart
+          # Sidebar halved: 232 -> 116, group row 28 -> 16.
+          grep -qF 'width: 116,' "$W" \
+            || { echo "[FAIL] v371: sidebar is not halved"; exit 1; }
+          if grep -qF 'width: 232,' "$W"; then
+            echo "[FAIL] v371: sidebar is still 232 wide"; exit 1;
+          fi
+          # The 9-view toggle already uses Icons.apps; launch apps must not match it.
+          grep -qF 'icon: Icons.rocket_launch,' "$W" \
+            || { echo "[FAIL] v371: launch apps icon still collides with the view icon"; exit 1; }
+          grep -qF "translate('Launch Apps')" "$W" \
+            || { echo "[FAIL] v371: launch apps tooltip not renamed"; exit 1; }
+          # Address book: address book -> group -> device.
+          grep -qF 'class WallAbGroup' "$W" \
+            || { echo "[FAIL] v371: address book group model missing"; exit 1; }
+          grep -qF '_buildAbGroupList(ctx, setDlgState, abExpanded)' "$W" \
+            || { echo "[FAIL] v371: address book is not wired to the two level list"; exit 1; }
+          grep -qF 'Icons.folder_outlined' "$W" \
+            || { echo "[FAIL] v371: no folder row in the address book"; exit 1; }
+          # Launcher: a progress overlay instead of a blank window, smaller box.
+          grep -qF 'if (_busy) Positioned.fill(child: _buildBusyOverlay())' "$A" \
+            || { echo "[FAIL] v371: launcher has no running overlay"; exit 1; }
+          grep -qF "translate('Running')" "$A" \
+            || { echo "[FAIL] v371: running label missing"; exit 1; }
+          if grep -qF 'width: 620,' "$A"; then
+            echo "[FAIL] v371: launcher is still 620 wide"; exit 1;
+          fi
+          grep -qF 'MediaQuery.of(context).size' "$A" \
+            || { echo "[FAIL] v371: launcher size is not screen driven"; exit 1; }
+          grep -qF 'onProgress' "$W" \
+            || { echo "[FAIL] v371: wall page does not report per-device progress"; exit 1; }
+          # Retry ladder: a flaky peer must come back in seconds, not minutes.
+          grep -qF '_kRetryBackoffSeconds = <int>[3, 6, 12, 20]' "$W" \
+            || { echo "[FAIL] v371: retry ladder is still [5,10,30,60]"; exit 1; }
+          echo "[OK] v371: sidebar halved, address book two level, launcher progress"
+
+      - name: Faster direct fallback - 2s probe, 5s tcp (v371)
+        shell: bash
+        run: |
+          # [v371] V370 made the four UDP probes concurrent, which took the UDP
+          # phase from ~13 s to 4.8 s. The remaining 18.25 s was the TCP fallback
+          # still using the global CONNECT_TIMEOUT (18 s) - measured in the field
+          # log as `connect race 192.168.12.228:21118 used 18.2530434s`, 55 times
+          # in a row. A direct-IP peer whose four UDP ports are all dark is almost
+          # never reachable over TCP either, so 5 s is enough and one dead peer
+          # now costs ~7.8 s instead of 23 s.
+          python3 patches/network/patch_direct_udp.py .
+          grep -qF 'for wait_ms in [800u64, 2000u64]' src/client.rs \
+            || { echo "[FAIL] v371: probe round two is not 2 s"; exit 1; }
+          if grep -qF '[800u64, 4000u64]' src/client.rs; then
+            echo "[FAIL] v371: probe round two is still 4 s"; exit 1;
+          fi
+          grep -qF 'connect_tcp_local(addr, None, 5_000)' src/client.rs \
+            || { echo "[FAIL] v371: direct tcp fallback is not 5 s"; exit 1; }
+          if grep -qF 'connect_tcp_local(addr, None, CONNECT_TIMEOUT)' src/client.rs; then
+            echo "[FAIL] v371: direct tcp fallback still uses CONNECT_TIMEOUT"; exit 1;
+          fi
+          echo "[OK] v371: 2 s probe round two, 5 s direct tcp fallback"
 
       - name: Patch direct access UDP transport
         if: fromJson(inputs.extras).ip_direct_udp == 'true'
