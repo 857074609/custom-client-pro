@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: b7351683debea0a850256fcde3d27a0423b5221e
+      patches_sha: 8e57cf73d5031e981b7b0e92f6ebe53d266d4bda
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: b7351683debea0a850256fcde3d27a0423b5221e
+          ref: 8e57cf73d5031e981b7b0e92f6ebe53d266d4bda
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -923,7 +923,20 @@ jobs:
             || { echo "[FAIL] v374: the received file is never verified"; exit 1; }
           grep -qF 'MAGIC_NAK' "$BF" \
             || { echo "[FAIL] v374: no repair channel"; exit 1; }
-          echo "[OK] v374: file share wired on both ends"
+          # [v375] One stream per wall, and the receiver answers first.
+          grep -qF 'pub xfer: String,' "$BF" \
+            || { echo "[FAIL] v375: no wall-wide transfer id"; exit 1; }
+          grep -qF 'if !peers.iter().any(|t| *t == task) {' "$BF" \
+            || { echo "[FAIL] v375: a repeat manifest starts a second stream"; exit 1; }
+          grep -qF 'const PASSES: u32 = 3;' "$BF" \
+            || { echo "[FAIL] v375: the multicast pass is sent only once"; exit 1; }
+          grep -qF 'status_back(&teacher, &xfer, &task, true, "ack");' "$BF" \
+            || { echo "[FAIL] v375: the receiver never acknowledges the manifest"; exit 1; }
+          grep -qF 'if why == "ack" {' "$BF" \
+            || { echo "[FAIL] v375: the sender ignores the acknowledgement"; exit 1; }
+          grep -qF 'fn split_status(body: &[u8])' "$BF" \
+            || { echo "[FAIL] v375: a status cannot be attributed to a device"; exit 1; }
+          echo "[OK] v374+v375: file share wired on both ends, one stream per wall"
 
       - name: Multicast file share, wall UI, visible retry ladder (v374)
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
@@ -953,7 +966,7 @@ jobs:
             || { echo "[FAIL] v374: hand-off still re-dials immediately"; exit 1; }
           grep -qF 'Future<void> _sendFiles() async' "$W" \
             || { echo "[FAIL] v374: the wall has no send-files entry"; exit 1; }
-          grep -qF 'bind.sessionSendChat(sessionId: entry.value, text: text)' "$W" \
+          grep -qF 'bind.sessionSendChat(sessionId: sid, text: text)' "$W" \
             || { echo "[FAIL] v374: the manifest is never sent"; exit 1; }
           grep -qF "V374FD:" "$W" \
             || { echo "[FAIL] v374: no control prefix on the dart side"; exit 1; }
@@ -962,6 +975,53 @@ jobs:
           grep -qF "name == 'on_file_share'" "$D" \
             || { echo "[FAIL] v374: the main window does not forward progress"; exit 1; }
           echo "[OK] v374: visible ladder, settled hand-off, file share UI"
+
+      - name: Multicast file share - one stream per wall, peer ack (v375)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v375] The v374 cut sent the same file once per device, heard nothing
+          # back from a single peer, and the wall could not say why.
+          #   - the data plane is keyed by a wall-wide transfer id, so the file
+          #     travels once however many devices are listening
+          #   - the receiver acknowledges the manifest before a packet moves; a
+          #     row stuck on "waiting" is the signature of an older build
+          #   - the pass repeats while peers are silent, so a receiver that joins
+          #     late is not pushed through the whole-file repair path
+          #   - the two wall buttons no longer share a glyph, and the names are
+          #     swapped: file distribution is the multicast one
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          BF=src/broadcast_file.rs
+          grep -qF "pkt[4..12].copy_from_slice(&task_key(&state.xfer).to_le_bytes());" "$BF" \
+            || { echo "[FAIL] v375: the data plane is still keyed by one device"; exit 1; }
+          grep -qF 'if task_key(&state.xfer) == key {' "$BF" \
+            || { echo "[FAIL] v375: the management port cannot find the shared transfer"; exit 1; }
+          grep -qF 'if pass < PASSES && now >= next_pass {' "$BF" \
+            || { echo "[FAIL] v375: the pass is never repeated"; exit 1; }
+          grep -qF 'if !claim(&xfer, &task) {' "$BF" \
+            || { echo "[FAIL] v375: a repeated manifest is not deduplicated"; exit 1; }
+          grep -qF "'xfer': xfer," "$W" \
+            || { echo "[FAIL] v375: the wall sends no shared transfer id"; exit 1; }
+          grep -qF 'enum _ShareState { waiting, acked, sent, done, failed }' "$W" \
+            || { echo "[FAIL] v375: no acknowledged state on the wall"; exit 1; }
+          grep -qF "translate('Manifest received')" "$W" \
+            || { echo "[FAIL] v375: the wall never reports the acknowledgement"; exit 1; }
+          grep -qF "translate('No response from peer')" "$W" \
+            || { echo "[FAIL] v375: a silent peer is never reported"; exit 1; }
+          grep -qF 'Future<void> _sendManifest(' "$W" \
+            || { echo "[FAIL] v375: no single place that sends the manifest"; exit 1; }
+          grep -qF 'icon: Icons.cell_tower,' "$W" \
+            || { echo "[FAIL] v375: the multicast button has no icon of its own"; exit 1; }
+          grep -qF "tip: translate('Distribute Files')," "$W" \
+            || { echo "[FAIL] v375: the multicast button is not called file distribution"; exit 1; }
+          grep -qF "tip: translate('Send Files')," "$W" \
+            || { echo "[FAIL] v375: the per-device button is not called send files"; exit 1; }
+          if [ "$(grep -c 'icon: Icons.upload_file,' "$W")" -ne 1 ]; then
+            echo "[FAIL] v375: upload_file is still used by more than one button"; exit 1
+          fi
+          grep -qF '("Manifest received", "Manifest received", "已收到清单"),' patches/ui/patch_screen_wall.py \
+            || { echo "[FAIL] v375: missing lang key for the acknowledgement"; exit 1; }
+          echo "[OK] v375: one stream per wall, ack first, names swapped, distinct glyphs"
 
       - name: Push based screen broadcast v355, wall UI (push entry + audio)
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
