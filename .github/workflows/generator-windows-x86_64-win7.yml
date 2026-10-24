@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: c12afb2e8195d90ac4532a8b710496a113c2e83d
+      patches_sha: 74de9777786fd943072db8e48e118fd41a3b0e81
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c12afb2e8195d90ac4532a8b710496a113c2e83d
+          ref: 74de9777786fd943072db8e48e118fd41a3b0e81
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1082,7 +1082,7 @@ jobs:
             || { echo "[FAIL] v370: peer does not report its mac"; exit 1; }
           grep -qF 'remember_peer_mac' src/client/io_loop.rs \
             || { echo "[FAIL] v370: controller does not learn the mac"; exit 1; }
-          grep -qF 'close requested locally' src/ui_session_interface.rs \
+          grep -qF 'close requested locally' src/flutter_ffi.rs \
             || { echo "[FAIL] v370: session close source is still invisible"; exit 1; }
           echo "[OK] v370: parallel udp probe, wol mac learning, close log"
 
