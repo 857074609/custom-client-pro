@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f7a4c85ff90908cae51e704e106229e6f55be4fa
+      patches_sha: c12afb2e8195d90ac4532a8b710496a113c2e83d
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f7a4c85ff90908cae51e704e106229e6f55be4fa
+          ref: c12afb2e8195d90ac4532a8b710496a113c2e83d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1033,6 +1033,74 @@ jobs:
             echo "[FAIL] v369: old shrink-to-fit cell rule is back"; exit 1;
           fi
           echo "[OK] v369: cell actions, wall tools, one icon pitch, cells fill the slot"
+
+      - name: Screen wall app launcher, task manager key, wol, hand-off settle (v370)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          # [v370] Assertions only - the Dart side ships inside patch_screen_wall.py,
+          # which already ran in the screen wall step above.
+          # Field report: the task manager icon opened a terminal on the CONTROLLER
+          # and never reached the controlled desktop; the remote window went black
+          # after a hand-off; there was no way to start a program on every walled
+          # device and no network wake-up.
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          A=flutter/lib/desktop/widgets/app_launcher_dialog.dart
+          grep -qF 'class AppLauncherDialog' "$A" \
+            || { echo "[FAIL] v370: app launcher dialog missing"; exit 1; }
+          grep -qF "kScreenWallApps = 'screen_wall_apps'" "$A" \
+            || { echo "[FAIL] v370: app storage key missing"; exit 1; }
+          # Task manager is a keystroke into the live wall session now, not a
+          # terminal window: Ctrl+Shift+Esc needs no SendSAS and no new FFI.
+          if grep -qF '_openTerminalCommand(d, command:' "$W"; then
+            echo "[FAIL] v370: task manager still goes through a terminal window"; exit 1;
+          fi
+          grep -qF "name: 'VK_ESCAPE'" "$W" \
+            || { echo "[FAIL] v370: Ctrl+Shift+Esc keystroke missing"; exit 1; }
+          grep -qF "name: 'VK_R'" "$W" \
+            || { echo "[FAIL] v370: Win+R keystroke missing"; exit 1; }
+          grep -qF 'sessionInputString' "$W" \
+            || { echo "[FAIL] v370: app path is not typed into the run box"; exit 1; }
+          grep -qF 'bind.mainWol(' "$W" \
+            || { echo "[FAIL] v370: wake-on-lan is not wired to the wall"; exit 1; }
+          grep -qF '_waitCellClosed' "$W" \
+            || { echo "[FAIL] v370: hand-off does not wait for the wall session to close"; exit 1; }
+          grep -qF 'Duration(milliseconds: 800)' "$W" \
+            || { echo "[FAIL] v370: hand-off reconnect has no settle delay"; exit 1; }
+          echo "[OK] v370: task manager key, app launcher, wol, hand-off settle"
+
+      - name: Parallel UDP probe, wol mac learning, session close log (v370)
+        shell: bash
+        run: |
+          # [v370] Field log 2026-10-24: 55 consecutive `connect race ... used
+          # 18.25 s` against a host that was simply unreachable. The port probe
+          # walked four ports one after another (800 ms each in round one, 4 s
+          # each in round two), so it burned the entire 9 s budget before TCP was
+          # even tried. Probes now run concurrently, with Box::pin so the whole
+          # _start future does not need a Send bound.
+          # Also: `Failed to load lan peers` on every start meant lan::send_wol
+          # had no MAC to send to. The peer now reports its MAC in the login
+          # response (platform_additions, no proto change) and the controller
+          # stores it in the LAN discovery table.
+          python3 patches/network/patch_direct_udp.py .
+          python3 patches/network/patch_wol_learn_mac.py .
+          python3 patches/network/patch_session_close_log.py .
+          grep -qF 'select_ok(probes)' src/client.rs \
+            || { echo "[FAIL] v370: udp probe is not parallel"; exit 1; }
+          if grep -qF "'probe: for wait_ms" src/client.rs; then
+            echo "[FAIL] v370: sequential udp probe is back"; exit 1;
+          fi
+          grep -qF 'pub fn local_mac' src/lan.rs \
+            || { echo "[FAIL] v370: local_mac missing"; exit 1; }
+          grep -qF 'pub fn remember_peer_mac' src/lan.rs \
+            || { echo "[FAIL] v370: remember_peer_mac missing"; exit 1; }
+          grep -qF 'insert("mac".into()' src/server/connection.rs \
+            || { echo "[FAIL] v370: peer does not report its mac"; exit 1; }
+          grep -qF 'remember_peer_mac' src/client/io_loop.rs \
+            || { echo "[FAIL] v370: controller does not learn the mac"; exit 1; }
+          grep -qF 'close requested locally' src/ui_session_interface.rs \
+            || { echo "[FAIL] v370: session close source is still invisible"; exit 1; }
+          echo "[OK] v370: parallel udp probe, wol mac learning, close log"
 
       - name: Push based screen broadcast v355, core (multicast, no dial-in)
         # [v355] The push model replaces the reverse-connect viewer as the
