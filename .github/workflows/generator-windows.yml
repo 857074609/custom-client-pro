@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f93bf9d2b7538c6ad0cd493ecb3002e7b555bcb3
+      patches_sha: f55ee633148d8e35333640d447abe954dae31111
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f93bf9d2b7538c6ad0cd493ecb3002e7b555bcb3
+          ref: f55ee633148d8e35333640d447abe954dae31111
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -931,6 +931,17 @@ jobs:
             || { echo "[FAIL] v377: the transfer registry is never allocated"; exit 1; }
           grep -qF 'guard.as_ref().and_then(|m| m.get(&r.x).cloned())' "$BF" \
             || { echo "[FAIL] v377: an answer is looked up in a registry that holds nothing"; exit 1; }
+          # [v378] Received files go to the logged-on user, not to the service
+          # account; the repair request is answered on the listening port; and
+          # the port is single per machine, so a second task waits for it.
+          grep -qF 'crate::platform::get_active_user_home()' "$BF" \
+            || { echo "[FAIL] v378: files still land in the service profile"; exit 1; }
+          grep -qF 'send_nak(&sock, &teacher, key, &missing, fallback, &files, &have);' "$BF" \
+            || { echo "[FAIL] v378: the repair request is not sent from the data socket"; exit 1; }
+          grep -qF 'for attempt in 0..BIND_ATTEMPTS {' "$BF" \
+            || { echo "[FAIL] v378: a busy data port fails the row instead of waiting"; exit 1; }
+          grep -qF 'const PACING_EVERY: usize = 16;' "$BF" \
+            || { echo "[FAIL] v378: the sender still bursts 64 datagrams at a time"; exit 1; }
           # [v375] One stream per wall, and the receiver answers first.
           grep -qF 'pub xfer: String,' "$BF" \
             || { echo "[FAIL] v375: no wall-wide transfer id"; exit 1; }
@@ -1032,6 +1043,20 @@ jobs:
             || { echo "[FAIL] v375: no single place that sends the manifest"; exit 1; }
           grep -qF 'if (row._state == _ShareState.acked) {' "$W" \
             || { echo "[FAIL] v377: a row that never acknowledged is shown as transferring"; exit 1; }
+          # [v378] One machine, one row in the scan list and one cell in the
+          # wall. Two cells on one PC fight over the single multicast port, and
+          # the loser's row can never finish.
+          L=flutter/lib/desktop/widgets/lan_scan.dart
+          grep -qF 'List<Map<String, String>> dedupeByAddress(' "$L" \
+            || { echo "[FAIL] v378: the scan list is deduplicated by id only"; exit 1; }
+          grep -qF 'if (takenAddrs.contains(peer[' "$L" \
+            || { echo "[FAIL] v378: discovery never checks the addresses already in a wall"; exit 1; }
+          grep -qF 'if (!seenAddr.add(addr)) continue;' "$L" \
+            || { echo "[FAIL] v378: the same machine can be offered twice"; exit 1; }
+          grep -qF 'Set<String> _addrsInAnyWall()' "$W" \
+            || { echo "[FAIL] v378: the wall has no address-level dedupe"; exit 1; }
+          grep -qF 'if (!seenAddr.add(d.connectId)) continue;' "$W" \
+            || { echo "[FAIL] v378: two cells on one machine still start two transfers"; exit 1; }
           grep -qF 'icon: Icons.cell_tower,' "$W" \
             || { echo "[FAIL] v375: the multicast button has no icon of its own"; exit 1; }
           grep -qF "tip: translate('Distribute Files')," "$W" \
