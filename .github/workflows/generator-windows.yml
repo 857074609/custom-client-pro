@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f55ee633148d8e35333640d447abe954dae31111
+      patches_sha: 24a64cd07367a8192446ea63108b5432a0dd8b10
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -190,7 +190,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f55ee633148d8e35333640d447abe954dae31111
+          ref: 24a64cd07367a8192446ea63108b5432a0dd8b10
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -942,13 +942,43 @@ jobs:
             || { echo "[FAIL] v378: a busy data port fails the row instead of waiting"; exit 1; }
           grep -qF 'const PACING_EVERY: usize = 16;' "$BF" \
             || { echo "[FAIL] v378: the sender still bursts 64 datagrams at a time"; exit 1; }
+          # [v379] Three limits decided whether a big file ever finished: the
+          # management socket cut a long repair request off at 4096 bytes (408
+          # ranges), a request that did not fit in one datagram was never sent
+          # at all (WSAEMSGSIZE), and the receive loop opened the file once per
+          # 1150 bytes so it could not drain the socket. One pass replaced the
+          # repeat-until-answered loop for the same reason.
+          grep -qF 'let mut buf = vec![0u8; 65536];' "$BF" \
+            || { echo "[FAIL] v379: a long repair request is still truncated"; exit 1; }
+          if grep -qF 'let mut buf = vec![0u8; 4096];' "$BF"; then
+            echo "[FAIL] v379: the 4096 byte management buffer is back"; exit 1
+          fi
+          grep -qF 'const NAK_MAX_BODY: usize = 1200;' "$BF" \
+            || { echo "[FAIL] v379: there is no cap on the repair datagram body"; exit 1; }
+          grep -qF 'packets += flush_nak(sock, &dest, key, &mut body);' "$BF" \
+            || { echo "[FAIL] v379: an over-long repair request is never split"; exit 1; }
+          grep -qF 'const RANGE_COUNT_MAX: u32 = 60000;' "$BF" \
+            || { echo "[FAIL] v379: a whole-file range can overflow its count"; exit 1; }
+          grep -qF 'struct WriteJob {' "$BF" \
+            || { echo "[FAIL] v379: chunks are still written on the receive path"; exit 1; }
+          grep -qF 'let write_errors = writer.join().unwrap_or_default();' "$BF" \
+            || { echo "[FAIL] v379: the file is verified before the writer flushed"; exit 1; }
+          if grep -qF 'fn write_chunk(path: &Path, chunk: u64, data: &[u8])' "$BF"; then
+            echo "[FAIL] v379: the per-chunk open is back"; exit 1
+          fi
+          grep -qF 'const SEND_DEADLINE: Duration = Duration::from_secs(600);' "$BF" \
+            || { echo "[FAIL] v379: a long repair is still cut off at two minutes"; exit 1; }
+          grep -qF 'const NAK_STALL_ROUNDS: u32 = 12;' "$BF" \
+            || { echo "[FAIL] v379: the receiver still stops after a fixed round count"; exit 1; }
+          grep -qF 'if gaps < best_gaps {' "$BF" \
+            || { echo "[FAIL] v379: the receiver does not track repair progress"; exit 1; }
           # [v375] One stream per wall, and the receiver answers first.
           grep -qF 'pub xfer: String,' "$BF" \
             || { echo "[FAIL] v375: no wall-wide transfer id"; exit 1; }
           grep -qF 'if !peers.iter().any(|t| *t == task) {' "$BF" \
             || { echo "[FAIL] v375: a repeat manifest starts a second stream"; exit 1; }
-          grep -qF 'const PASSES: u32 = 3;' "$BF" \
-            || { echo "[FAIL] v375: the multicast pass is sent only once"; exit 1; }
+          grep -qF 'const PASSES: u32 = 1;' "$BF" \
+            || { echo "[FAIL] v375: the multicast pass is repeated instead of repaired"; exit 1; }
           grep -qF 'let ack = reply("ack", &xfer, &task);' "$BF" \
             || { echo "[FAIL] v375: the receiver never builds an acknowledgement"; exit 1; }
           grep -qF 'crate::broadcast_file::handle(&c.text, Some(&self.ip))' src/server/connection.rs \
@@ -1005,6 +1035,14 @@ jobs:
             || { echo "[FAIL] v374: progress events are not handled"; exit 1; }
           grep -qF "name == 'on_file_share'" "$D" \
             || { echo "[FAIL] v374: the main window does not forward progress"; exit 1; }
+          # [v379] The dialog names a machine the way the wall does: the address
+          # it is dialled at. The row was built with an empty address, so a peer
+          # outside the address book always showed its id even though the
+          # transfer itself ran over the LAN address.
+          grep -qF "addrById[d.id] = d.ip.isNotEmpty ? d.ip : (_lanIpById[d.id] ?? '');" "$W" \
+            || { echo "[FAIL] v379: the dialog has no address for the row"; exit 1; }
+          grep -qF "name: _cellTitle(id, addrById[id] ?? '')," "$W" \
+            || { echo "[FAIL] v379: the row still shows the id instead of the address"; exit 1; }
           echo "[OK] v374: visible ladder, settled hand-off, file share UI"
 
       - name: Multicast file share - one stream per wall, peer ack (v375)
