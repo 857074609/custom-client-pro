@@ -30,6 +30,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ai_buddy:
+        description: "Enable AI Buddy (in-session assistant panel)"
+        required: false
+        default: 'true'
+        type: string
 
       iconlink:
         description: "icon link"
@@ -3268,6 +3273,19 @@ jobs:
           print('[OK] v345 action icons blue, state toggles keep grey/blue')
           PY
           echo "[OK] v345 icon colour rule applied"
+          python3 patches/ui/patch_add_address_book.py .
+          python3 patches/iroh/iroh_badge.py .
+
+      # [v382] AI Buddy is a build-time choice, not a runtime one: the whole
+      # panel (flutter/lib/ai/*, the toolbar button, the peer-side terminal
+      # authorisation) is injected here. When the builder checkbox is off the
+      # steps are skipped and the package ships without the assistant.
+      - name: AI Buddy assistant panel (v346-v352)
+        if: inputs.ai_buddy == 'true'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
           # V346: AI Buddy -- an assistant panel inside the remote session that
           # drives the peer through the terminal channel. Read and write are both
           # allowed (the peer shell already runs with the rights the administrator
@@ -3460,8 +3478,6 @@ jobs:
                   sys.exit(1)
           PY
           echo "[OK] v347 assistant usability applied"
-          python3 patches/ui/patch_add_address_book.py .
-          python3 patches/iroh/iroh_badge.py .
 
       - name: Both-mode peer-tab sidebar collapsed by default (V258)
         if: env.UI_VARIANT == 'control_custom'
