@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: bb994f529f680533d758827f936e91404f9419c5
+      patches_sha: 8ddcb48ec70b7a746b9fdb95fdbee904671cee64
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: bb994f529f680533d758827f936e91404f9419c5
+          ref: 8ddcb48ec70b7a746b9fdb95fdbee904671cee64
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2543,6 +2543,7 @@ jobs:
       # balanced there would have produced ~20x, and nine of those saturate the
       # uplink. The wall now gets the tier it asks for.
       - name: Screen wall sessions do not persist peer settings (v380)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
         shell: bash
         run: |
           python3 patches/quality/patch_session_settings_isolation.py .
