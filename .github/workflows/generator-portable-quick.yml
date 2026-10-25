@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 46293869b9a68090ca366524bffc1b4a0de44e1c
+      patches_sha: bb994f529f680533d758827f936e91404f9419c5
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 46293869b9a68090ca366524bffc1b4a0de44e1c
+          ref: bb994f529f680533d758827f936e91404f9419c5
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1487,6 +1487,16 @@ jobs:
             || { echo "[FAIL] v379: the dialog has no address for the row"; exit 1; }
           grep -qF "name: _cellTitle(id, addrById[id] ?? '')," "$W" \
             || { echo "[FAIL] v379: the row still shows the id instead of the address"; exit 1; }
+          # [v380] The wall cells watch at balanced, not at low. Low is 0.5x
+          # bitrate (~1036 kbps per cell) and at 640x360 / 0.225 bit per pixel
+          # the window titles are unreadable; balanced is 1.0x (~2073 kbps),
+          # which is 18.66 Mbps for nine cells -- under 2% of a gigabit link.
+          MV=flutter/lib/desktop/widgets/mini_remote_view.dart
+          grep -qF 'value: kRemoteImageQualityBalanced' "$MV" \
+            || { echo "[FAIL] v380: wall cells are not on balanced quality"; exit 1; }
+          if grep -qF 'kRemoteImageQualityLow' "$MV"; then
+            echo "[FAIL] v380: a wall cell still asks for low quality"; exit 1
+          fi
           echo "[OK] v374: visible ladder, settled hand-off, file share UI"
 
       - name: Multicast file share - one stream per wall, peer ack (v375)
@@ -2502,6 +2512,35 @@ jobs:
           # proof that the row was restyled instead of left full-width.
           grep -q "slider3/value1/label2" ./flutter/lib/common/widgets/setting_widgets.dart || { echo "[FAIL] v118: sharpening row layout not restyled"; exit 1; }
           if grep -q "Image sharpening tip" ./flutter/lib/common/widgets/dialog.dart; then echo "[FAIL] v118: sharpening tip paragraph must be removed"; exit 1; fi
+
+      # [v380] A screen-wall cell must not write the peer's settings back to
+      # disk. The cell forces its own quality and view style for bandwidth
+      # reasons, and `save_image_quality` / `save_view_style` / `toggle_option`
+      # all funnel into `save_config` -> `PeerConfig::store`, so those scratch
+      # choices used to become the user's opinion about that peer and showed up
+      # in the main window (which loads the same peers/<id>.toml).
+      #
+      # The same guard covers the v116 LAN quality hint: it rewrites balanced
+      # and best into LAN_ULTRA_IMAGE_QUALITY, which the server maps to about
+      # 20x bitrate. Every wall cell dials a LAN address, so asking for
+      # balanced there would have produced ~20x, and nine of those saturate the
+      # uplink. The wall now gets the tier it asks for.
+      - name: Screen wall sessions do not persist peer settings (v380)
+        shell: bash
+        run: |
+          python3 patches/quality/patch_session_settings_isolation.py .
+          C=src/client.rs
+          grep -qF 'fn persist_config(&self) -> bool' "$C" \
+            || { echo "[FAIL] v380: no persist guard on the login config handler"; exit 1; }
+          grep -qF 'if !self.persist_config() {' "$C" \
+            || { echo "[FAIL] v380: a wall session still reads the peer file"; exit 1; }
+          grep -qF 'return self.config.clone();' "$C" \
+            || { echo "[FAIL] v380: the in-memory copy is never returned"; exit 1; }
+          test "$(grep -cF 'self.persist_config()' "$C")" -eq 3 \
+            || { echo "[FAIL] v380: expected 3 guard call sites (load + save + toggle)"; exit 1; }
+          grep -qF 'if !self.is_screen_wall' "$C" \
+            || { echo "[FAIL] v380: the LAN quality hint still upgrades a wall cell"; exit 1; }
+          echo "[OK] v380: screen-wall sessions keep their settings in memory only"
 
       - name: cqp quality (v116)
         if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
