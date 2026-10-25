@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: f4915f75ab9a27fd9441b9407c4471c39c083cf5
+      patches_sha: b6b9500f8ee76d0eedef7c05807c18f3b2964ebb
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: f4915f75ab9a27fd9441b9407c4471c39c083cf5
+          ref: b6b9500f8ee76d0eedef7c05807c18f3b2964ebb
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -3281,6 +3281,86 @@ jobs:
           print('[OK] v382: wall branch pins I420 ahead of the LAN hint')
           PY
           echo "[OK] v382: wall cells keep the tier they ask for, on I420"
+
+      # [v383] A wall cell that logs in and then waits half a minute for a
+      # picture is not a network problem. Field log 2026-10-25, one student
+      # host, four sessions in a row: the capturer took 1.6 s, then 18.5 s,
+      # 33.5 s and 58.1 s. The D3D11 device and the output duplication are only
+      # released when the driver feels like it, so every rebuild is slower than
+      # the last one. Once a build is slow, or falls back to GDI, this process
+      # stops trying DXGI.
+      - name: A slow capturer keeps GDI, a slow login is not a failure (v383)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python3 patches/video/patch_sticky_gdi_capturer.py .
+          DX=libs/scrap/src/dxgi/mod.rs
+          VS=src/server/video_service.rs
+          grep -qF 'static FORCE_GDI: AtomicBool = AtomicBool::new(false);' "$DX" \
+            || { echo "[FAIL] v383: no process-wide GDI flag"; exit 1; }
+          test "$(grep -cF 'static FORCE_GDI: AtomicBool = AtomicBool::new(false);' "$DX")" -eq 1 \
+            || { echo "[FAIL] v383: expected exactly one GDI flag"; exit 1; }
+          grep -qF 'let mut res = if display.gdi || force_gdi() {' "$DX" \
+            || { echo "[FAIL] v383: the capturer constructor ignores the flag"; exit 1; }
+          test "$(grep -cF 'scrap::dxgi::set_force_gdi(true);' "$VS")" -eq 2 \
+            || { echo "[FAIL] v383: expected exactly two trigger points"; exit 1; }
+          python3 - "$VS" <<'PY' || exit 1
+          import sys
+          s = open(sys.argv[1], encoding='utf-8').read()
+          i = s.find('fn get_capturer_monitor')
+          j = s.find('fn get_capturer_camera')
+          if i < 0 or j < i:
+              print('[FAIL] v383: get_capturer_monitor is gone')
+              sys.exit(1)
+          body = s[i:j]
+          for needle, label in (
+              ('let capturer_started = Instant::now();', 'the timer is not started'),
+              ('capturer_started.elapsed()', 'the timer is never read'),
+              ('elapsed > Duration::from_secs(2)', 'no two second budget'),
+              ('capturer.is_gdi()', 'a GDI build does not pin GDI'),
+          ):
+              if needle not in body:
+                  print('[FAIL] v383: ' + label)
+                  sys.exit(1)
+          if body.find('let capturer_started = Instant::now();') > body.find('capturer_started.elapsed()'):
+              print('[FAIL] v383: the timer is read before it is started')
+              sys.exit(1)
+          print('[OK] v383: capturer timing and the GDI pin are wired')
+          PY
+          # The teacher side: a logged-in cell is not a failed connection. The
+          # budget counts from the login, the cell says it is getting a picture
+          # instead of declaring the peer dead, and a peer that is still
+          # building its capturer is not offered a retry button.
+          M=flutter/lib/desktop/widgets/mini_remote_view.dart
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          grep -qF 'static const Duration _kNoPictureBudget = Duration(seconds: 30);' "$M" \
+            || { echo "[FAIL] v383: no 30 s no-picture budget"; exit 1; }
+          grep -qF '_loginAt ??= DateTime.now();' "$M" \
+            || { echo "[FAIL] v383: the budget does not start at the login"; exit 1; }
+          grep -qF 'Future<void> _onConnectTimeout() async {' "$M" \
+            || { echo "[FAIL] v383: the timeout handler is missing"; exit 1; }
+          grep -qF 'Duration(milliseconds: 15000 + widget.openDelayMs), _onConnectTimeout);' "$M" \
+            || { echo "[FAIL] v383: the connect budget ignores the staggered dial"; exit 1; }
+          if grep -qF 'Timer(const Duration(seconds: 15), () async {' "$M"; then
+            echo "[FAIL] v383: the old inline 15 s verdict is back"; exit 1
+          fi
+          if grep -qF 'logged in but no picture after 15s' "$M"; then
+            echo "[FAIL] v383: the old 15 s verdict is still there"; exit 1
+          fi
+          grep -qF "'Getting Picture'" "$M" \
+            || { echo "[FAIL] v383: the cell never says it is getting a picture"; exit 1; }
+          grep -qF 'if (!_waitingPicture) ...[' "$M" \
+            || { echo "[FAIL] v383: a starting peer is still offered a retry"; exit 1; }
+          grep -qF 'this.openDelayMs = 0,' "$M" \
+            || { echo "[FAIL] v383: the cell cannot be staggered"; exit 1; }
+          grep -qF 'openDelayMs: i * 300 > 2400 ? 2400 : i * 300,' "$W" \
+            || { echo "[FAIL] v383: cells still dial in the same millisecond"; exit 1; }
+          for L in src/lang/cn.rs src/lang/en.rs; do
+            grep -qF '"Getting Picture"' "$L" \
+              || { echo "[FAIL] v383: $L has no label for the waiting state"; exit 1; }
+          done
+          echo "[OK] v383: slow capturers pin GDI, slow logins are not called failures"
 
       - name: cqp quality (v116)
         if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
