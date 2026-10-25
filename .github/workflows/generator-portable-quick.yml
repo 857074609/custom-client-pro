@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 6b67c20ad3e7beb084e95a97e5acb9f3af444ba3
+      patches_sha: f4915f75ab9a27fd9441b9407c4471c39c083cf5
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 6b67c20ad3e7beb084e95a97e5acb9f3af444ba3
+          ref: f4915f75ab9a27fd9441b9407c4471c39c083cf5
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2591,6 +2591,60 @@ jobs:
             echo "[FAIL] v381: the cell title still falls back to the host name"; exit 1
           fi
           echo "[OK] v381: scan list carries dialable peers only, titles use the alias only"
+
+      # [v382] A wall cell always dials a LAN address, so the v116 LAN quality
+      # hint fired on every cell - and it rewrites an empty/balanced/best quality
+      # into LAN_ULTRA_IMAGE_QUALITY, which the peer maps to a bitrate ratio of
+      # 20. V379 asked for "low" (not on the whitelist) and was fine; V380 moved
+      # the cells to "balanced" and three of them pinned the teacher at 100% CPU
+      # while the first frame took 5 to 63 seconds. The hint also forces I444 and
+      # an AV1 preference, which only a software encoder can satisfy.
+      #
+      # The switch now excludes wall sessions (all four call sites at once), and
+      # the chroma is pinned to I420 because codec::preference() reads `i444`
+      # straight from the peer file instead of going through load_config().
+      - name: Screen wall cells skip the LAN quality hint (v382)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          python3 patches/quality/patch_wall_skip_lan_quality.py .
+          C=src/client.rs
+          grep -qF 'fn is_lan_quality_optimization_enabled(&self) -> bool {' "$C" \
+            || { echo "[FAIL] v382: the LAN quality switch is gone"; exit 1; }
+          test "$(grep -cF 'fn is_lan_quality_optimization_enabled' "$C")" -eq 1 \
+            || { echo "[FAIL] v382: expected exactly one switch definition"; exit 1; }
+          SW="$(sed -n '/fn is_lan_quality_optimization_enabled/,/^    }/p' "$C")"
+          printf '%s' "$SW" | grep -qF '!self.is_screen_wall' \
+            || { echo "[FAIL] v382: the wall guard is not inside the switch"; exit 1; }
+          G=$(printf '%s' "$SW" | grep -n '!self.is_screen_wall' | cut -d: -f1)
+          P=$(printf '%s' "$SW" | grep -n 'self.prefer_lan_quality' | cut -d: -f1)
+          test -n "$G" -a -n "$P" -a "$G" -lt "$P" \
+            || { echo "[FAIL] v382: the wall guard is evaluated after prefer_lan_quality"; exit 1; }
+          grep -qF 'decoding.prefer_chroma = Chroma::I420.into();' "$C" \
+            || { echo "[FAIL] v382: wall cells are not pinned to I420"; exit 1; }
+          test "$(grep -cF 'decoding.prefer_chroma = Chroma::I420.into();' "$C")" -eq 1 \
+            || { echo "[FAIL] v382: expected exactly one I420 pin"; exit 1; }
+          test "$(grep -cF 'decoding.prefer_chroma = Chroma::I444.into();' "$C")" -eq 1 \
+            || { echo "[FAIL] v382: the v116 I444 branch must stay intact for non-wall sessions"; exit 1; }
+          python3 - "$C" <<'PY' || exit 1
+          import sys
+          s = open(sys.argv[1], encoding='utf-8').read()
+          i = s.find('fn get_supported_decoding')
+          if i < 0:
+              print('[FAIL] v382: get_supported_decoding is gone')
+              sys.exit(1)
+          body = s[i:s.find('fn get_image_quality_enum', i)]
+          pin = body.find('decoding.prefer_chroma = Chroma::I420.into();')
+          lan = body.find('if self.is_lan_quality_optimization_enabled()')
+          if pin < 0 or lan < 0 or pin > lan:
+              print('[FAIL] v382: the I420 pin must run before the LAN branch')
+              sys.exit(1)
+          if body.count('if self.is_screen_wall {') != 1:
+              print('[FAIL] v382: the wall branch is not exactly one if-statement')
+              sys.exit(1)
+          print('[OK] v382: wall branch pins I420 ahead of the LAN hint')
+          PY
+          echo "[OK] v382: wall cells keep the tier they ask for, on I420"
 
       - name: cqp quality (v116)
         if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
