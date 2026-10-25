@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 24a64cd07367a8192446ea63108b5432a0dd8b10
+      patches_sha: 46293869b9a68090ca366524bffc1b4a0de44e1c
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 24a64cd07367a8192446ea63108b5432a0dd8b10
+          ref: 46293869b9a68090ca366524bffc1b4a0de44e1c
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1389,6 +1389,15 @@ jobs:
             || { echo "[FAIL] v379: a long repair is still cut off at two minutes"; exit 1; }
           grep -qF 'const NAK_STALL_ROUNDS: u32 = 12;' "$BF" \
             || { echo "[FAIL] v379: the receiver still stops after a fixed round count"; exit 1; }
+          # [v380] The receive folder is named after the application, so the CI
+          # app name reaches the student's Downloads without a second variable.
+          grep -qF 'base.join("Downloads").join(receive_dir_name())' "$BF" \
+            || { echo "[FAIL] v380: the receive folder is not named after the app"; exit 1; }
+          grep -qF 'let raw = crate::common::get_app_name();' "$BF" \
+            || { echo "[FAIL] v380: the folder name does not come from the app name"; exit 1; }
+          if grep -qF 'LnDeskFiles' "$BF"; then
+            echo "[FAIL] v380: a hard-coded receive folder name is back"; exit 1
+          fi
           grep -qF 'if gaps < best_gaps {' "$BF" \
             || { echo "[FAIL] v379: the receiver does not track repair progress"; exit 1; }
           # [v375] One stream per wall, and the receiver answers first.
