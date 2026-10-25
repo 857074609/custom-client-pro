@@ -412,7 +412,7 @@ jobs:
       - name: Resolve UI variant
         shell: bash
         run: |
-          # [LnDesk v152] single gate for every interface-variant step.
+          # [v152] single gate for every interface-variant step.
           if [ "${{ inputs.ui_mode }}" != "true" ]; then
             echo "UI_VARIANT=upstream" >> $GITHUB_ENV
           elif [ "$CLIENT_TYPE" = "incoming" ]; then
@@ -441,8 +441,8 @@ jobs:
         if: env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: |
-          # [LnDesk v166] The upstream variant compiles the stock upstream
-          # src/lang/cn.rs, which carries none of the LnDesk keys: the invite /
+          # [v166] The upstream variant compiles the stock upstream
+          # src/lang/cn.rs, which carries none of the product-line keys: the invite /
           # share dialogs live in invite.dart and every one of their translate()
           # keys would fall back to English. Reuse the customized language files
           # here too, so the upstream incoming build is localized exactly like
@@ -460,11 +460,11 @@ jobs:
         if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: |
-          # [LnDesk v166] Runs FIRST: it creates the shared Row that the invite
+          # [v166] Runs FIRST: it creates the shared Row that the invite
           # and copy scripts append themselves to, in that order
           # (Share -> Invite -> Copy -- same order as the custom home page).
           python3 patches/ui/patch_share_button_uimode_false.py .
-          grep -qF "[LnDesk share button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream share button not injected"; exit 1; }
+          grep -qF "[share button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream share button not injected"; exit 1; }
           grep -qF '("Share", "分享")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Share key"; exit 1; }
           echo "[OK] v152: upstream share button applied"
 
@@ -473,7 +473,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/ui/patch_invite_button_uimode_false.py .
-          grep -qF "[LnDesk invite button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream invite button not injected"; exit 1; }
+          grep -qF "[invite button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: upstream invite button not injected"; exit 1; }
           grep -qF '("Invite", "邀请")' src/lang/cn.rs || { echo "[FAIL] v152: cn.rs lacks the Invite key"; exit 1; }
           echo "[OK] v152: upstream invite button applied"
 
@@ -481,13 +481,13 @@ jobs:
         if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: |
-          # [LnDesk v166] Runs AFTER share/invite on purpose: the three upstream
+          # [v166] Runs AFTER share/invite on purpose: the three upstream
           # entries share one Row in the custom home page's order
           # (Share -> Invite -> Copy), and each script appends itself at the
           # previous script's end marker. The upstream page has no
           # COPY_BUTTON_CONTROL marker, so a script (not sed) injects it.
           python3 patches/ui/patch_add_copy_button_uimode_false.py .
-          grep -qF "[LnDesk copy button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v166: upstream copy button not injected"; exit 1; }
+          grep -qF "[copy button]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v166: upstream copy button not injected"; exit 1; }
           grep -qF '("Copy ID & Password"' src/lang/cn.rs || { echo "[FAIL] v166: cn.rs lacks the Copy ID & Password key"; exit 1; }
           echo "[OK] v166: upstream copy button applied (one click copies ID + password + IP + iroh)"
 
@@ -495,11 +495,11 @@ jobs:
         if: env.UI_VARIANT == 'upstream' && env.CLIENT_TYPE == 'incoming'
         shell: bash
         run: |
-          # [LnDesk v152] ported from desktop_home_page_quick.dart: keep the
+          # [v152] ported from desktop_home_page_quick.dart: keep the
           # settings tab from being squeezed back to the home auto-fit size
           # after a theme/language tree rebuild.
           python3 patches/ui/patch_window_size_guard_uimode_false.py .
-          grep -qF "[LnDesk window size guard]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: window size guard not injected"; exit 1; }
+          grep -qF "[window size guard]" flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v152: window size guard not injected"; exit 1; }
           echo "[OK] v152: window size guard applied"
 
 
@@ -625,7 +625,7 @@ jobs:
           python3 patches/network/patch_V102_happy_eyeballs_lift.py .
           grep -q "prod-line v102 happy-eyeballs-lift" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing v102 marker"; exit 1; }
           grep -q "DNS_LOOKUP_TIMEOUT_SEC" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] socket_client.rs missing DNS_LOOKUP_TIMEOUT_SEC"; exit 1; }
-          # [LnDesk dns-flush] A DDNS host that moved to a new IP stays pinned inside
+          # [dns-flush] A DDNS host that moved to a new IP stays pinned inside
           # the OS resolver cache (Windows Dnscache honours the A-record TTL), so the
           # client keeps dialling the dead address and never reconnects. Verify the
           # flush hook actually shipped -- at patch time, not 40 minutes into the build.
@@ -671,7 +671,7 @@ jobs:
           # 标记位，这里才注入真按钮。放在本步骤内是为了与 inputs.screen_wall 同步
           # 门控——未勾选时 newScreenWallWindow 根本不存在，硬编码进模板会编译失败。
           python3 patches/ui/patch_both_screen_wall_button.py .
-          grep -qF "[LnDesk v224 screen-wall-btn-import]" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v224: screen wall button import not injected"; exit 1; }
+          grep -qF "[v224 screen-wall-btn-import]" flutter/lib/desktop/pages/connection_page.dart || { echo "[FAIL] v224: screen wall button import not injected"; exit 1; }
           echo "[OK] v224: both 右卡屏幕墙按钮已注入"
 
       - name: Screen wall v107 consolidated chain (multi-instance + preview + add-to-wall + idle exemption)
@@ -753,7 +753,7 @@ jobs:
           # 2) The 1920x1080 button did nothing on view-only sessions (the controlled
           #    side's change_resolution is gated on `if self.keyboard`) and on peers
           #    whose SupportedResolutions lacks 1920x1080.
-          grep -q "LnDesk v132\] Let Escape ALSO reach the local Flutter UI" src/keyboard.rs || { echo "[FAIL] keyboard.rs: v132 Escape passthrough missing"; exit 1; }
+          grep -q "v132\] Let Escape ALSO reach the local Flutter UI" src/keyboard.rs || { echo "[FAIL] keyboard.rs: v132 Escape passthrough missing"; exit 1; }
           grep -q "if key == Key::Escape {" src/keyboard.rs || { echo "[FAIL] keyboard.rs: v132 Escape branch missing"; exit 1; }
           grep -q "_ffi.ffiModel.viewOnly" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution button lacks the view-only guard"; exit 1; }
           grep -q "Unsupported resolution" flutter/lib/desktop/widgets/mini_remote_view.dart || { echo "[FAIL] mini_remote_view.dart: resolution precheck missing"; exit 1; }
@@ -1172,7 +1172,7 @@ jobs:
           # 仍在用）。暗色主题走独立硬编码值（#24252B / #18191E），完全不受影响，
           # 用户仍可正常切深色模式——补丁内已加反向断言校验这点。
           python3 patches/ui/patch_light_background_white.py .
-          grep -qF "[LnDesk v224 light background white]" flutter/lib/common.dart || { echo "[FAIL] v224: light background marker not injected"; exit 1; }
+          grep -qF "[v224 light background white]" flutter/lib/common.dart || { echo "[FAIL] v224: light background marker not injected"; exit 1; }
           # 正向：三处必须已是 Colors.white
           grep -q "fillColor: Colors.white," flutter/lib/common.dart || { echo "[FAIL] v224: input fillColor not white"; exit 1; }
           grep -q "cardColor: Colors.white," flutter/lib/common.dart || { echo "[FAIL] v224: cardColor not white"; exit 1; }
@@ -1219,7 +1219,7 @@ jobs:
           if grep -q "Icons.refresh," flutter/lib/common/widgets/peer_tab_page.dart; then
             echo "[FAIL] v224: old refresh glyph still present"; exit 1
           fi
-          grep -qF "[LnDesk v224 font-awesome icons]" flutter/lib/common.dart || { echo "[FAIL] v224: FA marker not injected"; exit 1; }
+          grep -qF "[v224 font-awesome icons]" flutter/lib/common.dart || { echo "[FAIL] v224: FA marker not injected"; exit 1; }
           echo "[OK] v224: Font Awesome 4.7 图标已接入"
 
       - name: Tab bar chip style + restore screen-wall entry icon (v226b)
@@ -1237,11 +1237,11 @@ jobs:
           fi
           grep -q "decoration: null" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab container background not removed (decoration:null)"; exit 1; }
           grep -q "Divider(height: 1, thickness: 1)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab top full-width divider missing"; exit 1; }
-          grep -qF "[LnDesk v227 tab divider]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab divider marker missing"; exit 1; }
-          grep -qF "[LnDesk v227c flat tab strip]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: flat tab strip marker missing"; exit 1; }
+          grep -qF "[v227 tab divider]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227: tab divider marker missing"; exit 1; }
+          grep -qF "[v227c flat tab strip]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: flat tab strip marker missing"; exit 1; }
           grep -q "Colors.white" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: explicit white surface missing (flat strip / search)"; exit 1; }
           grep -q "withOpacity(0.5)" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v227c: toolbar icon tint 0.5 missing"; exit 1; }
-          # [LnDesk v246] 这两条断言检查的是 patch_screen_wall.py 的产物，而该补丁受
+          # [v246] 这两条断言检查的是 patch_screen_wall.py 的产物，而该补丁受
           # inputs.screen_wall 门控；screen_wall 关闭时产物本就不存在，断言必须一并门控，
           # 否则 control_custom + screen_wall!=true 的组合必然 FAIL（v226b 门控缺陷修复）。
           if [ "${{ inputs.screen_wall }}" = "true" ]; then
@@ -1249,7 +1249,7 @@ jobs:
             grep -q "IconFont.faThLarge" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v226b: screen-wall glyph not FA faThLarge"; exit 1; }
           fi
           grep -q "color: color, size: 18" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab icon size not unified to 18"; exit 1; }
-          grep -qF "[LnDesk v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
+          grep -qF "[v225 tab icons]" flutter/lib/common/widgets/peer_tab_page.dart || { echo "[FAIL] v225: tab style marker missing"; exit 1; }
           echo "[OK] v227: tab bar no background, icons visible, screen-wall icon restored (FA faThLarge)"
       - name: Address-book bulk import to screen walls (v362)
         if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
@@ -1271,7 +1271,7 @@ jobs:
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
-          # [LnDesk v336] 标题前「卡片标识」门控来自 extras JSON（docker 前端
+          # [v336] 标题前「卡片标识」门控来自 extras JSON（docker 前端
           # 上传后 card_mark_link='true'，card_mark.png 由下方 Download 步骤
           # 落入运行期 bundle）；标题后「品牌标识」沿用既有 logolink input。
           CARD_MARK: ${{ fromJson(inputs.extras || '{}').card_mark_link }}
@@ -1308,7 +1308,7 @@ jobs:
           if grep -q "Icons.help_outline_outlined" flutter/lib/common/widgets/connection_page_title.dart; then
             echo "[FAIL] v224: old help glyph still present"; exit 1
           fi
-          grep -qF "[LnDesk v336 both title]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v336: title marker missing"; exit 1; }
+          grep -qF "[v336 both title]" flutter/lib/common/widgets/connection_page_title.dart || { echo "[FAIL] v336: title marker missing"; exit 1; }
           if grep -qF "'assets/logo_v15_cn.png'" flutter/lib/desktop/pages/connection_page.dart; then
             echo "[FAIL] v244: right-card LOGO container still present"; exit 1
           fi
@@ -2106,7 +2106,7 @@ jobs:
         # incoming / outgoing 不受影响。
         run: |
           python3 patches/update/patch_home_window_size.py
-          grep -q "kLnDeskHomeWidth" ./flutter/lib/main.dart || { echo "[FAIL] v145: both-mode home window size floor not injected"; exit 1; }
+          grep -q "kHomeWidthFixed" ./flutter/lib/main.dart || { echo "[FAIL] v145: both-mode home window size floor not injected"; exit 1; }
           grep -q -F '!bind.isIncomingOnly() && !bind.isOutgoingOnly()' ./flutter/lib/main.dart || { echo "[FAIL] v145: size floor guard is not the both-mode test"; exit 1; }
       
       
@@ -2126,7 +2126,7 @@ jobs:
         # 修复国内网络下默认国外 STUN 慢/被墙导致 P2P 打洞失败、只能走中继或连接失败的问题。
         # 必须对所有构建类型生效（原先只在 direction=both && hide_sensitive_ui 时运行，普通构建仍是国外 STUN）。
         #
-        # [LnDesk v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
+        # [v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
         # cloudflare / nextcloud / google 三个境外项在 2026-10-10 现场双端日志里
         # 每一项都 timeout（reason_code=timeout, error=io: stun timeout），既拿不到
         # 映射又白占 select_ok 的探测名额。口径与 super_p2p 侧 V298 的
@@ -2188,8 +2188,8 @@ jobs:
           python3 patches/security/patch_server_lock_compiletime.py
 
       - name: Apply keyframe interval patch (v259)
-        # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear.
-        # [LnDesk v308] This is an image-quality change, so it is gated behind the
+        # [v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear.
+        # [v308] This is an image-quality change, so it is gated behind the
         # builder's "image quality optimisation" checkbox -- unchecking it must
         # leave the upstream keyframe behaviour untouched for A/B isolation.
         shell: bash
@@ -2285,7 +2285,7 @@ jobs:
       - name: File transfer resilience (v320)
         shell: bash
         run: |
-          # [LnDesk v320] file-transfer resilience (client send timeout + pump stall guard)
+          # [v320] file-transfer resilience (client send timeout + pump stall guard)
           #
           # Two client-side guards so a stalled upload fails
           # VISIBLY instead of freezing the progress bar forever.
@@ -2308,9 +2308,9 @@ jobs:
           # Guards: both markers, the actual timeout wire-ups, and the
           # timeout constant typed as u64 milliseconds (hbb_common::timeout
           # takes ms, not a Duration -- a Duration here fails to compile).
-          grep -qF "[LnDesk v320] client send timeout" src/client/io_loop.rs || { echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "[v320] client send timeout" src/client/io_loop.rs || { echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"; exit 1; }
           grep -qF "peer.set_send_timeout(V320_CLIENT_SEND_TIMEOUT_MS);" src/client/io_loop.rs || { echo "[FAIL] v320: client set_send_timeout call missing"; exit 1; }
-          grep -qF "[LnDesk v320] transfer stall timeout" src/client/io_loop.rs || { echo "[FAIL] v320: transfer stall-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "[v320] transfer stall timeout" src/client/io_loop.rs || { echo "[FAIL] v320: transfer stall-timeout marker missing in io_loop.rs"; exit 1; }
           grep -qF "const V320_TRANSFER_STALL_TIMEOUT_MS: u64 = 60_000;" src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout constant must be u64 milliseconds"; exit 1; }
           grep -qF "V320_TRANSFER_STALL_TIMEOUT_MS," src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout not passed to timeout()"; exit 1; }
           echo "[OK] v320: client send timeout + transfer pump stall guard in place"
@@ -2318,7 +2318,7 @@ jobs:
       - name: File-transfer version race (v334)
         shell: bash
         run: |
-          # [LnDesk v334] floor the peer version with our own at the overwrite-
+          # [v334] floor the peer version with our own at the overwrite-
           # detection (od) and resume gates. lc.version is 0 until PeerInfo lands,
           # so a file dragged in the first seconds of a session silently lost od
           # + resume and every retry restarted from byte 0. The resume offset is
@@ -2328,8 +2328,8 @@ jobs:
           python3 patches/file_transfer/patch_transfer_version_race.py .
           # Semantic guards (counts + absence of the old form, NOT text-match of
           # intermediate layout) so a later harmless reformat cannot false-FAIL.
-          grep -qF "[LnDesk v334]" src/client/io_loop.rs || { echo "[FAIL] v334: marker missing in io_loop.rs"; exit 1; }
-          _v334_m=$(grep -c "\[LnDesk v334\]" src/client/io_loop.rs)
+          grep -qF "[v334]" src/client/io_loop.rs || { echo "[FAIL] v334: marker missing in io_loop.rs"; exit 1; }
+          _v334_m=$(grep -c "\[v334\]" src/client/io_loop.rs)
           [ "$_v334_m" -eq 6 ] || { echo "[FAIL] v334: expected 6 markers, got $_v334_m"; exit 1; }
           _v334_floor=$(grep -c "peer_ver_floor" src/client/io_loop.rs)
           [ "$_v334_floor" -eq 4 ] || { echo "[FAIL] v334: expected 4 peer_ver_floor refs, got $_v334_floor"; exit 1; }
@@ -2342,7 +2342,7 @@ jobs:
           echo "[OK] v334: peer-version floor + fresh-job resume in place"
 
 
-      # [LnDesk v302b -> v307a] the hwcodec fork now carries force_i all the way
+      # [v302b -> v307a] the hwcodec fork now carries force_i all the way
       # down: 944e5e8 widened EncodeCall to 6 args, 11f1b3a made
       # Encoder::encode actually forward the value instead of a literal 0.
       # Both are pinned by the v260 step via patch_hwcodec_zerolatency.py REV.
@@ -2453,7 +2453,7 @@ jobs:
           # 已部署机器走注册表 InstallLocation，升级原地不动。APPDATA 缺失时
           # 回退上游 Program Files 逻辑。
           python3 patches/install/patch_install_path.py .
-          grep -qF "[LnDesk v227c appdata-install]" src/platform/windows.rs || { echo "[FAIL] v227c: appdata install path marker missing"; exit 1; }
+          grep -qF "[v227c appdata-install]" src/platform/windows.rs || { echo "[FAIL] v227c: appdata install path marker missing"; exit 1; }
           grep -q 'std::env::var("APPDATA")' src/platform/windows.rs || { echo "[FAIL] v227c: APPDATA lookup missing"; exit 1; }
 
       - name: Install LLVM and Clang
@@ -2567,7 +2567,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/quality/patch_delay_fix.py .
-          grep -qF '// [LnDesk v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
+          grep -qF '// [v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
 
 
       
@@ -2619,7 +2619,7 @@ jobs:
         if: fromJson(inputs.extras).addcopy == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
-          # [LnDesk v167] 地址锚定到「独占一行的标记行」，只注释紧随其后的提前
+          # [v167] 地址锚定到「独占一行的标记行」，只注释紧随其后的提前
           # return。基准文件的说明注释里也含同名标记词（如 SHARE 段落里
           # "// step (mirrors COPY_BUTTON_CONTROL) ..."），松散地址会误伤注释行。
           # 地址内 {n;/^\/\//!s|^|//|;}：n 取标记的下一行，/^\/\//! 守卫保证该行
@@ -2634,7 +2634,7 @@ jobs:
         if: fromJson(inputs.extras).addshare == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
-          # [LnDesk v151] 分享按钮与复制按钮同极性：基准文件里被提前 return 关闭
+          # [v151] 分享按钮与复制按钮同极性：基准文件里被提前 return 关闭
           #   // SHARE_BUTTON_CONTROL
           #   return const SizedBox.shrink();
           # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
@@ -2652,14 +2652,14 @@ jobs:
         if: fromJson(inputs.extras).addinvite == 'true' && env.UI_VARIANT == 'incoming_custom'
         shell: bash
         run: |
-          # [LnDesk v160] 邀请按钮与复制/分享同极性：基准文件里被提前 return 关闭
+          # [v160] 邀请按钮与复制/分享同极性：基准文件里被提前 return 关闭
           #   // INVITE_BUTTON_CONTROL
           #   return const SizedBox.shrink();
           # sed 把标记的下一行行首注释掉，提前 return 即失效、按钮生效。
           # 定制 UI 下按钮由 desktop_home_page_new.dart 的 INVITE_BUTTON_CONTROL 标记
           # 按复选框经本步骤 sed 揭示；上游版则由 patch_invite_button_uimode_false.py 注入。
           sed -i '/^[[:space:]]*\/\/[[:space:]]*INVITE_BUTTON_CONTROL[[:space:]]*$/{n;/^\/\//!s|^|//|;}' flutter/lib/desktop/pages/desktop_home_page.dart
-          # [LnDesk v167] 旧门禁为 grep -A1 "INVITE_BUTTON_CONTROL" | grep -q "//return"，
+          # [v167] 旧门禁为 grep -A1 "INVITE_BUTTON_CONTROL" | grep -q "//return"，
           # 两处同时失配：①sed 产物是行首 "//" + 原有缩进（"//  return ..."），
           # "//return" 连写永远搜不到；②标记词在文件里出现两次（第 472 行说明
           # 注释 + 第 477 行真标记），-A1 输出被 - 分隔符切成两组、语义不确定。
@@ -2709,7 +2709,7 @@ jobs:
           python3 patches/privacy/patch_privacy_physical_backlight_off.py
 
       - name: TurnOffMonitor
-        # [LnDesk v223] 独立构建开关「启用关闭显示器」：默认启用（!= 'false'，
+        # [v223] 独立构建开关「启用关闭显示器」：默认启用（!= 'false'，
         # 兼容不带该键的旧 dispatch / 手动 API），显式 false 才跳过。与
         # applyprivacy 完全解耦——本步骤自带工具栏、proto 与被控端执行链。
         if: fromJson(inputs.extras).turn_off_monitor != 'false'
@@ -2915,7 +2915,7 @@ jobs:
           grep -q "invite_otp" ./src/hbbs_http/sync.rs || { echo "[FAIL] v143: heartbeat invite_otp parsing missing"; exit 1; }
           grep -q "startInviteWatcher" ./flutter/lib/main.dart || { echo "[FAIL] v143: invite watcher not started in main.dart"; exit 1; }
           grep -q "common/invite.dart" ./flutter/lib/main.dart || { echo "[FAIL] v143: main.dart does not import invite.dart"; exit 1; }
-          # [LnDesk v148] invite nickname + system toast gates
+          # [v148] invite nickname + system toast gates
           grep -q "from_nickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: invite nickname attach/parse missing"; exit 1; }
           grep -q "_myNickname" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: _myNickname helper missing"; exit 1; }
           grep -q "_showSystemNotification" ./flutter/lib/common/invite.dart || { echo "[FAIL] v148: system toast helper missing"; exit 1; }
@@ -2924,11 +2924,11 @@ jobs:
           # ----------------------------------------------------------------------
           # v150 invite watch（原独立步骤，条件与 v143 完全相同，合并到此）
           # ----------------------------------------------------------------------
-          python3 patches/ui/patch_invite_watch.py .          # [LnDesk v150] brand name for the toast, injected from the
+          python3 patches/ui/patch_invite_watch.py .          # [v150] brand name for the toast, injected from the
           # workflow input (RustDesk default for stock builds).
           APPNAME="${{ inputs.appname }}"
           if [ -z "$APPNAME" ] || [ "$APPNAME" = "rustdesk" ]; then APPNAME="RustDesk"; fi
-          echo "// [LnDesk v150] brand name injected from the workflow input." > flutter/lib/common/brand.dart
+          echo "// [v150] brand name injected from the workflow input." > flutter/lib/common/brand.dart
           echo "const kBrandAppName = '$APPNAME';" >> flutter/lib/common/brand.dart
           # v150: the tray process owns the last-resort invitation poll and
           # wakes the connection manager; the main window must hide instead
@@ -2947,7 +2947,7 @@ jobs:
           grep -q "_applyIrohPreference" ./flutter/lib/common/invite.dart || { echo "[FAIL] v150: invite iroh preference helper missing"; exit 1; }
           test $(grep -c "_applyIrohPreference" ./flutter/lib/common/invite.dart) -eq 2 || { echo "[FAIL] v150: iroh preference must be applied on the main-window accept path"; exit 1; }
           # [V216] connection_page_both.dart 仅 both 模式(control_custom)被 cp 使用。
-          # [LnDesk v288] V240 起「官网」按键退役、改回「分享」(onShare -> showShareDialog)，
+          # [v288] V240 起「官网」按键退役、改回「分享」(onShare -> showShareDialog)，
           # 原 hydesk.cn 断言随之失效（明文域名已被 V227c 字符码化并随按键一并移除）；
           # 改为断言分享入口本身。此前该门禁从未执行（both 的 addinvite 恒 false，整步
           # 跳过），故长期隐身；v288 放开 both 邀请后才会跑到。
@@ -3007,7 +3007,7 @@ jobs:
           ! grep -q "__IROH_RELAY_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_3 placeholder not substituted"; exit 1; }
           ! grep -q "__IROH_DNS_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL_3 placeholder not substituted"; exit 1; }
           grep -q "CUSTOM_IROH_RELAY_URL_3" ./src/iroh_transport.rs || { echo "[FAIL] iroh third backup relay constant missing"; exit 1; }
-          # [LnDesk v290] pkarr publish size guard. Each published attribute
+          # [v290] pkarr publish size guard. Each published attribute
           # is its own DNS TXT record and pkarr hard-caps the compressed
           # packet at 1000 bytes; a multi-homed host used to overflow it
           # ("expected max 1000 bytes but got: 1083") so EVERY self-hosted
@@ -3016,7 +3016,7 @@ jobs:
           grep -q "PKARR_MAX_DIRECT_ADDRS: usize = 12" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr direct-addr cap missing"; exit 1; }
           grep -q "fn pkarr_select_direct_addrs" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr addr prune helper missing"; exit 1; }
           grep -q "retrying relay-only" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr relay-only overflow fallback missing"; exit 1; }
-          # [LnDesk v306] 私网地址降优先级。现场日志里对端发布的是
+          # [v306] 私网地址降优先级。现场日志里对端发布的是
           # `udp: 192.168.98.117:62966` —— 私网地址被当作直连候选参与
           # send_addr() 的 choose()，选中时 best_addr 为空 -> Unconfirmed ->
           # conn_type 合成 Mixed，UI 显示"中继"。pkarr_addr_is_useful() 只排
@@ -3075,7 +3075,7 @@ jobs:
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
           # ----------------------------------------------------------------------
-          # [LnDesk v301] mixed-ok: auto-iroh 的 8 秒白等
+          # [v301] mixed-ok: auto-iroh 的 8 秒白等
           # ----------------------------------------------------------------------
           # [v223] "Direct-first hold" 把 `mixed(udp+relay)` 也当作"还没直连"，
           # 于是握手成功（249ms）后仍钻进 10s 迁移等待，吃掉 client.rs 的
@@ -3410,7 +3410,7 @@ jobs:
         if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
         shell: bash
         run: |
-          # [LnDesk v309] The v116 CPU unsharp mask only runs on pixelbuffer
+          # [v309] The v116 CPU unsharp mask only runs on pixelbuffer
           # frames; H264/H265 decoded through the VRAM (D3D11VA) path stay on
           # the GPU as an ID3D11Texture2D and were never sharpened, so the
           # sharpening slider looked dead on hardware H26x sessions. This adds
@@ -3463,7 +3463,7 @@ jobs:
             cargo fetch
           fi
       - name: gate hwcodec zerolatency fork IS in lock (v260)
-        # [LnDesk v260] INVERTS the v116 NOT-in-lock gate: hwcodec is now
+        # [v260] INVERTS the v116 NOT-in-lock gate: hwcodec is now
         # rerouted to our zerolatency fork (H264/H265 mouse-smear root fix)
         # via a root-Cargo.toml [patch] + a rewritten Cargo.lock source line
         # (patch_hwcodec_zerolatency.py). The v116 assertion would fail every
@@ -4226,22 +4226,22 @@ jobs:
         shell: bash
         run: |
           python3 patches/file_transfer/patch_file_integrity.py .
-          grep -qF "[LnDesk v334x] read block checksum" libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
+          grep -qF "[v334x] read block checksum" libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
           grep -qF "bytes checksum = 6" libs/hbb_common/protos/message.proto || { echo "[FAIL] v334x: checksum field missing in proto"; exit 1; }
           echo "[OK] v334x: file transfer per-block integrity wired"
       - name: File transfer auto-resume after reconnect (v335)
         shell: bash
         run: |
           python3 patches/file_transfer/patch_ft_resume.py .
-          grep -qF "[LnDesk v335] auto-resume on Login" src/ui_cm_interface.rs || { echo "[FAIL] v335: resume marker missing in ui_cm_interface.rs"; exit 1; }
-          grep -qF "[LnDesk v335] overwrite_detection getter" libs/hbb_common/src/fs.rs || { echo "[FAIL] v335: getter marker missing in fs.rs"; exit 1; }
+          grep -qF "[v335] auto-resume on Login" src/ui_cm_interface.rs || { echo "[FAIL] v335: resume marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[v335] overwrite_detection getter" libs/hbb_common/src/fs.rs || { echo "[FAIL] v335: getter marker missing in fs.rs"; exit 1; }
           echo "[OK] v335: file transfer auto-resume wired"
       - name: File transfer auto-resume retry (v335b)
         shell: bash
         run: |
           python3 patches/file_transfer/patch_ft_resume_retry.py .
-          grep -qF "[LnDesk v335b] resume retry helpers" src/ui_cm_interface.rs || { echo "[FAIL] v335b: retry helpers marker missing in ui_cm_interface.rs"; exit 1; }
-          grep -qF "[LnDesk v335b] cancel stops resume retry" src/ui_cm_interface.rs || { echo "[FAIL] v335b: cancel hook marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[v335b] resume retry helpers" src/ui_cm_interface.rs || { echo "[FAIL] v335b: retry helpers marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[v335b] cancel stops resume retry" src/ui_cm_interface.rs || { echo "[FAIL] v335b: cancel hook marker missing in ui_cm_interface.rs"; exit 1; }
           echo "[OK] v335b: file transfer auto-resume retry wired"
       - name: Login timeout watchdog + stale saved-password self-heal (V105)
         shell: bash
@@ -4286,7 +4286,7 @@ jobs:
           # carries both strings byte-for-byte. Asserted only when the
           # customized cn.rs is in play: the upstream-only variant compiles the
           # stock upstream file and must not be forced to use ours.
-          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
+          if grep -qF '[v175]' src/lang/cn.rs; then
             grep -qF '("DNS resolve by address family (IPv6 preferred)"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match toggle title"; exit 1; }
             grep -qF '("Enable IPv6-first DNS resolution for P2P connections.' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the family-match tooltip"; exit 1; }
           fi
@@ -4316,7 +4316,7 @@ jobs:
           # [v175] same translate() path as the family-match toggle: the key and
           # the tooltip must exist in the customized cn.rs, otherwise the row
           # renders in English even on a Chinese UI.
-          if grep -qF '[LnDesk v175]' src/lang/cn.rs; then
+          if grep -qF '[v175]' src/lang/cn.rs; then
             grep -qF '("Iroh first connection"' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the Iroh-first toggle title"; exit 1; }
             grep -qF '("Try the iroh P2P transport first for numeric IDs' src/lang/cn.rs || { echo "[FAIL] v175: cn.rs lacks the Iroh-first tooltip"; exit 1; }
           fi
@@ -4379,14 +4379,14 @@ jobs:
           print("[OK] v338 row order (label length ascending)")
           PY
           echo "[OK] v338 controlled-end system-load rows applied"
-          grep -qF "[LnDesk v227c settings outline]" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings outline marker missing"; exit 1; }
+          grep -qF "[v227c settings outline]" flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings outline marker missing"; exit 1; }
           grep -q "elevation: 0," flutter/lib/desktop/pages/desktop_setting_page.dart || { echo "[FAIL] v227c: settings card elevation 0 missing"; exit 1; }
           echo "[OK] settings section outlines applied"
 
       - name: Relax upstream lint noise for analyze gate
         shell: bash
         run: |
-          # [LnDesk v160] Upstream rustdesk ships many cosmetic lint issues
+          # [v160] Upstream rustdesk ships many cosmetic lint issues
           # (constant_identifier_names / camel_case_types / unnecessary_import /
           # unused_import / unnecessary_this / unused_element) in web-platform
           # files we never patch (lib/web/**, lib/models/web_model.dart,
@@ -4436,7 +4436,7 @@ jobs:
           # burying them inside MSB8066 during 'flutter build'.
           # Only ERRORS are fatal: upstream carries many lint infos/warnings
           # that must not block the build. 'lib' only (test/ often noisy).
-          # [LnDesk v160] cosmetic rules already silenced via flutter/analysis_options.yaml.
+          # [v160] cosmetic rules already silenced via flutter/analysis_options.yaml.
           cd ./flutter
           flutter pub get
           set +e
@@ -4462,12 +4462,12 @@ jobs:
         env:
           SUPER_P2P_REFLECTORS: ${{ fromJson(inputs.extras || '{}').custom_p2p_reflector || '' }}
         run: |
-          # [LnDesk v319] Copy the fully-patched source tree BEFORE compilation
+          # [v319] Copy the fully-patched source tree BEFORE compilation
           # and scrub every server secret, so a safe snapshot can ship next to
           # the binaries. Gated by the docker checkbox "generate source"
           # (generate_source); unchecked builds skip this step entirely.
           # v317: also neutralizes REFLECTORS / preset-password XOR pair /
-          # custom STUN IPs / LnDesk branding, and ships rustdesk/custom_.txt.
+          # custom STUN IPs / product-line branding, and ships rustdesk/custom_.txt.
           # v319: the workspace HEAD is the pristine upstream tag commit and
           # every patch edits the working tree, so `git diff` (after
           # `git add -N` to register patch-created files) is the exact set of
@@ -4670,7 +4670,7 @@ jobs:
           $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
           Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
 
-      # [LnDesk v336] 卡片标识（both 标题前小图标）：与 logo.png 同一投递链
+      # [v336] 卡片标识（both 标题前小图标）：与 logo.png 同一投递链
       # （docker 前端上传 -> MEDIA_ROOT/png/{uuid}/card_mark.png -> GET /png/
       # {uuid}/card_mark.png -> 运行期 bundle）。门控取自 extras 的
       # card_mark_link；未上传时本步骤与标题区注入一并跳过（D1）。
@@ -4731,7 +4731,7 @@ jobs:
           # 顺序必须保证：先加壳、后自解压打包与签名（加壳会使既有签名失效）。
           # 只压 rustdesk.exe + librustdesk.dll；flutter_windows.dll（引擎）与
           # WindowInjection.dll（注入 DLL）不压，规避加载兼容与杀软误报放大。
-          # [LnDesk v316] UPX fail-soft：UPX 是可选体积优化，社区源 504 / 网络抽风时重试一次；
+          # [v316] UPX fail-soft：UPX 是可选体积优化，社区源 504 / 网络抽风时重试一次；
           # 仍不可用则打 warning 并跳过加壳（出未加壳包），绝不让 127 带崩整个构建。
           if ! command -v upx >/dev/null 2>&1; then
             choco install upx -y --no-progress || choco install upx -y --no-progress || echo "::warning::choco install upx failed (feed down?)"
@@ -4876,7 +4876,7 @@ jobs:
         if: ${{ fromJson(inputs.extras || '{}').generate_source == 'true' }}
         shell: bash
         run: |
-          # [LnDesk v315] Zip the pre-build snapshot into SignOutput so the
+          # [v315] Zip the pre-build snapshot into SignOutput so the
           # upload step below ships it next to the exe/msi. bsdtar (Git Bash)
           # writes a real zip via -a; fall back to tar.gz if that ever fails.
           set -e
@@ -4947,7 +4947,7 @@ jobs:
           URL="${{ secrets.GENURL }}/save_custom_client"
           TOKEN="${{ fromJson(inputs.extras).token }}"
           UUID="${{ inputs.uuid }}"
-          # [LnDesk v169] Cross-border upload resilience.
+          # [v169] Cross-border upload resilience.
           # Healthy link: 9-18s (~2.4MB/s). Degraded: 8-40KB/s and then the
           # connection is reset (curl 55/56) - run 35582468723 died at 30%
           # after 11m48s, while run 35583260254 crawled the same way for 626s

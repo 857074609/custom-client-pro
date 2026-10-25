@@ -403,7 +403,7 @@ jobs:
           sed -i '' -e 's/("About", "Over")/("About", "Over ${{ inputs.appname }}")/' ./src/lang/nl.rs
 
       - name: Apply domestic STUN fallback (domestic-only)
-        # [LnDesk v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
+        # [v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
         # cloudflare / nextcloud / google 三个境外项在 2026-10-10 现场双端日志里
         # 每一项都 timeout，既拿不到映射又白占 select_ok 的探测名额。口径与
         # super_p2p 侧 V298 的 STUN_TARGETS 一致。
@@ -434,14 +434,14 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_server_lock_compiletime.py
-          # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
+          # [v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
           python3 patches/patch_keyframe_interval.py
           grep -q "else { Some(15) };" src/server/video_service.rs || { echo "[FAIL] video_service.rs keyframe_interval not patched"; exit 1; }
 
       - name: Apply hwcodec zerolatency fork patch (v260)
         shell: bash
         run: |
-          # [LnDesk v260] Root fix for the H264/H265 hardware-encoder mouse
+          # [v260] Root fix for the H264/H265 hardware-encoder mouse
           # smear (V259's 1s IDR only capped the ghost lifetime): reroute the
           # hwcodec git dependency to our fork, pinned to the audited fix
           # commit. The fork forces low-latency hardware encoding:
@@ -463,7 +463,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v261] The virtual-display privacy mode composites the OS
+          # [v261] The virtual-display privacy mode composites the OS
           # cursor into the captured frames (IddCx has no hardware cursor,
           # DWM draws it into the swapchain), but SwitchDisplay.cursor_embedded
           # stayed false -> the controller painted its own cursor overlay on
@@ -473,7 +473,7 @@ jobs:
           # suppresses the overlay (remote_page.dart gates both the
           # CursorPaint overlay and the local pointer on cursorEmbedded).
           python3 patches/patch_privacy_vdisplay_cursor_embedded.py .
-          grep -qF '[LnDesk v261 privacy-cursor-embedded]' src/server/display_service.rs || { echo "[FAIL] v261: cursor_embedded marker missing"; exit 1; }
+          grep -qF '[v261 privacy-cursor-embedded]' src/server/display_service.rs || { echo "[FAIL] v261: cursor_embedded marker missing"; exit 1; }
           grep -q 'is_current_privacy_mode_impl' src/server/display_service.rs || { echo "[FAIL] v261: privacy impl query not wired"; exit 1; }
           echo "[OK] v261: virtual-display privacy reports cursor_embedded=true"
 
@@ -482,7 +482,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v263] v261 regression fix: the embedded-cursor flag
+          # [v263] v261 regression fix: the embedded-cursor flag
           # must follow the ACTIVE encoder. Only the VRAM texture path
           # carries the OS-composited cursor of the privacy virtual
           # display; software encoders (VP8/VP9/AV1/H264RAM) never do, so
@@ -494,9 +494,9 @@ jobs:
           # service) so the controller overlay stays in sync. Must run
           # AFTER the v261 step (its anchor is the v261 output).
           python3 patches/patch_privacy_cursor_by_encoder.py .
-          grep -qF '[LnDesk v263 vram-cursor-flag]' libs/scrap/src/common/codec.rs || { echo "[FAIL] v263: codec.rs flag missing"; exit 1; }
+          grep -qF '[v263 vram-cursor-flag]' libs/scrap/src/common/codec.rs || { echo "[FAIL] v263: codec.rs flag missing"; exit 1; }
           grep -qF 'scrap::codec::is_vram_encoder_active' src/server/display_service.rs || { echo "[FAIL] v263: display_service condition not wired"; exit 1; }
-          grep -qF '[LnDesk v263 vram-cursor-flag]' src/server/video_service.rs || { echo "[FAIL] v263: switchdisplay rebroadcast missing"; exit 1; }
+          grep -qF '[v263 vram-cursor-flag]' src/server/video_service.rs || { echo "[FAIL] v263: switchdisplay rebroadcast missing"; exit 1; }
           echo "[OK] v263: cursor_embedded follows the active encoder"
 
 
@@ -506,7 +506,7 @@ jobs:
           EXTRAS: '${{ inputs.extras }}'
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v269] steeldesk-derived low-latency pipeline, ALL
+          # [v269] steeldesk-derived low-latency pipeline, ALL
           # THREE pieces shipped together (v264/v266 taught us they are
           # inseparable): 1) hw encoder fps follows the QoS target
           # (upstream hardcodes 30); 2) QoS fast-path (1s ratio interval,
@@ -516,10 +516,10 @@ jobs:
           # is_low_latency_mode(): option low-latency-mode Y/N explicit,
           # empty = baked default from extras.low_latency_mode.
           python3 patches/patch_low_latency_pipeline.py .
-          grep -qF '[LnDesk v269 low-latency]' src/server/video_qos.rs || { echo "[FAIL] v269: video_qos helper missing"; exit 1; }
+          grep -qF '[v269 low-latency]' src/server/video_qos.rs || { echo "[FAIL] v269: video_qos helper missing"; exit 1; }
           grep -qF 'framerate: config.fps.unwrap_or(30)' libs/scrap/src/common/vram.rs || { echo "[FAIL] v269: vram fps missing"; exit 1; }
           grep -qF 'fps: Some(VIDEO_QOS.lock().unwrap().highest_fps())' src/server/video_service.rs || { echo "[FAIL] v269: video_service fps feed missing"; exit 1; }
-          grep -qF '[LnDesk v269 low-latency]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop gates missing"; exit 1; }
+          grep -qF '[v269 low-latency]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop gates missing"; exit 1; }
           echo "[OK] v269: low-latency pipeline applied"
 
       - name: Apply QoS ratio asymmetry patch (v297)
@@ -527,7 +527,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v297] Asymmetric ratio recovery, low-latency mode only.
+          # [v297] Asymmetric ratio recovery, low-latency mode only.
           # Sustained full-motion scenes (spin a window) pushed avg_delay past
           # 150ms; upstream's UP path is proportional AND gated on
           # dynamic_screen, so once motion stops the gate closes and the ratio
@@ -536,7 +536,7 @@ jobs:
           # +1000 kbps allowance; DOWN path untouched. Requires the v269
           # is_low_latency_mode() helper, so it MUST run after the step above.
           python3 patches/patch_qos_ratio_asymmetry.py .
-          grep -qF '[LnDesk v297 qos-ratio-asymmetry]' src/server/video_qos.rs || { echo "[FAIL] v297: ratio asymmetry marker missing"; exit 1; }
+          grep -qF '[v297 qos-ratio-asymmetry]' src/server/video_qos.rs || { echo "[FAIL] v297: ratio asymmetry marker missing"; exit 1; }
           grep -qF 'current_ratio + 0.5' src/server/video_qos.rs || { echo "[FAIL] v297: fixed up-step missing"; exit 1; }
           grep -qF 'let up_kbps = if is_low_latency_mode() {' src/server/video_qos.rs || { echo "[FAIL] v297: limiter relaxation missing"; exit 1; }
           echo "[OK] v297: QoS ratio asymmetry (fixed up-step, gate removed, allowance raised)"
@@ -546,7 +546,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v269] client-side cursor prediction with snap/lerp
+          # [v269] client-side cursor prediction with snap/lerp
           # server reconciliation. Self-gating: active only in low-latency
           # mode AND while the cursor is not embedded in the video
           # (virtual-display privacy), tracked live via SwitchDisplay.
@@ -554,16 +554,16 @@ jobs:
           # bridge job regenerates the Dart binding for
           # main_get_cursor_prediction.
           python3 patches/patch_cursor_prediction.py .
-          grep -qF '[LnDesk v269 cursor-prediction]' src/cursor_prediction.rs || { echo "[FAIL] v269: predictor module missing"; exit 1; }
+          grep -qF '[v269 cursor-prediction]' src/cursor_prediction.rs || { echo "[FAIL] v269: predictor module missing"; exit 1; }
           grep -qF 'main_get_cursor_prediction' src/flutter_ffi.rs || { echo "[FAIL] v269: ffi missing"; exit 1; }
-          grep -qF '[LnDesk v269 cursor-prediction]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop hooks missing"; exit 1; }
+          grep -qF '[v269 cursor-prediction]' src/client/io_loop.rs || { echo "[FAIL] v269: io_loop hooks missing"; exit 1; }
           echo "[OK] v269: cursor prediction applied"
       - name: Apply fps240 patch (v270)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v270 fps240] raise fps ceiling 120->240 across the
+          # [v270 fps240] raise fps ceiling 120->240 across the
           # full chain: UI slider (consts.dart kMaxFps), server QoS
           # (video_qos.rs MAX_FPS), controller validation (io_loop.rs),
           # and legacy peer-compat cap (client.rs).
@@ -580,7 +580,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v289] Quality guardrail on top of the VBR rate control
+          # [v289] Quality guardrail on top of the VBR rate control
           # introduced by v260/v274:
           #   - qmin/qmax flow through the hwcodec FFI (ram + vram) into the
           #     vendor SDKs: NVENC enableMinQP/enableMaxQP (qmin is a PAIRED
@@ -602,7 +602,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          # [LnDesk v302] 隐私模式切换后保持 GOP 连续 —— AV1 errcode=7 根因修复。
+          # [v302] 隐私模式切换后保持 GOP 连续 —— AV1 errcode=7 根因修复。
           #
           # 链条：V289 把 live IDR 间隔压到 15 帧（4 IDR/s），同一次改动只给
           # **硬件**路径加了 1.25x 码率补偿（patch_qmax_guard.py 注释写明
@@ -638,7 +638,7 @@ jobs:
           echo "[OK] v302: aom CBR->CQ + IDR boost + forced IDR on rebuild"
 
       - name: Patch hwcodec fork source (v302b force_i)
-        # [LnDesk v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
+        # [v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
         # channel) 的 force_i 贯通：v302 的强制 IDR 只有真正落到 FFI 才有
         # 意义，否则硬编路径只是记录了请求却没强制。
         #
@@ -844,7 +844,7 @@ jobs:
           ! grep -q "__IROH_RELAY_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_3 placeholder not substituted"; exit 1; }
           ! grep -q "__IROH_DNS_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL_3 placeholder not substituted"; exit 1; }
           grep -q "CUSTOM_IROH_RELAY_URL_3" ./src/iroh_transport.rs || { echo "[FAIL] iroh third backup relay constant missing"; exit 1; }
-          # [LnDesk v290] pkarr publish size guard. Each published attribute
+          # [v290] pkarr publish size guard. Each published attribute
           # is its own DNS TXT record and pkarr hard-caps the compressed
           # packet at 1000 bytes; a multi-homed host used to overflow it
           # ("expected max 1000 bytes but got: 1083") so EVERY self-hosted
@@ -906,7 +906,7 @@ jobs:
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
           # ----------------------------------------------------------------------
-          # [LnDesk v301] mixed-ok: auto-iroh 的 8 秒白等
+          # [v301] mixed-ok: auto-iroh 的 8 秒白等
           # ----------------------------------------------------------------------
           # [v223] "Direct-first hold" 把 `mixed(udp+relay)` 也当作"还没直连"，
           # 于是握手成功（249ms）后仍钻进 10s 迁移等待，吃掉 client.rs 的
@@ -1175,7 +1175,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/patch_delay_fix.py .
-          grep -qF '// [LnDesk v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
+          grep -qF '// [v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
 
       - name: add cycle monitors to toolbar
         continue-on-error: true

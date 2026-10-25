@@ -117,7 +117,7 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          # [LnDesk v176] Android builds the ARM (armeabi-v7a) APK only for now.
+          # [v176] Android builds the ARM (armeabi-v7a) APK only for now.
           # aarch64 (arm64-v8a) and x86_64 are kept below, commented out, so the
           # matrix can be restored by deleting the leading '#' on those blocks
           # (do not re-add the '-' indentation by hand -- it is already there).
@@ -494,7 +494,7 @@ jobs:
             echo "::notice::No valid icon link resolved (iconlink='${{ inputs.iconlink }}'), using RustDesk default icon"
           fi
       - name: Apply domestic STUN fallback (domestic-only)
-        # [LnDesk v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
+        # [v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
         # cloudflare / nextcloud / google 三个境外项在 2026-10-10 现场双端日志里
         # 每一项都 timeout，既拿不到映射又白占 select_ok 的探测名额。口径与
         # super_p2p 侧 V298 的 STUN_TARGETS 一致。
@@ -529,7 +529,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/security/patch_server_lock_compiletime.py
-          # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
+          # [v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
           echo "[SKIP] Apply compile-time server lock (OVERWRITE_SETTINGS): image-quality patch chain removed (V324), step kept as placeholder"
 
       - name: Apply hwcodec zerolatency fork patch (v260)
@@ -610,7 +610,7 @@ jobs:
       - name: File transfer resilience (v320)
         shell: bash
         run: |
-          # [LnDesk v320] file-transfer resilience (client send timeout + pump stall guard)
+          # [v320] file-transfer resilience (client send timeout + pump stall guard)
           #
           # Two client-side guards so a stalled upload fails
           # VISIBLY instead of freezing the progress bar forever.
@@ -633,9 +633,9 @@ jobs:
           # Guards: both markers, the actual timeout wire-ups, and the
           # timeout constant typed as u64 milliseconds (hbb_common::timeout
           # takes ms, not a Duration -- a Duration here fails to compile).
-          grep -qF "[LnDesk v320] client send timeout" src/client/io_loop.rs || { echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "[v320] client send timeout" src/client/io_loop.rs || { echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"; exit 1; }
           grep -qF "peer.set_send_timeout(V320_CLIENT_SEND_TIMEOUT_MS);" src/client/io_loop.rs || { echo "[FAIL] v320: client set_send_timeout call missing"; exit 1; }
-          grep -qF "[LnDesk v320] transfer stall timeout" src/client/io_loop.rs || { echo "[FAIL] v320: transfer stall-timeout marker missing in io_loop.rs"; exit 1; }
+          grep -qF "[v320] transfer stall timeout" src/client/io_loop.rs || { echo "[FAIL] v320: transfer stall-timeout marker missing in io_loop.rs"; exit 1; }
           grep -qF "const V320_TRANSFER_STALL_TIMEOUT_MS: u64 = 60_000;" src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout constant must be u64 milliseconds"; exit 1; }
           grep -qF "V320_TRANSFER_STALL_TIMEOUT_MS," src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout not passed to timeout()"; exit 1; }
           echo "[OK] v320: client send timeout + transfer pump stall guard in place"
@@ -643,7 +643,7 @@ jobs:
       - name: File-transfer version race (v334)
         shell: bash
         run: |
-          # [LnDesk v334] floor the peer version with our own at the overwrite-
+          # [v334] floor the peer version with our own at the overwrite-
           # detection (od) and resume gates. lc.version is 0 until PeerInfo lands,
           # so a file dragged in the first seconds of a session silently lost od
           # + resume and every retry restarted from byte 0. The resume offset is
@@ -653,8 +653,8 @@ jobs:
           python3 patches/file_transfer/patch_transfer_version_race.py .
           # Semantic guards (counts + absence of the old form, NOT text-match of
           # intermediate layout) so a later harmless reformat cannot false-FAIL.
-          grep -qF "[LnDesk v334]" src/client/io_loop.rs || { echo "[FAIL] v334: marker missing in io_loop.rs"; exit 1; }
-          _v334_m=$(grep -c "\[LnDesk v334\]" src/client/io_loop.rs)
+          grep -qF "[v334]" src/client/io_loop.rs || { echo "[FAIL] v334: marker missing in io_loop.rs"; exit 1; }
+          _v334_m=$(grep -c "\[v334\]" src/client/io_loop.rs)
           [ "$_v334_m" -eq 6 ] || { echo "[FAIL] v334: expected 6 markers, got $_v334_m"; exit 1; }
           _v334_floor=$(grep -c "peer_ver_floor" src/client/io_loop.rs)
           [ "$_v334_floor" -eq 4 ] || { echo "[FAIL] v334: expected 4 peer_ver_floor refs, got $_v334_floor"; exit 1; }
@@ -667,7 +667,7 @@ jobs:
           echo "[OK] v334: peer-version floor + fresh-job resume in place"
 
 
-      # [LnDesk v302b -> v307a] the hwcodec fork now carries force_i all the way
+      # [v302b -> v307a] the hwcodec fork now carries force_i all the way
       # down: 944e5e8 widened EncodeCall to 6 args, 11f1b3a made
       # Encoder::encode actually forward the value instead of a literal 0.
       # Both are pinned by the v260 step via patch_hwcodec_zerolatency.py REV.
@@ -682,22 +682,22 @@ jobs:
         shell: bash
         run: |
           python3 patches/file_transfer/patch_file_integrity.py .
-          grep -qF "[LnDesk v334x] read block checksum" libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
+          grep -qF "[v334x] read block checksum" libs/hbb_common/src/fs.rs || { echo "[FAIL] v334x: file integrity marker missing in fs.rs"; exit 1; }
           grep -qF "bytes checksum = 6" libs/hbb_common/protos/message.proto || { echo "[FAIL] v334x: checksum field missing in proto"; exit 1; }
           echo "[OK] v334x: file transfer per-block integrity wired"
       - name: File transfer auto-resume after reconnect (v335)
         shell: bash
         run: |
           python3 patches/file_transfer/patch_ft_resume.py .
-          grep -qF "[LnDesk v335] auto-resume on Login" src/ui_cm_interface.rs || { echo "[FAIL] v335: resume marker missing in ui_cm_interface.rs"; exit 1; }
-          grep -qF "[LnDesk v335] overwrite_detection getter" libs/hbb_common/src/fs.rs || { echo "[FAIL] v335: getter marker missing in fs.rs"; exit 1; }
+          grep -qF "[v335] auto-resume on Login" src/ui_cm_interface.rs || { echo "[FAIL] v335: resume marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[v335] overwrite_detection getter" libs/hbb_common/src/fs.rs || { echo "[FAIL] v335: getter marker missing in fs.rs"; exit 1; }
           echo "[OK] v335: file transfer auto-resume wired"
       - name: File transfer auto-resume retry (v335b)
         shell: bash
         run: |
           python3 patches/file_transfer/patch_ft_resume_retry.py .
-          grep -qF "[LnDesk v335b] resume retry helpers" src/ui_cm_interface.rs || { echo "[FAIL] v335b: retry helpers marker missing in ui_cm_interface.rs"; exit 1; }
-          grep -qF "[LnDesk v335b] cancel stops resume retry" src/ui_cm_interface.rs || { echo "[FAIL] v335b: cancel hook marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[v335b] resume retry helpers" src/ui_cm_interface.rs || { echo "[FAIL] v335b: retry helpers marker missing in ui_cm_interface.rs"; exit 1; }
+          grep -qF "[v335b] cancel stops resume retry" src/ui_cm_interface.rs || { echo "[FAIL] v335b: cancel hook marker missing in ui_cm_interface.rs"; exit 1; }
           echo "[OK] v335b: file transfer auto-resume retry wired"
       - name: set permanent password (preset, via patches/security/set_password.py)
         if: env.PERMANENT_PASSWORD != ''
@@ -877,7 +877,7 @@ jobs:
           ! grep -q "__IROH_RELAY_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_3 placeholder not substituted"; exit 1; }
           ! grep -q "__IROH_DNS_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL_3 placeholder not substituted"; exit 1; }
           grep -q "CUSTOM_IROH_RELAY_URL_3" ./src/iroh_transport.rs || { echo "[FAIL] iroh third backup relay constant missing"; exit 1; }
-          # [LnDesk v290] pkarr publish size guard. Each published attribute
+          # [v290] pkarr publish size guard. Each published attribute
           # is its own DNS TXT record and pkarr hard-caps the compressed
           # packet at 1000 bytes; a multi-homed host used to overflow it
           # ("expected max 1000 bytes but got: 1083") so EVERY self-hosted
@@ -886,7 +886,7 @@ jobs:
           grep -q "PKARR_MAX_DIRECT_ADDRS: usize = 12" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr direct-addr cap missing"; exit 1; }
           grep -q "fn pkarr_select_direct_addrs" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr addr prune helper missing"; exit 1; }
           grep -q "retrying relay-only" ./src/iroh_transport.rs || { echo "[FAIL] v290: pkarr relay-only overflow fallback missing"; exit 1; }
-          # [LnDesk v306] 私网地址降优先级。现场日志里对端发布的是
+          # [v306] 私网地址降优先级。现场日志里对端发布的是
           # `udp: 192.168.98.117:62966` —— 私网地址被当作直连候选参与
           # send_addr() 的 choose()，选中时 best_addr 为空 -> Unconfirmed ->
           # conn_type 合成 Mixed，UI 显示"中继"。pkarr_addr_is_useful() 只排
@@ -951,14 +951,14 @@ jobs:
         shell: bash
         run: |
           python3 patches/network/patch_online_devices.py .
-          # [LnDesk v175] same two needles the other five workflows use.
+          # [v175] same two needles the other five workflows use.
           # Do NOT assert the iroh NodeId map here: it belongs to the next step
           # (patch_iroh_menu.py) and asserting it here broke build 35749812102.
           grep -q "void startOnlinePoll" ./flutter/lib/models/group_model.dart || { echo "[FAIL] v174: group_model.dart missing startOnlinePoll"; exit 1; }
           grep -q "_directAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v174: peer_card.dart missing _directAction"; exit 1; }
 
       - name: otp auto-retry (v120) - android enablement
-        # [LnDesk v176] Android-only enablement of an existing, already-verified
+        # [v176] Android-only enablement of an existing, already-verified
         # patch (windows / win7 / portable-quick / linux run it). It is required
         # for COMPILATION, not just for the feature: patch_iroh_menu.py (next
         # step) injects a hard `armOtpRetry([nodeId, peer.id], ...)` call into
@@ -992,7 +992,7 @@ jobs:
           grep -q "import '../../models/model.dart'" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v120: peer_card.dart must import model.dart (armOtpRetry undefined)"; exit 1; }
 
       - name: "reconcile the duplicate http alias (v127) - android enablement"
-        # [LnDesk v176] Android-only enablement of the same helper the other five
+        # [v176] Android-only enablement of the same helper the other five
         # generators run (despite the "linux" in its name it is target-neutral).
         # Two shared scripts both claim the `http` prefix in peer_card.dart:
         #   patch_server_otp.py     -> import 'package:http/http.dart' as http;
@@ -1033,7 +1033,7 @@ jobs:
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
           # ----------------------------------------------------------------------
-          # [LnDesk v301] mixed-ok: auto-iroh 的 8 秒白等
+          # [v301] mixed-ok: auto-iroh 的 8 秒白等
           # ----------------------------------------------------------------------
           # [v223] "Direct-first hold" 把 `mixed(udp+relay)` 也当作"还没直连"，
           # 于是握手成功（249ms）后仍钻进 10s 迁移等待，吃掉 client.rs 的
@@ -1205,7 +1205,7 @@ jobs:
           print("[OK] v338 row order (label length ascending)")
           PY
           echo "[OK] v338 controlled-end system-load rows applied"
-          grep -qF '[LnDesk v125]' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: marker missing in rendezvous_mediator.rs"; exit 1; }
+          grep -qF '[v125]' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: marker missing in rendezvous_mediator.rs"; exit 1; }
           grep -q 'Config::get_option(OPTION_DIRECT_SERVER) != "Y"' ./src/rendezvous_mediator.rs || { echo "[FAIL] v125: direct-server guard missing in rendezvous_mediator.rs"; exit 1; }
           [ "$(grep -c 'force enabling direct-server (android)' ./src/rendezvous_mediator.rs)" = "1" ] || { echo "[FAIL] v125: expected exactly 1 forced enable in rendezvous_mediator.rs"; exit 1; }
 
@@ -1266,7 +1266,7 @@ jobs:
             gradle-${{ runner.os }}-
 
       - name: super-p2p suite (V186/V187 observe + V200 remove native test_nat_type)
-        # [LnDesk port] Windows-only historically; now wired on Android too so
+        # [port] Windows-only historically; now wired on Android too so
         # the authenticated port-prediction stack ships on mobile. The module
         # tree is std-only and compiles cleanly for aarch64-linux-android /
         # i686-linux-android (win_udp.rs no-ops on POSIX, route_lock.rs returns
@@ -1355,7 +1355,7 @@ jobs:
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           rustup target add ${{ matrix.job.target }}
-          # [LnDesk] --force is REQUIRED: this step runs unconditionally on every
+          # --force is REQUIRED: this step runs unconditionally on every
           # build, so if a cargo-ndk binary is already present (runner image, or a
           # re-run in the same environment) cargo aborts with
           # "error: binary `cargo-ndk` already exists in destination" (exit 101).

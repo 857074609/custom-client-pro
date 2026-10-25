@@ -366,7 +366,7 @@ jobs:
           python3 patches/update/patch_auto_silent_update.py
 
       - name: Apply domestic STUN fallback (domestic-only)
-        # [LnDesk v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
+        # [v298-followup] 原先的"国内优先 + 国外兜底"已收敛为**纯国内**：
         # cloudflare / nextcloud / google 三个境外项在 2026-10-10 现场双端日志里
         # 每一项都 timeout，既拿不到映射又白占 select_ok 的探测名额。口径与
         # super_p2p 侧 V298 的 STUN_TARGETS 一致。
@@ -406,7 +406,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/security/patch_server_lock_compiletime.py
-          # [LnDesk v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
+          # [v259] 1s IDR for live sessions: caps H264/H265 mouse-move smear
           echo "[SKIP] Apply compile-time server lock (OVERWRITE_SETTINGS): image-quality patch chain removed (V324), step kept as placeholder"
 
       - name: Apply hwcodec zerolatency fork patch (v260)
@@ -463,7 +463,7 @@ jobs:
         run: |
           echo "[SKIP] Apply GOP continuity patch (v302): image-quality patch chain removed (V324), step kept as placeholder"
       - name: Patch hwcodec fork source (v302b force_i)
-        # [LnDesk v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
+        # [v302b] HWRAM (nvenc/qsv/amf/vaapi over the shared ffmpeg
         # channel) 的 force_i 贯通：v302 的强制 IDR 只有真正落到 FFI 才有
         # 意义，否则硬编路径只是记录了请求却没强制。
         #
@@ -588,7 +588,7 @@ jobs:
         shell: bash
         run: |
           python3 patches/quality/patch_delay_fix.py .
-          grep -qF '// [LnDesk v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
+          grep -qF '// [v162] delayFix' ./src/client.rs || { echo "[FAIL] delayFix patch not applied"; exit 1; }
 
       - name: Apply silent-install & cert patches
         shell: bash
@@ -676,7 +676,7 @@ jobs:
           ! grep -q "__IROH_RELAY_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_RELAY_URL_3 placeholder not substituted"; exit 1; }
           ! grep -q "__IROH_DNS_URL_3__" ./src/iroh_transport.rs || { echo "[FAIL] IROH_DNS_URL_3 placeholder not substituted"; exit 1; }
           grep -q "CUSTOM_IROH_RELAY_URL_3" ./src/iroh_transport.rs || { echo "[FAIL] iroh third backup relay constant missing"; exit 1; }
-          # [LnDesk v290] pkarr publish size guard. Each published attribute
+          # [v290] pkarr publish size guard. Each published attribute
           # is its own DNS TXT record and pkarr hard-caps the compressed
           # packet at 1000 bytes; a multi-homed host used to overflow it
           # ("expected max 1000 bytes but got: 1083") so EVERY self-hosted
@@ -738,7 +738,7 @@ jobs:
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
           fi
           # ----------------------------------------------------------------------
-          # [LnDesk v301] mixed-ok: auto-iroh 的 8 秒白等
+          # [v301] mixed-ok: auto-iroh 的 8 秒白等
           # ----------------------------------------------------------------------
           # [v223] "Direct-first hold" 把 `mixed(udp+relay)` 也当作"还没直连"，
           # 于是握手成功（249ms）后仍钻进 10s 迁移等待，吃掉 client.rs 的
