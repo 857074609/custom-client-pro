@@ -2653,7 +2653,7 @@ jobs:
       # released when the driver feels like it, so every rebuild is slower than
       # the last one. Once a build is slow, or falls back to GDI, this process
       # stops trying DXGI.
-      - name: A slow capturer keeps GDI, a slow login is not a failure (v383)
+      - name: A slow capturer keeps GDI (v383)
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
@@ -2692,10 +2692,19 @@ jobs:
               sys.exit(1)
           print('[OK] v383: capturer timing and the GDI pin are wired')
           PY
-          # The teacher side: a logged-in cell is not a failed connection. The
-          # budget counts from the login, the cell says it is getting a picture
-          # instead of declaring the peer dead, and a peer that is still
-          # building its capturer is not offered a retry button.
+          echo "[OK] v383: a slow capturer keeps GDI for the rest of the process"
+
+      # [v383] The teacher side: a logged-in cell is not a failed connection.
+      # The budget counts from the login, the cell says it is getting a picture
+      # instead of declaring the peer dead, and a peer that is still building
+      # its capturer is not offered a retry button. Wall-only: the cell widget
+      # does not exist on a build without the screen-wall chain.
+      - name: A logged-in cell is not a failed connection (v383)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
           M=flutter/lib/desktop/widgets/mini_remote_view.dart
           W=flutter/lib/desktop/pages/screen_wall_page.dart
           grep -qF 'static const Duration _kNoPictureBudget = Duration(seconds: 30);' "$M" \
@@ -2724,7 +2733,7 @@ jobs:
             grep -qF '"Getting Picture"' "$L" \
               || { echo "[FAIL] v383: $L has no label for the waiting state"; exit 1; }
           done
-          echo "[OK] v383: slow capturers pin GDI, slow logins are not called failures"
+          echo "[OK] v383: a logged-in cell gets 30 s from the login, not 15 s from the timer"
 
       - name: cqp quality (v116)
         if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
