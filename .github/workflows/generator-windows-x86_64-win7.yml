@@ -94,7 +94,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 8ddcb48ec70b7a746b9fdb95fdbee904671cee64
+      patches_sha: 6b67c20ad3e7beb084e95a97e5acb9f3af444ba3
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -169,7 +169,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 8ddcb48ec70b7a746b9fdb95fdbee904671cee64
+          ref: 6b67c20ad3e7beb084e95a97e5acb9f3af444ba3
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2559,6 +2559,50 @@ jobs:
           grep -qF 'if !self.is_screen_wall' "$C" \
             || { echo "[FAIL] v380: the LAN quality hint still upgrades a wall cell"; exit 1; }
           echo "[OK] v380: screen-wall sessions keep their settings in memory only"
+
+      # [v381] Two things made a scan result look wrong.
+      #
+      # 1) `remember_peer_mac` (v370) writes a row into the persistent
+      #    `LanPeers` table for every device the client ever connected to,
+      #    keying `ip_mac` with an empty string because `send_wol` only walks
+      #    the values and never the keys. The table is append-only, so a peer
+      #    only ever reached over iroh or relay kept showing up in the LAN scan
+      #    carrying an id and no address - it was never discovered on the wire
+      #    and it cannot be dialled by address.
+      # 2) A cell title fell back to the account name and then the host name,
+      #    so two machines logged in as "admin" produced two identical cells
+      #    and neither one said which machine it was. The title now uses the
+      #    address-book alias only; `_cellTitle` already falls back to the
+      #    address it dials, then to the id.
+      - name: LAN scan drops address-less rows and cell titles use the alias (v381)
+        if: inputs.screen_wall == 'true' && env.UI_VARIANT == 'control_custom'
+        shell: bash
+        run: |
+          python3 patches/network/patch_lan_peers_lan_only.py .
+          U=src/ui_interface.rs
+          grep -qF 'fn lan_peer_addr(peer: &config::DiscoveryPeer) -> String {' "$U" \
+            || { echo "[FAIL] v381: no address helper in get_lan_peers"; exit 1; }
+          grep -qF '.filter(|peer| !lan_peer_addr(peer).is_empty())' "$U" \
+            || { echo "[FAIL] v381: rows without an address still reach the UI"; exit 1; }
+          grep -qF 'let ip = lan_peer_addr(peer);' "$U" \
+            || { echo "[FAIL] v381: the map body bypasses the helper"; exit 1; }
+          test "$(grep -cF 'for key in peer.ip_mac.keys()' "$U")" -eq 1 \
+            || { echo "[FAIL] v381: expected exactly one address scan (the helper)"; exit 1; }
+          W=flutter/lib/desktop/pages/screen_wall_page.dart
+          grep -qF 'String _resolveNickname(String id) {' "$W" \
+            || { echo "[FAIL] v381: the nickname resolver is gone"; exit 1; }
+          NICK="$(sed -n '/String _resolveNickname(String id) {/,/^  }/p' "$W")"
+          printf '%s' "$NICK" | grep -qF 'if (s.alias.isNotEmpty) return s.alias;' \
+            || { echo "[FAIL] v381: the address-book alias lookup is gone"; exit 1; }
+          printf '%s' "$NICK" | grep -qF 'if (p.alias.isNotEmpty) return p.alias;' \
+            || { echo "[FAIL] v381: the live address-book alias lookup is gone"; exit 1; }
+          if printf '%s' "$NICK" | grep -qF 'username.isNotEmpty'; then
+            echo "[FAIL] v381: the cell title still falls back to the account name"; exit 1
+          fi
+          if printf '%s' "$NICK" | grep -qF 'hostname.isNotEmpty'; then
+            echo "[FAIL] v381: the cell title still falls back to the host name"; exit 1
+          fi
+          echo "[OK] v381: scan list carries dialable peers only, titles use the alias only"
 
       - name: cqp quality (v116)
         if: fromJson(inputs.extras || '{}').image_quality_opt == 'true'
