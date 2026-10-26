@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d8d997a2005fe02ea2ca9d674a1c884098b4d902
+      patches_sha: 4746f43af4b81585f36aa2d1aab8986b52830c29
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d8d997a2005fe02ea2ca9d674a1c884098b4d902
+          ref: 4746f43af4b81585f36aa2d1aab8986b52830c29
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -4029,6 +4029,17 @@ jobs:
             || { echo "[FAIL] v366: LAN fast path has no fallback"; exit 1; }
           grep -qF 'interface.update_lan_quality_hint(true);' src/client.rs \
             || { echo "[FAIL] v366: LAN fast path drops the LAN quality hint"; exit 1; }
+          # [v366b] rust 1.75/1.78 (portable and win7 toolchains) reject a boxed
+          # self-call inside an async fn with E0733, so the dial is moved to
+          # start(), which calls _start but is never called back.
+          python3 patches/network/patch_lan_fast_path_msrv.py .
+          grep -qF '[v366b]' src/client.rs \
+            || { echo "[FAIL] v366b: LAN dial is still inside _start"; exit 1; }
+          grep -qF 'return Ok((x.0, x.1));' src/client.rs \
+            || { echo "[FAIL] v366b: start() fast path does not return the pair"; exit 1; }
+          if sed -n '/async fn _start(/,/^    }$/p' src/client.rs | grep -qF 'Box::pin(Self::_start('; then
+            echo "[FAIL] v366b: boxed self-call is still inside _start (E0733)"; exit 1
+          fi
 
       - name: Gate - cargo check hbb_common (fail fast on patch compile errors)
         # Network-hardening patches (v98 TCP keepalive + DNS cache, V101
