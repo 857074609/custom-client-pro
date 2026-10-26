@@ -4383,8 +4383,13 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build msi
-
-        if: env.UPLOAD_ARTIFACT == 'true'
+        # [v384] Temporarily disabled: the win7 build ships the installer EXE
+        # only. Every consumer below guards on the file existing (Release
+        # upload is continue-on-error, signing uses Test-Path, the rename uses
+        # test -f, the file-server upload skips a missing MSI), so the rest of
+        # the chain is unaffected. Restore `if: env.UPLOAD_ARTIFACT == 'true'`
+        # on its own line to bring it back.
+        if: false
         # MSI 是附带产物（分发主力是 -install.exe）：MSI 编译失败仅告警跳过，不阻断工作流
         continue-on-error: true
         run: |
