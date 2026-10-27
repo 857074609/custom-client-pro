@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 59d2a8d29128cf8c99de0f37c359677179762f65
+      patches_sha: d89dc084f23cc93e04df2898ebf1e9d72a3e94e2
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 59d2a8d29128cf8c99de0f37c359677179762f65
+          ref: d89dc084f23cc93e04df2898ebf1e9d72a3e94e2
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2410,7 +2410,7 @@ jobs:
           # patch_server_otp.py skips an absent anchor silently, so assert both
           # the constant and its value.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: OTP delivery settle (kOtpDeliverySettleMs) missing in peer_card.dart"; exit 1; }
-          grep -q "kOtpDeliverySettleMs = 1500" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v334: OTP delivery settle is not 1500ms"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 1500" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v384: OTP delivery settle is not 1500ms"; exit 1; }
           # [v177] Hover must only move the remote cursor, never synthesize a
           # down/up from a stale button mask. The hover handler used to route
           # through _getMouseEvent (which infers a press from evt.buttons), so
@@ -2430,7 +2430,7 @@ jobs:
           # [v118/v177] OTP delivery settle must exist and be 3000ms. Guard these
           # (a drifted anchor would otherwise stay green), then log the real line.
           grep -q "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v118: kOtpDeliverySettleMs missing in peer_card.dart"; exit 1; }
-          grep -q "kOtpDeliverySettleMs = 1500" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v334: OTP delivery settle is not 1500ms"; exit 1; }
+          grep -q "kOtpDeliverySettleMs = 1500" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v384: OTP delivery settle is not 1500ms"; exit 1; }
           grep -n "kOtpDeliverySettleMs" ./flutter/lib/common/widgets/peer_card.dart || true
           if grep -q "only filled above for SHARED address-book peers" ./flutter/lib/common/widgets/peer_card.dart; then
             echo "[FAIL] v117-revert: saved-password-first must be removed from peer_card.dart"
