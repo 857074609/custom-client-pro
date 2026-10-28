@@ -111,12 +111,19 @@ jobs:
               exit 1
           }
       - name: Build WindowInjection.dll
+        shell: pwsh
         run: |
           cd RustDeskTempTopMostWindow
           # [v386] Link the static CRT so this DLL does not need msvcp140.dll /
           # vcruntime140*.dll shipped alongside it. This project builds through
-          # msbuild, not our CMakeLists, so the runtime has to be set here.
-          msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }} /p:RuntimeLibrary=MultiThreaded
+          # msbuild, not our CMakeLists, and the project file sets RuntimeLibrary
+          # itself, so a command-line /p: value loses the property race and the
+          # compiler still runs with /MD. A Directory.Build.props is imported
+          # ahead of the project, and its ClCompile item definition overrides the
+          # per-configuration RuntimeLibrary the project would otherwise apply.
+          $props = '<Project><PropertyGroup><RuntimeLibrary>MultiThreaded</RuntimeLibrary></PropertyGroup><ItemDefinitionGroup><ClCompile><RuntimeLibrary>MultiThreaded</RuntimeLibrary></ClCompile></ItemDefinitionGroup></Project>'
+          Set-Content -Path Directory.Build.props -Value $props -Encoding UTF8
+          msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }}
 
       # [v386] VC runtime staging disabled: WindowInjection.dll now links the
       # static CRT, so the redist DLLs are no longer needed next to it and
