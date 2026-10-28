@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d89dc084f23cc93e04df2898ebf1e9d72a3e94e2
+      patches_sha: d30cfa445beef9bbff485dbbcc1fe01a1be71b87
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d89dc084f23cc93e04df2898ebf1e9d72a3e94e2
+          ref: d30cfa445beef9bbff485dbbcc1fe01a1be71b87
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2749,6 +2749,21 @@ jobs:
       #     grep -q 'obfstr = "=0.4.4"' Cargo.toml || { echo "[FAIL] v227c: obfstr dep missing (pinned 0.4.4 for cargo 1.75 win7)"; exit 1; }
       #     grep -q "obfstr::obfstr!" src/core_main.rs || { echo "[FAIL] v227c: obfstr literal missing"; exit 1; }
 
+      - name: Broker process name (v385)
+        shell: bash
+        env:
+          APP_NAME: ${{ inputs.appname }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v385] Rename the copied broker helper after the application so it no
+          # longer impersonates a Windows system process. Both crates carry the
+          # name, so the script patches them together and fails if they diverge.
+          python3 patches/privacy/patch_broker_name.py .
+          grep -q "Broker.exe" src/privacy_mode/win_topmost_window.rs || { echo "[FAIL] v385: broker name not injected"; exit 1; }
+          if grep -q "RuntimeBroker_rustdesk" src/privacy_mode/win_topmost_window.rs; then
+            echo "[FAIL] v385: old broker name still present"; exit 1
+          fi
+
       - name: hide_chat_voice
         if: fromJson(inputs.extras).hide_chat_voice  == 'true'
         shell: bash
@@ -4719,12 +4734,17 @@ jobs:
         run: |
           echo -n "${{ inputs.custom }}" | cat > ./rustdesk/custom_.txt
 
-      - name: Stage code-signing public cert into package
-        if: env.UPLOAD_ARTIFACT == 'true'
-        shell: bash
-        run: |
-          cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
-          echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
+      # [v385] Code signing disabled on request. The staged certificate was a
+      # self-signed certificate claiming to be a Microsoft root CA, so the
+      # signature could never validate and the build was flagged as forged.
+      # Artifacts now ship unsigned. Kept as a comment so it can be restored
+      # once a real certificate is available.
+      # - name: Stage code-signing public cert into package
+      #   if: env.UPLOAD_ARTIFACT == 'true'
+      #   shell: bash
+      #   run: |
+      #     cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
+      #     echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
 
       # [v385] UPX packing disabled on request: payload binaries ship unpacked.
       # Kept as a comment so it can be restored by uncommenting; the following
@@ -4786,61 +4806,66 @@ jobs:
       #     mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
       #     sha256sum ../../SignOutput/rustdesk.msi
 
-      - name: Sign Windows binaries (EXE and MSI)
-        if: env.UPLOAD_ARTIFACT == 'true' && (success() || failure())
-        shell: powershell
-        env:
-          PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
-          PFX_PASSWORD: ${{ secrets.CODE_SIGN_PASS_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:PFX_BASE64)) {
-            Write-Host "Skipping signing: CODE_SIGN_PFX_BASE64 secret is not set."
-            exit 0
-          }
-          if ([string]::IsNullOrWhiteSpace($env:PFX_PASSWORD)) {
-            Write-Host "Skipping signing: CODE_SIGN_PASS_PASSWORD secret is not set."
-            exit 0
-          }
-          Write-Host "Creating certificate file from CODE_SIGN_PFX_BASE64"
-          New-Item -ItemType Directory -Path certificate -Force | Out-Null
-          $certBytes = [System.Convert]::FromBase64String($env:PFX_BASE64)
-          [System.IO.File]::WriteAllBytes("certificate\certificate.pfx", $certBytes)
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" -ErrorAction SilentlyContinue |
-                      Where-Object { $_.Directory.FullName -like "*x64*" } |
-                      Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
-                      Select-Object -First 1
-      
-          if (-not $signtool) {
-            $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" -ErrorAction SilentlyContinue |
-                        Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
-                        Select-Object -First 1
-          }
-      
-          if (-not $signtool) {
-            Write-Error "signtool.exe not found in Windows SDK paths."
-            exit 1
-          }
-          Write-Host "Using signtool: $($signtool.FullName)"
-      
-          $exePath = ".\SignOutput\rustdesk.exe"
-          $msiPath = ".\SignOutput\rustdesk.msi"
-      
-          if (Test-Path $exePath) {
-            Write-Host "Signing EXE: $exePath"
-            & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $exePath
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } else {
-            Write-Host "EXE not found at $exePath, skipping."
-          }
-      
-          if (Test-Path $msiPath) {
-            Write-Host "Signing MSI: $msiPath"
-            & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $msiPath
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } else {
-            Write-Host "MSI not found at $msiPath, skipping."
-          }
-          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+      # [v385] Signing disabled on request: artifacts ship unsigned.
+      # The PFX previously used was a self-signed cert impersonating a
+      # Microsoft root CA, so every signature failed validation and the
+      # build was detected as forged. Restore by uncommenting once a real
+      # certificate is available.
+      #- name: Sign Windows binaries (EXE and MSI)
+      #  if: env.UPLOAD_ARTIFACT == 'true' && (success() || failure())
+      #  shell: powershell
+      #  env:
+      #    PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
+      #    PFX_PASSWORD: ${{ secrets.CODE_SIGN_PASS_PASSWORD }}
+      #  run: |
+      #    if ([string]::IsNullOrWhiteSpace($env:PFX_BASE64)) {
+      #      Write-Host "Skipping signing: CODE_SIGN_PFX_BASE64 secret is not set."
+      #      exit 0
+      #    }
+      #    if ([string]::IsNullOrWhiteSpace($env:PFX_PASSWORD)) {
+      #      Write-Host "Skipping signing: CODE_SIGN_PASS_PASSWORD secret is not set."
+      #      exit 0
+      #    }
+      #    Write-Host "Creating certificate file from CODE_SIGN_PFX_BASE64"
+      #    New-Item -ItemType Directory -Path certificate -Force | Out-Null
+      #    $certBytes = [System.Convert]::FromBase64String($env:PFX_BASE64)
+      #    [System.IO.File]::WriteAllBytes("certificate\certificate.pfx", $certBytes)
+      #    $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" -ErrorAction SilentlyContinue |
+      #                Where-Object { $_.Directory.FullName -like "*x64*" } |
+      #                Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
+      #                Select-Object -First 1
+
+      #    if (-not $signtool) {
+      #      $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" -ErrorAction SilentlyContinue |
+      #                  Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
+      #                  Select-Object -First 1
+      #    }
+
+      #    if (-not $signtool) {
+      #      Write-Error "signtool.exe not found in Windows SDK paths."
+      #      exit 1
+      #    }
+      #    Write-Host "Using signtool: $($signtool.FullName)"
+
+      #    $exePath = ".\SignOutput\rustdesk.exe"
+      #    $msiPath = ".\SignOutput\rustdesk.msi"
+
+      #    if (Test-Path $exePath) {
+      #      Write-Host "Signing EXE: $exePath"
+      #      & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $exePath
+      #      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      #    } else {
+      #      Write-Host "EXE not found at $exePath, skipping."
+      #    }
+
+      #    if (Test-Path $msiPath) {
+      #      Write-Host "Signing MSI: $msiPath"
+      #      & $signtool.FullName sign /fd SHA256 /tr http://ts.ssl.com /td SHA256 /f certificate\certificate.pfx /p $env:PFX_PASSWORD $msiPath
+      #      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      #    } else {
+      #      Write-Host "MSI not found at $msiPath, skipping."
+      #    }
+      #    Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Include "signtool.exe" | ForEach-Object { Write-Host "Found: $($_.FullName)" }
 
       - name: Extract first 4 chars of UUID
         id: tag
