@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d30cfa445beef9bbff485dbbcc1fe01a1be71b87
+      patches_sha: c815dad5701438f5ff11d89cf98cf7837f4a5357
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d30cfa445beef9bbff485dbbcc1fe01a1be71b87
+          ref: c815dad5701438f5ff11d89cf98cf7837f4a5357
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2763,6 +2763,24 @@ jobs:
           if grep -q "RuntimeBroker_rustdesk" src/privacy_mode/win_topmost_window.rs; then
             echo "[FAIL] v385: old broker name still present"; exit 1
           fi
+
+      - name: Portable prefix, static CRT, direct install copy (v386)
+        shell: bash
+        env:
+          APP_NAME: ${{ inputs.appname }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v386] Three changes that cut scanner triggers around the installer:
+          # the payload unpacks into a directory named after the app, plugin
+          # targets link the static CRT so msvcp140/vcruntime140 are no longer
+          # shipped, and the install copies its payload from Rust instead of
+          # driving xcopy.exe from a batch file in %TEMP%.
+          python3 patches/install/patch_portable_prefix.py .
+          python3 patches/install/patch_static_crt.py .
+          python3 patches/install/patch_no_xcopy.py .
+          grep -q "fn app_prefix()" libs/portable/src/main.rs || { echo "[FAIL] v386: app prefix not parameterized"; exit 1; }
+          grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt || { echo "[FAIL] v386: static CRT not pinned"; exit 1; }
+          grep -q "fn copy_payload_dir" src/platform/windows.rs || { echo "[FAIL] v386: direct install copy missing"; exit 1; }
 
       - name: hide_chat_voice
         if: fromJson(inputs.extras).hide_chat_voice  == 'true'
