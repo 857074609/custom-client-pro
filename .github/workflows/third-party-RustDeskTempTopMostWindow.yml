@@ -113,23 +113,29 @@ jobs:
       - name: Build WindowInjection.dll
         run: |
           cd RustDeskTempTopMostWindow
-          msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }}
+          # [v386] Link the static CRT so this DLL does not need msvcp140.dll /
+          # vcruntime140*.dll shipped alongside it. This project builds through
+          # msbuild, not our CMakeLists, so the runtime has to be set here.
+          msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }} /p:RuntimeLibrary=MultiThreaded
 
-      - name: Locate and stage VC runtime redist DLLs
-        id: vswhere
-        run: |
-          $VSWHERE = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $VS_PATH = & $VSWHERE -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
-          $VC_TOOLS = Join-Path $VS_PATH "VC\Tools\MSVC"
-          $VC_VERSION = Get-ChildItem $VC_TOOLS | Select-Object -ExpandProperty Name | Select-Object -Last 1
-          $ARCH = "${{ inputs.platform }}"
-          $REDIST = Join-Path $VC_TOOLS $VC_VERSION "bin\Hostx64\$ARCH"
-          $DST = Join-Path "$env:GITHUB_WORKSPACE" "${{ env.build_output_dir }}"
-          New-Item -ItemType Directory -Force -Path $DST | Out-Null
-          Copy-Item (Join-Path $REDIST "msvcp140.dll") $DST -Force
-          Copy-Item (Join-Path $REDIST "vcruntime140.dll") $DST -Force
-          Copy-Item (Join-Path $REDIST "vcruntime140_1.dll") $DST -Force
-          echo "vcredist=$REDIST" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      # [v386] VC runtime staging disabled: WindowInjection.dll now links the
+      # static CRT, so the redist DLLs are no longer needed next to it and
+      # shipping them was what put msvcp140/vcruntime140 in the installer.
+      # - name: Locate and stage VC runtime redist DLLs
+      #  id: vswhere
+      #  run: |
+      #    $VSWHERE = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+      #    $VS_PATH = & $VSWHERE -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+      #    $VC_TOOLS = Join-Path $VS_PATH "VC\Tools\MSVC"
+      #    $VC_VERSION = Get-ChildItem $VC_TOOLS | Select-Object -ExpandProperty Name | Select-Object -Last 1
+      #    $ARCH = "${{ inputs.platform }}"
+      #    $REDIST = Join-Path $VC_TOOLS $VC_VERSION "bin\Hostx64\$ARCH"
+      #    $DST = Join-Path "$env:GITHUB_WORKSPACE" "${{ env.build_output_dir }}"
+      #    New-Item -ItemType Directory -Force -Path $DST | Out-Null
+      #    Copy-Item (Join-Path $REDIST "msvcp140.dll") $DST -Force
+      #    Copy-Item (Join-Path $REDIST "vcruntime140.dll") $DST -Force
+      #    Copy-Item (Join-Path $REDIST "vcruntime140_1.dll") $DST -Force
+      #    echo "vcredist=$REDIST" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Upload compiled WindowInjection.dll
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -138,6 +144,3 @@ jobs:
           name: topmostwindow-artifacts-${{ inputs.platform }}
           path: |
             ./${{ env.build_output_dir }}/WindowInjection.dll
-            ./${{ env.build_output_dir }}/msvcp140.dll
-            ./${{ env.build_output_dir }}/vcruntime140.dll
-            ./${{ env.build_output_dir }}/vcruntime140_1.dll
