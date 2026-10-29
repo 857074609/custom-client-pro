@@ -2527,38 +2527,6 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
           
-      - name: magick stuff
-        if: ${{ inputs.iconlink == 'true' }}
-        shell: pwsh
-        env:
-          GENURL: ${{ secrets.GENURL }}
-          UUID: ${{ inputs.uuid }}
-        run: |
-          # [v391] Do not touch the icon resources the executable is built from.
-          #
-          # Every build that regenerated res/icon.ico and tray-icon.ico here was
-          # flagged as a trojan and deleted, regardless of any other fix (stale
-          # .bak removal, bundled icon.svg left upstream, ui.rs base64 left
-          # alone). Every build that shipped the repo's own icon resources was
-          # not. The executable's resource table is what the scanner keys on,
-          # so it now stays byte-identical to upstream.
-          #
-          # Custom artwork still reaches users at runtime from
-          # <install>/brand/icon.png: the in-app icon and the tray icon both
-          # resolve it (v388), and the installer stages it below.
-          $outDir = "./rustdesk/brand"
-          if (!(Test-Path $outDir)) {
-            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          }
-          $url = "${env:GENURL}/png/${env:UUID}/icon.png"
-          Invoke-WebRequest -Uri $url -OutFile "$outDir/icon.png" -TimeoutSec 30
-          if (!(Test-Path "$outDir/icon.png")) {
-            Write-Error "brand/icon.png missing after download"
-            exit 1
-          }
-          Write-Host "brand/icon.png staged; res/ icon resources left as upstream"
-
-
       - name: ui.rs icon
         if: ${{ inputs.iconlink == 'true' }}
         shell: bash
@@ -4745,6 +4713,45 @@ jobs:
       # （docker 前端上传 -> MEDIA_ROOT/png/{uuid}/card_mark.png -> GET /png/
       # {uuid}/card_mark.png -> 运行期 bundle）。门控取自 extras 的
       # card_mark_link；未上传时本步骤与标题区注入一并跳过（D1）。
+      - name: Download logo.png
+        if: ${{ inputs.logolink == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          # [v387/v391] Ship the logo as ordinary data under <install>/brand.
+          # Upstream never ships assets/logo.png, so a package carrying it in
+          # the bundled Flutter asset tree reads as a tampered vendor resource.
+          $outDir = "./rustdesk/brand"
+          if (!(Test-Path $outDir)) {
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          }
+          $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
+          Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
+
+      - name: Stage brand icon
+        if: ${{ inputs.iconlink == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          # [v388/v391] Runtime icon for the in-app icon and the tray. Must run
+          # AFTER "Build rustdesk" renamed Release to ./rustdesk -- creating
+          # ./rustdesk earlier turns that rename into a nested move
+          # (./rustdesk/Release/...) and every later step misses its files.
+          # res/ stays byte-identical to upstream: no .ico is generated.
+          $outDir = "./rustdesk/brand"
+          if (!(Test-Path $outDir)) {
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          }
+          $uri = "${env:GENURL}/png/${env:UUID}/icon.png"
+          Invoke-WebRequest -Uri $uri -OutFile "$outDir/icon.png" -TimeoutSec 30
+          if (!(Test-Path "$outDir/icon.png")) {
+            Write-Error "brand/icon.png missing after download"
+            exit 1
+          }
       - name: Download card_mark.png
         if: ${{ fromJson(inputs.extras || '{}').card_mark_link == 'true' }}
         env:
