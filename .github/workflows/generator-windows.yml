@@ -2785,7 +2785,7 @@ jobs:
           python3 patches/install/patch_portable_prefix.py .
           python3 patches/install/patch_static_crt.py .
           grep -q "fn app_prefix()" libs/portable/src/main.rs || { echo "[FAIL] v386: app prefix not parameterized"; exit 1; }
-          grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt || { echo "[FAIL] v390: static CRT requested but not applied"; exit 1 }
+          grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt || { echo "[FAIL] v390: static CRT requested but not applied"; exit 1; }
 
       - name: External brand artwork loading (v387)
         shell: bash
