@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 305c72111888a13c115cfe45fd1bf54d789f3a06
+      patches_sha: ea832c4efefe0f7e7f0d40ea8e5f9479bfb219b9
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 305c72111888a13c115cfe45fd1bf54d789f3a06
+          ref: ea832c4efefe0f7e7f0d40ea8e5f9479bfb219b9
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2794,7 +2794,7 @@ jobs:
           # Must run after patch_both_gear_and_notice.py, which injects the
           # connection-page card mark and logo blocks this script retargets.
           python3 patches/ui/patch_logo_external.py .
-          grep -q "pub fn main_get_exe_dir()" src/flutter_ffi.rs || { echo "[FAIL] v387: exe dir bridge missing"; exit 1; }
+          grep -q 'if key == "exe-dir"' src/flutter_ffi.rs || { echo "[FAIL] v387: exe-dir option key missing"; exit 1; }
           grep -q "_externalLogoFile(" flutter/lib/common.dart || { echo "[FAIL] v387: external logo lookup missing"; exit 1; }
           if grep -q "'assets/logo.png'" flutter/lib/common/widgets/connection_page_title.dart; then
             echo "[FAIL] v387: bundled logo reference left on the connection page"; exit 1
