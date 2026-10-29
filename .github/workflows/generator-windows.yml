@@ -4741,53 +4741,6 @@ jobs:
                Write-Host "Ingore the printer driver error."
            }
           
-      - name: icon stuff
-        if: ${{ inputs.iconlink == 'true' }}
-        shell: bash
-        run: |
-          if [ ! -f "./res/icon.png" ]; then
-            echo "::error::icon.png not found"
-            exit 1
-          fi
-          # [v389] The bundled icon.svg is left untouched on purpose.
-          #
-          # This step used to rename the upstream icon.svg to icon.svg.bak and
-          # rasterise the customer PNG over the original. That shipped a package
-          # holding both the vendor's own icon and a 143x larger replacement
-          # alongside it, which reads as a tampered vendor resource -- and the
-          # stale .bak was published with the build.
-          #
-          # The app icon is now served from <install>/brand/icon.png at runtime
-          # (v388), so the bundled svg only needs to stay the vendor's own. Leave
-          # it alone, and make sure no leftover .bak can be packed.
-          ASSET_DIR="./rustdesk/data/flutter_assets/assets"
-          rm -f "$ASSET_DIR/icon.svg.bak"
-          if [ ! -f "$ASSET_DIR/icon.svg" ]; then
-            echo "::error::bundled icon.svg is missing; refusing to publish a build without it"
-            exit 1
-          fi
-          echo "bundled icon.svg left as upstream ($(stat -c%s "$ASSET_DIR/icon.svg") bytes)"
-      
-      - name: Download logo.png
-        if: ${{ inputs.logolink == 'true' }}
-        env:
-          GENURL: ${{ secrets.GENURL }}
-          UUID: ${{ inputs.uuid }}
-        shell: pwsh
-        run: |
-          # [v387] Land the artwork in ./rustdesk/brand, which the self-extractor
-          # copies into the install dir, instead of the bundled Flutter asset
-          # tree. Upstream never ships assets/logo.png, so a package carrying it
-          # reads as a tampered resource. The program now loads it from
-          # <install>/brand/logo.png at runtime.
-          $outDir = "./rustdesk/brand"
-          if (!(Test-Path $outDir)) {
-            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          }
-          $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
-          Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
-
-
       # [v336] 卡片标识（both 标题前小图标）：与 logo.png 同一投递链
       # （docker 前端上传 -> MEDIA_ROOT/png/{uuid}/card_mark.png -> GET /png/
       # {uuid}/card_mark.png -> 运行期 bundle）。门控取自 extras 的
@@ -4872,6 +4825,22 @@ jobs:
       #     upx -9 --lzma ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
       #     ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
       #     echo "[OK] payload packed with UPX"
+
+      - name: Assert bundled icons are upstream (v389)
+        shell: bash
+        if: env.UPLOAD_ARTIFACT == 'true'
+        run: |
+          # [v389] The customer icon must not leak into the bundled Flutter
+          # asset tree: upstream never ships a logo, so a package carrying one
+          # reads as a tampered vendor resource. The artwork ships as data under
+          # brand/ instead. Byte-compare against the checkout to catch any
+          # patch that starts touching the tree again.
+          BUNDLED="./rustdesk/data/flutter_assets/assets/icon.svg"
+          UPSTREAM="./flutter/assets/icon.svg"
+          [ -f "$BUNDLED" ] || { echo "[FAIL] v389: bundled icon.svg missing"; exit 1; }
+          cmp -s "$UPSTREAM" "$BUNDLED" || { echo "[FAIL] v389: bundled icon.svg differs from upstream"; exit 1; }
+          [ ! -f "./rustdesk/data/flutter_assets/assets/icon.svg.bak" ] || { echo "[FAIL] v389: stale icon.svg.bak in package"; exit 1; }
+          echo "[OK] bundled icon.svg is byte-identical to upstream, no .bak"
 
       - name: Build self-extracted executable
         shell: bash
