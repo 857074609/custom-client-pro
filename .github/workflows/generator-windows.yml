@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 36d56e3a97bb53db89b0d3c8d243ee5ae8ffb85e
+      patches_sha: 2eebe2d4243d9af8468e0cb355e3b55c7d3309a5
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 36d56e3a97bb53db89b0d3c8d243ee5ae8ffb85e
+          ref: 2eebe2d4243d9af8468e0cb355e3b55c7d3309a5
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2822,11 +2822,8 @@ jobs:
           python3 patches/ui/patch_brand_icons.py .
           grep -q "File? brandFile(" flutter/lib/common.dart || { echo "[FAIL] v388: brand file helper missing"; exit 1; }
           grep -q 'brand/icon.png' src/tray.rs || { echo "[FAIL] v388: tray brand path missing"; exit 1; }
-          # The logo was shipped but never drawn: the customised home page
-          # replaced buildLeftPane() -- where upstream calls loadLogo() -- with a
-          # single right pane, leaving that method uncalled.
-          python3 patches/ui/patch_logo_render.py .
-          grep -q "loadLogo()," flutter/lib/desktop/pages/desktop_home_page.dart || { echo "[FAIL] v388: logo not wired into the rendered pane"; exit 1; }
+          # The home page is replaced later by patches/ui/desktop_home_page_new.dart,
+          # so the logo loader is fixed in that template, not here.
 
       - name: hide_chat_voice
         if: fromJson(inputs.extras).hide_chat_voice  == 'true'
