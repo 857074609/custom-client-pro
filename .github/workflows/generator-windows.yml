@@ -2764,23 +2764,28 @@ jobs:
             echo "[FAIL] v385: old broker name still present"; exit 1
           fi
 
-      - name: Portable prefix, static CRT, direct install copy (v386)
+      - name: Portable prefix, direct install copy (v386, CRT reverted in v388)
         shell: bash
         env:
           APP_NAME: ${{ inputs.appname }}
           PYTHONIOENCODING: utf-8
         run: |
-          # [v386] Three changes that cut scanner triggers around the installer:
-          # the payload unpacks into a directory named after the app, plugin
-          # targets link the static CRT so msvcp140/vcruntime140 are no longer
-          # shipped, and the install copies its payload from Rust instead of
-          # driving xcopy.exe from a batch file in %TEMP%.
+          # [v386] The payload unpacks into a directory named after the app, and
+          # the install copies its payload from Rust instead of driving
+          # xcopy.exe from a batch file in %TEMP%.
+          #
+          # [v388] The static-CRT half of v386 is reverted. Linking every target
+          # with /MT added ~8.5 MB to librustdesk.dll (36.6 -> 45.1 MB) and the
+          # resulting binary was flagged as a trojan outright, where the dynamic
+          # build only draws a behavioural "modifying a system DLL" prompt.
+          # Keep the dynamic CRT and ship msvcp140/vcruntime140 as before.
           python3 patches/install/patch_portable_prefix.py .
-          python3 patches/install/patch_static_crt.py .
           python3 patches/install/patch_no_xcopy.py .
           grep -q "fn app_prefix()" libs/portable/src/main.rs || { echo "[FAIL] v386: app prefix not parameterized"; exit 1; }
-          grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt || { echo "[FAIL] v386: static CRT not pinned"; exit 1; }
           grep -q "fn copy_payload_dir" src/platform/windows.rs || { echo "[FAIL] v386: direct install copy missing"; exit 1; }
+          if grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt; then
+            echo "[FAIL] v388: static CRT injection came back"; exit 1
+          fi
 
       - name: External brand artwork loading (v387)
         shell: bash
