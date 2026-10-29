@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: c7f61302c76bf7d9d3c8947ebe2bbb976f6f36b9
+      patches_sha: 929aacba490aff6fbf5c7d22b57b2a86dc7bb6e6
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c7f61302c76bf7d9d3c8947ebe2bbb976f6f36b9
+          ref: 929aacba490aff6fbf5c7d22b57b2a86dc7bb6e6
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2779,10 +2779,11 @@ jobs:
           # resulting binary was flagged as a trojan outright, where the dynamic
           # build only draws a behavioural "modifying a system DLL" prompt.
           # Keep the dynamic CRT and ship msvcp140/vcruntime140 as before.
+          # [v388] patch_no_xcopy.py is dropped: its direct copy ran before the
+          # install script's own "rd /s /q <path>", so the payload was deleted
+          # right after being written and the install directory stayed empty.
           python3 patches/install/patch_portable_prefix.py .
-          python3 patches/install/patch_no_xcopy.py .
           grep -q "fn app_prefix()" libs/portable/src/main.rs || { echo "[FAIL] v386: app prefix not parameterized"; exit 1; }
-          grep -q "fn copy_payload_dir" src/platform/windows.rs || { echo "[FAIL] v386: direct install copy missing"; exit 1; }
           if grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt; then
             echo "[FAIL] v388: static CRT injection came back"; exit 1
           fi
