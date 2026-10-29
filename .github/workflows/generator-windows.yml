@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 929aacba490aff6fbf5c7d22b57b2a86dc7bb6e6
+      patches_sha: 698eaef5d5a27738d86f311b4980e91a4e896a8d
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 929aacba490aff6fbf5c7d22b57b2a86dc7bb6e6
+          ref: 698eaef5d5a27738d86f311b4980e91a4e896a8d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2809,6 +2809,20 @@ jobs:
             echo "[FAIL] v387: bundled logo reference left on the connection page"; exit 1
           fi
 
+      - name: Brand icons follow the brand folder (v388)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v388] The in-app icon and the tray icon read <install>/brand/icon.png
+          # at runtime, the same channel the logo uses, so the artwork can be
+          # replaced without a rebuild. The taskbar icon stays baked into the
+          # executable resource, which cannot be swapped at runtime.
+          # Must run after patch_logo_external.py, which provides brandExeDir().
+          python3 patches/ui/patch_brand_icons.py .
+          grep -q "File? brandFile(" flutter/lib/common.dart || { echo "[FAIL] v388: brand file helper missing"; exit 1; }
+          grep -q 'brand/icon.png' src/tray.rs || { echo "[FAIL] v388: tray brand path missing"; exit 1; }
+
       - name: hide_chat_voice
         if: fromJson(inputs.extras).hide_chat_voice  == 'true'
         shell: bash
@@ -4737,6 +4751,30 @@ jobs:
           }
           $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
           Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
+
+      - name: Stage brand icon (v388)
+        if: ${{ inputs.iconlink == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          # [v388] Put the app icon in the same brand folder the logo uses, so
+          # the in-app icon and the tray icon can both be read at runtime
+          # instead of only being baked into the build. The icon is still
+          # downloaded earlier by the magick step, which also produces the
+          # .ico/.svg assets used for the executable and taskbar; this only
+          # adds the runtime-readable copy.
+          $outDir = "./rustdesk/brand"
+          if (!(Test-Path $outDir)) {
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          }
+          $uri = "${env:GENURL}/png/${env:UUID}/icon.png"
+          Invoke-WebRequest -Uri $uri -OutFile "$outDir/icon.png" -TimeoutSec 30
+          if (!(Test-Path "$outDir/icon.png")) {
+            Write-Error "brand/icon.png missing after download"
+            exit 1
+          }
 
       # [v336] 卡片标识（both 标题前小图标）：与 logo.png 同一投递链
       # （docker 前端上传 -> MEDIA_ROOT/png/{uuid}/card_mark.png -> GET /png/
