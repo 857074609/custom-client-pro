@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 2eebe2d4243d9af8468e0cb355e3b55c7d3309a5
+      patches_sha: c86206ecd546e9dabd946a936938bbfcccd747df
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 2eebe2d4243d9af8468e0cb355e3b55c7d3309a5
+          ref: c86206ecd546e9dabd946a936938bbfcccd747df
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2809,6 +2809,11 @@ jobs:
           python3 patches/ui/patch_brand_icons.py .
           grep -q "File? brandFile(" flutter/lib/common.dart || { echo "[FAIL] v388: brand file helper missing"; exit 1; }
           grep -q 'brand/icon.png' src/tray.rs || { echo "[FAIL] v388: tray brand path missing"; exit 1; }
+          # [v392] Wire shortcut/registry icons to the artwork shipped under
+          # data/flutter_assets/assets. is_custom_client() is pinned to false by
+          # the build, which had also switched this lookup off.
+          python3 patches/ui/patch_shortcut_icon.py .
+          grep -q "v392" src/platform/windows.rs || { echo "[FAIL] v392: shortcut icon guard not relaxed"; exit 1; }
           # The home page is replaced later by patches/ui/desktop_home_page_new.dart,
           # so the logo loader is fixed in that template, not here.
 
@@ -4752,6 +4757,22 @@ jobs:
             Write-Error "brand/icon.png missing after download"
             exit 1
           }
+
+          # [v392] Shortcut/registry icon: get_custom_icon() reads
+          # <install>/data/flutter_assets/assets/icon.ico and points the
+          # shortcut's IconLocation at it. It is a NEW file in the asset tree
+          # (upstream ships none there), the same shape as brand/, so the
+          # bundled icons stay untouched.
+          $icoDir = "./rustdesk/data/flutter_assets/assets"
+          if (!(Test-Path $icoDir)) {
+            New-Item -ItemType Directory -Force -Path $icoDir | Out-Null
+          }
+          magick "$outDir/icon.png" -define icon:auto-resize=256,128,64,48,32,16 "$icoDir/icon.ico"
+          if (!(Test-Path "$icoDir/icon.ico")) {
+            Write-Error "flutter_assets/assets/icon.ico was not generated"
+            exit 1
+          }
+          Write-Host "shortcut icon staged: $icoDir/icon.ico"
       - name: Download card_mark.png
         if: ${{ fromJson(inputs.extras || '{}').card_mark_link == 'true' }}
         env:
