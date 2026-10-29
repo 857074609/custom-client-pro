@@ -111,7 +111,9 @@ jobs:
               exit 1
           }
       - name: Build WindowInjection.dll
-        shell: bash
+        # msbuild is only on PATH inside a PowerShell step; setup-msbuild puts it
+        # there, and a bash step does not see that entry (exit 127).
+        shell: pwsh
         run: |
           cd RustDeskTempTopMostWindow
           # [v388] Back to the dynamic CRT, matching upstream. v386 forced /MT
@@ -121,6 +123,7 @@ jobs:
 
       - name: Locate and stage VC runtime redist DLLs
         id: vswhere
+        shell: pwsh
         run: |
           $VSWHERE = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $VS_PATH = & $VSWHERE -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
