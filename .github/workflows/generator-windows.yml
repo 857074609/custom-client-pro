@@ -2783,10 +2783,9 @@ jobs:
           # install script's own "rd /s /q <path>", so the payload was deleted
           # right after being written and the install directory stayed empty.
           python3 patches/install/patch_portable_prefix.py .
+          python3 patches/install/patch_static_crt.py .
           grep -q "fn app_prefix()" libs/portable/src/main.rs || { echo "[FAIL] v386: app prefix not parameterized"; exit 1; }
-          if grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt; then
-            echo "[FAIL] v388: static CRT injection came back"; exit 1
-          fi
+          grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt || { echo "[FAIL] v390: static CRT requested but not applied"; exit 1 }
 
       - name: External brand artwork loading (v387)
         shell: bash
