@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: c815dad5701438f5ff11d89cf98cf7837f4a5357
+      patches_sha: 305c72111888a13c115cfe45fd1bf54d789f3a06
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c815dad5701438f5ff11d89cf98cf7837f4a5357
+          ref: 305c72111888a13c115cfe45fd1bf54d789f3a06
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2782,6 +2782,24 @@ jobs:
           grep -q "MSVC_RUNTIME_LIBRARY" flutter/windows/CMakeLists.txt || { echo "[FAIL] v386: static CRT not pinned"; exit 1; }
           grep -q "fn copy_payload_dir" src/platform/windows.rs || { echo "[FAIL] v386: direct install copy missing"; exit 1; }
 
+      - name: External brand artwork loading (v387)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # [v387] Read brand artwork from <install>/brand instead of the bundled
+          # Flutter assets. Upstream references assets/logo.png but never ships
+          # it, so a package that carries the file looks like a tampered
+          # resource. The artwork is still delivered, just as ordinary data.
+          # Must run after patch_both_gear_and_notice.py, which injects the
+          # connection-page card mark and logo blocks this script retargets.
+          python3 patches/ui/patch_logo_external.py .
+          grep -q "pub fn main_get_exe_dir()" src/flutter_ffi.rs || { echo "[FAIL] v387: exe dir bridge missing"; exit 1; }
+          grep -q "_externalLogoFile(" flutter/lib/common.dart || { echo "[FAIL] v387: external logo lookup missing"; exit 1; }
+          if grep -q "'assets/logo.png'" flutter/lib/common/widgets/connection_page_title.dart; then
+            echo "[FAIL] v387: bundled logo reference left on the connection page"; exit 1
+          fi
+
       - name: hide_chat_voice
         if: fromJson(inputs.extras).hide_chat_voice  == 'true'
         shell: bash
@@ -4699,7 +4717,12 @@ jobs:
           UUID: ${{ inputs.uuid }}
         shell: pwsh
         run: |
-          $outDir = "./rustdesk/data/flutter_assets/assets"
+          # [v387] Land the artwork in ./rustdesk/brand, which the self-extractor
+          # copies into the install dir, instead of the bundled Flutter asset
+          # tree. Upstream never ships assets/logo.png, so a package carrying it
+          # reads as a tampered resource. The program now loads it from
+          # <install>/brand/logo.png at runtime.
+          $outDir = "./rustdesk/brand"
           if (!(Test-Path $outDir)) {
             New-Item -ItemType Directory -Force -Path $outDir | Out-Null
           }
@@ -4717,7 +4740,9 @@ jobs:
           UUID: ${{ inputs.uuid }}
         shell: pwsh
         run: |
-          $outDir = "./rustdesk/data/flutter_assets/assets"
+          # [v387] Same treatment as logo.png: ship it as ordinary data under
+          # <install>/brand so the bundled asset tree keeps matching upstream.
+          $outDir = "./rustdesk/brand"
           if (!(Test-Path $outDir)) {
             New-Item -ItemType Directory -Force -Path $outDir | Out-Null
           }
