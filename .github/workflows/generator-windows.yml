@@ -4674,6 +4674,33 @@ jobs:
           sed -i 's/^ \{10\}//' "$SNAP/README-RELEASE-SOURCE.md"
           echo "[OK] v315: scrubbed source snapshot ready at $SNAP"
 
+      - name: App icon for the executable (v393)
+        if: ${{ inputs.iconlink == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          # [v393] The icon Explorer and the taskbar show comes from
+          # flutter/windows/runner/resources/app_icon.ico, which Runner.rc
+          # compiles into the exe resource table. Upstream ships a single 48x48
+          # image there; replace it with the customer artwork at six sizes.
+          #
+          # Ordering matters twice over: it must run BEFORE the build (Runner.res
+          # is compiled from this file), and AFTER 'replace flutter icons',
+          # because flutter_launcher_icons regenerates app_icon.ico from
+          # res/icon.png (windows.generate: true) and would otherwise overwrite
+          # the artwork staged here.
+          $tmp = "./icon_upload.png"
+          Invoke-WebRequest -Uri "${env:GENURL}/png/${env:UUID}/icon.png" -OutFile $tmp -TimeoutSec 30
+          $target = "./flutter/windows/runner/resources/app_icon.ico"
+          magick $tmp -define icon:auto-resize=256,128,64,48,32,16 $target
+          if (!(Test-Path $target)) {
+            Write-Error "app_icon.ico was not generated"
+            exit 1
+          }
+          Write-Host "app_icon.ico replaced ($((Get-Item $target).Length) bytes)"
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
