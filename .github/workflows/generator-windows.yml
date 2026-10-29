@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 5c69ec157957decd6750f77e341bd6e8ef5148a6
+      patches_sha: c7f61302c76bf7d9d3c8947ebe2bbb976f6f36b9
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 5c69ec157957decd6750f77e341bd6e8ef5148a6
+          ref: c7f61302c76bf7d9d3c8947ebe2bbb976f6f36b9
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2791,10 +2791,13 @@ jobs:
           # Flutter assets. Upstream references assets/logo.png but never ships
           # it, so a package that carries the file looks like a tampered
           # resource. The artwork is still delivered, just as ordinary data.
+          # Dart reads the path with Platform.resolvedExecutable, so no FFI
+          # entry is added: the bridge bindings come from an unpatched tree and
+          # flutter_ffi.rs is already rewritten by the iroh patch.
           # Must run after patch_both_gear_and_notice.py, which injects the
           # connection-page card mark and logo blocks this script retargets.
           python3 patches/ui/patch_logo_external.py .
-          grep -q 'if key == "exe-dir"' src/flutter_ffi.rs || { echo "[FAIL] v387: exe-dir option key missing"; exit 1; }
+          grep -q "brandExeDir()" flutter/lib/common.dart || { echo "[FAIL] v387: exe dir helper missing"; exit 1; }
           grep -q "_externalLogoFile(" flutter/lib/common.dart || { echo "[FAIL] v387: external logo lookup missing"; exit 1; }
           if grep -q "'assets/logo.png'" flutter/lib/common/widgets/connection_page_title.dart; then
             echo "[FAIL] v387: bundled logo reference left on the connection page"; exit 1
