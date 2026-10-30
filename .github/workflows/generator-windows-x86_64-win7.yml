@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 3d26ad0b1a6368fc4a5490372f66be3036007e0f
+      patches_sha: d90aee3bfc710d1afe61ccf0d54754e4f8ef0cc6
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 3d26ad0b1a6368fc4a5490372f66be3036007e0f
+          ref: d90aee3bfc710d1afe61ccf0d54754e4f8ef0cc6
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2884,6 +2884,9 @@ jobs:
           # multi-select add offers the same rename prompt.
           python3 patches/ui/patch_alias_sync.py .
           grep -q "v400" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v400: alias sync not wired"; exit 1; }
+          # [v401] No local address book: creation needs a server collection.
+          python3 patches/ui/patch_no_local_ab.py .
+          grep -q "v401" flutter/lib/models/ab_model.dart || { echo "[FAIL] v401: local address book fallback not removed"; exit 1; }
           python3 patches/install/patch_packer_icon.py .
           grep -q "packer-icon.ico" libs/portable/build.rs || { echo "[FAIL] v394: installer icon not wired"; exit 1; }
           echo "[OK] brand artwork and icons wired"
