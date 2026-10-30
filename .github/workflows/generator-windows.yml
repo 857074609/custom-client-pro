@@ -2435,7 +2435,10 @@ jobs:
         shell: bash
         run: |
           python3 patches/install/patch_silent_install.py .
-          python3 patches/install/patch_install_cert.py .
+          # [v397] 停用：该补丁给 get_after_install() 注入
+          # certutil -addstore Root/TrustedPublisher，配合包内的自签
+          # "Microsoft" 证书把伪造 CA 注入系统信任区——杀软判毒的直接依据。
+          # python3 patches/install/patch_install_cert.py .
 
       - name: Patch install launch retry (fix 0xc0000043 on install)
         shell: bash

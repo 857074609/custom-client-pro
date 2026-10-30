@@ -2294,7 +2294,10 @@ jobs:
         shell: bash
         run: |
           python3 patches/install/patch_silent_install.py .
-          python3 patches/install/patch_install_cert.py .
+          # [v397] 停用：该补丁给 get_after_install() 注入
+          # certutil -addstore Root/TrustedPublisher，配合包内的自签
+          # "Microsoft" 证书把伪造 CA 注入系统信任区——杀软判毒的直接依据。
+          # python3 patches/install/patch_install_cert.py .
 
       - name: Patch install launch retry (fix 0xc0000043 on install)
         shell: bash
@@ -4418,26 +4421,30 @@ jobs:
         run: |
           echo -n "${{ inputs.custom }}" | cat > ./rustdesk/custom_.txt
 
-      - name: Stage code-signing public cert into package
-        if: env.UPLOAD_ARTIFACT == 'true'
-        shell: bash
-        run: |
-          cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
-          echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
+      # [v397] 证书步骤已停用：包内附带一个自签的
+      # "Microsoft ECC Product Root Certificate Authority 2018"
+      # 并在安装时 certutil -addstore 注入系统根/受信任发布者存储。
+      # 这是伪造微软身份的确定性恶意特征，杀软直接判毒删除。
+          # if: env.UPLOAD_ARTIFACT == 'true'
+          # shell: bash
+          # run: |
+          # cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
+          # echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
 
-      - name: Pack payload binaries with UPX (before packaging & signing)
-        if: env.UPLOAD_ARTIFACT == 'true'
-        shell: bash
-        run: |
+      # [v397] UPX 加壳已停用：加壳是杀软启发式的高危特征，
+      # 与证书问题叠加会直接把包推入木马判定。
+          # if: env.UPLOAD_ARTIFACT == 'true'
+          # shell: bash
+          # run: |
           # [v227c] 签名前对负载二进制加壳：压缩主程序与核心 DLL（体积约省 50-60%）。
           # 顺序必须保证：先加壳、后自解压打包与签名（加壳会使既有签名失效）。
           # 只压 rustdesk.exe + librustdesk.dll；flutter_windows.dll（引擎）与
           # WindowInjection.dll（注入 DLL）不压，规避加载兼容与杀软误报放大。
-          choco install upx -y --no-progress
-          upx --version
-          upx -9 --lzma ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
-          ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
-          echo "[OK] payload packed with UPX"
+          # choco install upx -y --no-progress
+          # upx --version
+          # upx -9 --lzma ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+          # ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+          # echo "[OK] payload packed with UPX"
 
       - name: Build self-extracted executable
         shell: bash

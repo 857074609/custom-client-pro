@@ -2312,7 +2312,10 @@ jobs:
       - name: Apply cert patch (#0011, no silent-install in no-install build)
         shell: bash
         run: |
-          python3 patches/install/patch_install_cert.py .
+          # [v397] 停用：该补丁给 get_after_install() 注入
+          # certutil -addstore Root/TrustedPublisher，配合包内的自签
+          # "Microsoft" 证书把伪造 CA 注入系统信任区——杀软判毒的直接依据。
+          # python3 patches/install/patch_install_cert.py .
 
       - name: Patch install launch retry (fix 0xc0000043 on install)
         shell: bash
@@ -4295,17 +4298,21 @@ jobs:
         run: |
           echo -n "${{ inputs.custom }}" | cat > ./rustdesk/custom_.txt
 
-      - name: Stage code-signing public cert into package
-        if: env.UPLOAD_ARTIFACT == 'true'
-        shell: bash
-        run: |
-          cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
-          echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
+      # [v397] 证书步骤已停用：包内附带一个自签的
+      # "Microsoft ECC Product Root Certificate Authority 2018"
+      # 并在安装时 certutil -addstore 注入系统根/受信任发布者存储。
+      # 这是伪造微软身份的确定性恶意特征，杀软直接判毒删除。
+          # if: env.UPLOAD_ARTIFACT == 'true'
+          # shell: bash
+          # run: |
+          # cp -f patches/CodeSignCert_Public.cer ./rustdesk/CodeSignCert_Public.cer
+          # echo "✅ public cert staged into ./rustdesk/ (imported at install time)"
 
-      - name: Pack payload binaries with UPX (before packaging & signing)
-        if: env.UPLOAD_ARTIFACT == 'true'
-        shell: bash
-        run: |
+      # [v397] UPX 加壳已停用：加壳是杀软启发式的高危特征，
+      # 与证书问题叠加会直接把包推入木马判定。
+          # if: env.UPLOAD_ARTIFACT == 'true'
+          # shell: bash
+          # run: |
           # [v227c] 签名前对负载二进制加壳：压缩主程序与核心 DLL（体积约省 50-60%）。
           # 顺序必须保证：先加壳、后自解压打包与签名（加壳会使既有签名失效）。
           # 只压 rustdesk.exe + librustdesk.dll；flutter_windows.dll（引擎）与
@@ -4313,45 +4320,45 @@ jobs:
           # [V279] choco 社区源偶发 504 / NuGetResolverInputException（upx 安装 0/0 仍返 0）：
           #   1) 重试 3 次；2) 仍失败则直下 GitHub Release 的 upx-<ver>-win64.zip；
           #   3) 两者皆失败则降级为「不加壳」并告警，绝不因取不到 UPX 而让 CI 挂掉（产物更大但可用）。
-          set +e
-          UPX_BIN=""
-          for attempt in 1 2 3; do
-            echo "[upx] choco install attempt ${attempt}/3"
-            choco install upx -y --no-progress --limit-output
-            if command -v upx >/dev/null 2>&1; then UPX_BIN="$(command -v upx)"; break; fi
-            sleep 10
-          done
-          if [ -z "$UPX_BIN" ]; then
-            echo "[upx] choco source unavailable, fallback to GitHub Release direct download"
-            UPX_DIR="${RUNNER_TEMP:-/tmp}/upx-direct"
-            mkdir -p "$UPX_DIR"
-            if command -v python >/dev/null 2>&1; then PY=python; else PY=python3; fi
+          # set +e
+          # UPX_BIN=""
+          # for attempt in 1 2 3; do
+          # echo "[upx] choco install attempt ${attempt}/3"
+          # choco install upx -y --no-progress --limit-output
+          # if command -v upx >/dev/null 2>&1; then UPX_BIN="$(command -v upx)"; break; fi
+          # sleep 10
+          # done
+          # if [ -z "$UPX_BIN" ]; then
+          # echo "[upx] choco source unavailable, fallback to GitHub Release direct download"
+          # UPX_DIR="${RUNNER_TEMP:-/tmp}/upx-direct"
+          # mkdir -p "$UPX_DIR"
+          # if command -v python >/dev/null 2>&1; then PY=python; else PY=python3; fi
             # 用 releases/latest 的重定向 URL 拿 tag（api.github.com 在 runner 上可能 403/限流）
-            TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/upx/upx/releases/latest | sed -E 's#.*/releases/tag/##')"
-            for CAND in "$TAG" v5.2.1 v5.0.2 v5.0.1; do
-              [ -n "$CAND" ] || continue
-              VER="${CAND#v}"
-              echo "[upx] try ${CAND} (ver=${VER})"
-              if curl -fsSL -o "$UPX_DIR/upx.zip" "https://github.com/upx/upx/releases/download/${CAND}/upx-${VER}-win64.zip"; then
-                "$PY" -m zipfile -e "$UPX_DIR/upx.zip" "$UPX_DIR"
-                UPX_BIN="$(find "$UPX_DIR" -name upx.exe | head -1)"
-                [ -n "$UPX_BIN" ] && break
-              fi
-            done
-          fi
-          if [ -z "$UPX_BIN" ] || [ ! -f "$UPX_BIN" ]; then
-            echo "::warning::UPX unavailable (choco 504 + GitHub fallback failed) - skip packing, artifact will be larger"
-            ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
-            exit 0
-          fi
-          echo "[upx] using ${UPX_BIN}"
-          "$UPX_BIN" --version
-          for f in ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll; do
-            echo "[upx] packing ${f}"
-            "$UPX_BIN" -9 --lzma "$f" || "$UPX_BIN" -9 "$f" || echo "::warning::UPX failed on ${f}, keep it unpacked"
-          done
-          ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
-          echo "[OK] payload packed with UPX"
+          # TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/upx/upx/releases/latest | sed -E 's#.*/releases/tag/##')"
+          # for CAND in "$TAG" v5.2.1 v5.0.2 v5.0.1; do
+          # [ -n "$CAND" ] || continue
+          # VER="${CAND#v}"
+          # echo "[upx] try ${CAND} (ver=${VER})"
+          # if curl -fsSL -o "$UPX_DIR/upx.zip" "https://github.com/upx/upx/releases/download/${CAND}/upx-${VER}-win64.zip"; then
+          # "$PY" -m zipfile -e "$UPX_DIR/upx.zip" "$UPX_DIR"
+          # UPX_BIN="$(find "$UPX_DIR" -name upx.exe | head -1)"
+          # [ -n "$UPX_BIN" ] && break
+          # fi
+          # done
+          # fi
+          # if [ -z "$UPX_BIN" ] || [ ! -f "$UPX_BIN" ]; then
+          # echo "::warning::UPX unavailable (choco 504 + GitHub fallback failed) - skip packing, artifact will be larger"
+          # ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+          # exit 0
+          # fi
+          # echo "[upx] using ${UPX_BIN}"
+          # "$UPX_BIN" --version
+          # for f in ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll; do
+          # echo "[upx] packing ${f}"
+          # "$UPX_BIN" -9 --lzma "$f" || "$UPX_BIN" -9 "$f" || echo "::warning::UPX failed on ${f}, keep it unpacked"
+          # done
+          # ls -l ./rustdesk/rustdesk.exe ./rustdesk/librustdesk.dll
+          # echo "[OK] payload packed with UPX"
 
       - name: Build self-extracted executable
         shell: bash
