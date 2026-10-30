@@ -116,27 +116,25 @@ jobs:
         shell: pwsh
         run: |
           cd RustDeskTempTopMostWindow
-          # [v388] Back to the dynamic CRT, matching upstream. v386 forced /MT
-          # here as well; that inflated the shipped binaries and the package
-          # began to be flagged as a trojan rather than merely prompting.
+          # [v395] Link the static CRT, as every other target already does.
+          #
+          # This project builds through its own msbuild job, outside the CMake
+          # rules that cover the app and the Flutter plugins, so it kept /MD and
+          # was the last component importing MSVCP140/VCRUNTIME140. That is why
+          # the package still had to ship the three redist DLLs -- and why an
+          # install still prompted about replacing a system DLL.
+          #
+          # /p:RuntimeLibrary on the command line loses to the project's own
+          # settings, so the value is forced through a props file that MSBuild
+          # imports ahead of the project.
+          $props = '<Project><PropertyGroup><RuntimeLibrary>MultiThreaded</RuntimeLibrary></PropertyGroup><ItemDefinitionGroup><ClCompile><RuntimeLibrary>MultiThreaded</RuntimeLibrary></ClCompile></ItemDefinitionGroup></Project>'
+          Set-Content -Path Directory.Build.props -Value $props -Encoding UTF8
           msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }}
 
-      - name: Locate and stage VC runtime redist DLLs
-        id: vswhere
-        shell: pwsh
-        run: |
-          $VSWHERE = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $VS_PATH = & $VSWHERE -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
-          $VC_TOOLS = Join-Path $VS_PATH "VC\Tools\MSVC"
-          $VC_VERSION = Get-ChildItem $VC_TOOLS | Select-Object -ExpandProperty Name | Select-Object -Last 1
-          $ARCH = "${{ inputs.platform }}"
-          $REDIST = Join-Path $VC_TOOLS $VC_VERSION "bin\Hostx64\$ARCH"
-          $DST = Join-Path "$env:GITHUB_WORKSPACE" "${{ env.build_output_dir }}"
-          New-Item -ItemType Directory -Force -Path $DST | Out-Null
-          Copy-Item (Join-Path $REDIST "msvcp140.dll") $DST -Force
-          Copy-Item (Join-Path $REDIST "vcruntime140.dll") $DST -Force
-          Copy-Item (Join-Path $REDIST "vcruntime140_1.dll") $DST -Force
-          echo "vcredist=$REDIST" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      # [v395] VC redist staging removed. With /MT the DLL no longer imports
+      # MSVCP140/VCRUNTIME140, so shipping the three redist DLLs next to it only
+      # put system-DLL replacements into the installer payload -- the thing the
+      # file-protection prompt complained about.
 
       - name: Upload compiled WindowInjection.dll
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -145,6 +143,3 @@ jobs:
           name: topmostwindow-artifacts-${{ inputs.platform }}
           path: |
             ./${{ env.build_output_dir }}/WindowInjection.dll
-            ./${{ env.build_output_dir }}/msvcp140.dll
-            ./${{ env.build_output_dir }}/vcruntime140.dll
-            ./${{ env.build_output_dir }}/vcruntime140_1.dll
