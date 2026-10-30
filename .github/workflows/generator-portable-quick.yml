@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 372da567022f5e253aec36cba9e2725a5246d74e
+      patches_sha: 30d696572d668d1ef4570711eae8efd28ad9e532
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 372da567022f5e253aec36cba9e2725a5246d74e
+          ref: 30d696572d668d1ef4570711eae8efd28ad9e532
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -3468,6 +3468,9 @@ jobs:
           # [v401] No local address book: creation needs a server collection.
           python3 patches/ui/patch_no_local_ab.py .
           grep -q "v401" flutter/lib/models/ab_model.dart || { echo "[FAIL] v401: local address book fallback not removed"; exit 1; }
+          # [v403] Legacy LocalAb objects (non-local_ guid) still sync the alias.
+          python3 patches/ui/patch_local_ab_alias_sync.py .
+          grep -q "v403" flutter/lib/models/ab_model.dart || { echo "[FAIL] v403: local ab alias sync not wired"; exit 1; }
           python3 patches/iroh/iroh_badge.py .
 
       # [v382] AI Buddy is a build-time choice, not a runtime one: the whole
