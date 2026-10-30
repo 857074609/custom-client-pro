@@ -1618,8 +1618,12 @@ jobs:
           #      刷新仍保留上游的 RotatedBox(quarterTurns: 2)，箭头朝向不变
           cp -f patches/assets/fontawesome-webfont.ttf flutter/assets/fontawesome-webfont.ttf
           test -s flutter/assets/fontawesome-webfont.ttf || { echo "[FAIL] v224: fontawesome-webfont.ttf missing/empty"; exit 1; }
-          cp -f patches/assets/logo_v15_cn.png flutter/assets/logo_v15_cn.png
-          test -s flutter/assets/logo_v15_cn.png || { echo "[FAIL] v240: logo_v15_cn.png missing/empty"; exit 1; }
+          # [v402] logo_v15_cn.png is no longer staged. v244 retired the
+          # right-card LOGO that used it (the assertion below enforces its
+          # absence), so the copy only served to put an image upstream never
+          # ships into flutter_assets -- and a direction=both build was flagged
+          # as a trojan with this file present, while an incoming build without
+          # it was not.
           python3 patches/ui/patch_font_awesome_icons.py .
           grep -q "family: FontAwesome" flutter/pubspec.yaml || { echo "[FAIL] v224: FontAwesome family missing in pubspec.yaml"; exit 1; }
           grep -q "fontawesome-webfont.ttf" flutter/pubspec.yaml || { echo "[FAIL] v224: fontawesome ttf not declared in pubspec.yaml"; exit 1; }
