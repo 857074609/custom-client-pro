@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: d89dc084f23cc93e04df2898ebf1e9d72a3e94e2
+      patches_sha: 587944d32944781568d7997c22c428e6fcaaf722
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: d89dc084f23cc93e04df2898ebf1e9d72a3e94e2
+          ref: 587944d32944781568d7997c22c428e6fcaaf722
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2835,38 +2835,46 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
           
-      - name: magick stuff
-        if: ${{ inputs.iconlink == 'true' }}
-        shell: pwsh
-        env:
-          GENURL: ${{ secrets.GENURL }}
-          UUID: ${{ inputs.uuid }}
-        run: |
-          $url = "${env:GENURL}/png/${env:UUID}/icon.png"
-          Write-Host "Downloading icon from: $url"
-          Invoke-WebRequest -Uri $url -OutFile ./res/icon.png -ErrorAction Stop
-          
-          magick ./res/icon.png -define icon:auto-resize=256,64,48,32,16 ./res/icon.ico
-          Copy-Item ./res/icon.ico ./res/tray-icon.ico
-          magick ./res/icon.png -resize 32x32 ./res/32x32.png
-          magick ./res/icon.png -resize 64x64 ./res/64x64.png
-          magick ./res/icon.png -resize 128x128 ./res/128x128.png
-          magick ./res/128x128.png -resize 200% ./res/128x128@2x.png
-
+      # [v389/v391] The old "magick stuff" step is gone: it overwrote res/icon.png,
+      # regenerated res/icon.ico / tray-icon.ico and rasterised icon.svg, and the
+      # build was flagged as a trojan whenever it did. Icon resources now stay
+      # byte-identical to upstream and the artwork ships as data under brand/.
 
       - name: ui.rs icon
         if: ${{ inputs.iconlink == 'true' }}
         shell: bash
         run: |
-          if [ ! -f "./res/icon.png" ]; then
-            echo "::error::icon.png missing after magick step"
-            exit 1
+          # [v391] Do not rewrite the icons baked into ui.rs. Upstream never
+          # touches them and the rewrite changed librustdesk.dll's read-only
+          # data. Only make sure no stale .bak from the old perl -i run can be
+          # packed.
+          if [ -f "./src/ui.rs.bak" ]; then
+            echo "removing stale ui.rs backup"
+            rm -f ./src/ui.rs.bak
           fi
-          b64=$(base64 -w0 ./res/icon.png)
-          perl -i.bak -pe '
-            BEGIN { $b64 = shift @ARGV }
-            s/iVBORw0KGgo[A-Za-z0-9+\/=]{100,}/$b64/g;
-          ' "$b64" ./src/ui.rs
+          echo "ui.rs left as upstream (icons are no longer rewritten)"
+
+      - name: Brand artwork + icons (v387/v388/v392/v394)
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          # Ported from generator-windows.yml. Same split as there:
+          #   * brand/ carries the artwork, loaded at runtime;
+          #   * data/flutter_assets/assets/icon.ico is a NEW file the shortcut
+          #     IconLocation points at;
+          #   * brand/packer-icon.ico is the installer wrapper's icon.
+          # res/ and the bundled icon.svg stay byte-identical to upstream.
+          python3 patches/ui/patch_logo_external.py .
+          grep -q "brandExeDir()" flutter/lib/common.dart || { echo "[FAIL] v387: brand exe dir helper missing"; exit 1; }
+          python3 patches/ui/patch_brand_icons.py .
+          grep -q "File? brandFile(" flutter/lib/common.dart || { echo "[FAIL] v388: brand file helper missing"; exit 1; }
+          grep -q 'brand/icon.png' src/tray.rs || { echo "[FAIL] v388: tray brand path missing"; exit 1; }
+          python3 patches/ui/patch_shortcut_icon.py .
+          grep -q "v392" src/platform/windows.rs || { echo "[FAIL] v392: shortcut icon guard not relaxed"; exit 1; }
+          python3 patches/install/patch_packer_icon.py .
+          grep -q "packer-icon.ico" libs/portable/build.rs || { echo "[FAIL] v394: installer icon not wired"; exit 1; }
+          echo "[OK] brand artwork and icons wired"
 
 # === 用户附加功能（Custom Enhancements）===
       
@@ -4230,6 +4238,33 @@ jobs:
           sed -i 's/^ \{10\}//' "$SNAP/README-RELEASE-SOURCE.md"
           echo "[OK] v315: scrubbed source snapshot ready at $SNAP"
 
+      - name: App icon for the executable (v393)
+        if: ${{ inputs.iconlink == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          # [v393] The icon Explorer and the taskbar show comes from
+          # flutter/windows/runner/resources/app_icon.ico, which Runner.rc
+          # compiles into the exe resource table. Upstream ships a single 48x48
+          # image there; replace it with the customer artwork at six sizes.
+          #
+          # Ordering matters twice over: it must run BEFORE the build (Runner.res
+          # is compiled from this file), and AFTER 'replace flutter icons',
+          # because flutter_launcher_icons regenerates app_icon.ico from
+          # res/icon.png (windows.generate: true) and would otherwise overwrite
+          # the artwork staged here.
+          $tmp = "./icon_upload.png"
+          Invoke-WebRequest -Uri "${env:GENURL}/png/${env:UUID}/icon.png" -OutFile $tmp -TimeoutSec 30
+          $target = "./flutter/windows/runner/resources/app_icon.ico"
+          magick $tmp -define icon:auto-resize=256,128,64,48,32,16 $target
+          if (!(Test-Path $target)) {
+            Write-Error "app_icon.ico was not generated"
+            exit 1
+          }
+          Write-Host "app_icon.ico replaced ($((Get-Item $target).Length) bytes)"
+
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk — 对齐官方 build-for-windows 参数（--portable --skip-portable-pack）
@@ -4270,18 +4305,11 @@ jobs:
                Write-Host "Ingore the printer driver error."
            }
           
-      - name: icon stuff
-        if: ${{ inputs.iconlink == 'true' }}
-        shell: bash
-        run: |
-          if [ ! -f "./res/icon.png" ]; then
-            echo "::error::icon.png not found"
-            exit 1
-          fi
-          ASSET_DIR="./rustdesk/data/flutter_assets/assets"
-          ICON_SVG="$ASSET_DIR/icon.svg"
-          [ -f "$ICON_SVG" ] && mv "$ICON_SVG" "$ICON_SVG.bak"
-          magick ./res/icon.png "$ICON_SVG"
+      # [v389] The "icon stuff" step is gone. It renamed the upstream icon.svg
+      # to icon.svg.bak and rasterised the customer PNG over the original, which
+      # shipped both a vendor resource and a 143x larger replacement in the same
+      # package. The artwork now travels as data under brand/ and the bundled
+      # icon.svg is left untouched.
       
       - name: Download logo.png
         if: ${{ inputs.logolink == 'true' }}
@@ -4290,12 +4318,59 @@ jobs:
           UUID: ${{ inputs.uuid }}
         shell: pwsh
         run: |
-          $outDir = "./rustdesk/data/flutter_assets/assets"
+          # [v387/v391] Ship the logo as ordinary data under <install>/brand.
+          # Upstream never ships assets/logo.png, so a package carrying it in the
+          # bundled Flutter asset tree reads as a tampered vendor resource.
+          # Must run AFTER the Release->rustdesk rename.
+          $outDir = "./rustdesk/brand"
           if (!(Test-Path $outDir)) {
             New-Item -ItemType Directory -Force -Path $outDir | Out-Null
           }
           $uri = "${env:GENURL}/png/${env:UUID}/logo.png"
           Invoke-WebRequest -Uri $uri -OutFile "$outDir/logo.png" -TimeoutSec 30
+
+      - name: Stage brand icon
+        if: ${{ inputs.iconlink == 'true' }}
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          UUID: ${{ inputs.uuid }}
+        shell: pwsh
+        run: |
+          # [v388/v392/v394] Runtime icon for the in-app icon and the tray, the
+          # shortcut/registry icon, and the installer wrapper icon. All are data
+          # files staged next to res/ -- res/ itself stays upstream's.
+          $outDir = "./rustdesk/brand"
+          if (!(Test-Path $outDir)) {
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          }
+          $uri = "${env:GENURL}/png/${env:UUID}/icon.png"
+          Invoke-WebRequest -Uri $uri -OutFile "$outDir/icon.png" -TimeoutSec 30
+          if (!(Test-Path "$outDir/icon.png")) {
+            Write-Error "brand/icon.png missing after download"
+            exit 1
+          }
+
+          $icoDir = "./rustdesk/data/flutter_assets/assets"
+          if (!(Test-Path $icoDir)) {
+            New-Item -ItemType Directory -Force -Path $icoDir | Out-Null
+          }
+          magick "$outDir/icon.png" -define icon:auto-resize=256,128,64,48,32,16 "$icoDir/icon.ico"
+          if (!(Test-Path "$icoDir/icon.ico")) {
+            Write-Error "flutter_assets/assets/icon.ico was not generated"
+            exit 1
+          }
+
+          $packerIco = "./brand/packer-icon.ico"
+          $packerDir = Split-Path $packerIco -Parent
+          if (!(Test-Path $packerDir)) {
+            New-Item -ItemType Directory -Force -Path $packerDir | Out-Null
+          }
+          Copy-Item "$icoDir/icon.ico" $packerIco -Force
+          if (!(Test-Path $packerIco)) {
+            Write-Error "brand/packer-icon.ico was not staged"
+            exit 1
+          }
+          Write-Host "brand icon, shortcut icon and installer icon staged"
 
       # [v336] 卡片标识（both 标题前小图标）：与 logo.png 同一投递链
       # （docker 前端上传 -> MEDIA_ROOT/png/{uuid}/card_mark.png -> GET /png/
