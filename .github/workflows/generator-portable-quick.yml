@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 587944d32944781568d7997c22c428e6fcaaf722
+      patches_sha: 531bfbdb7ae68fa9daecfe0524c3552eadb03b88
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 587944d32944781568d7997c22c428e6fcaaf722
+          ref: 531bfbdb7ae68fa9daecfe0524c3552eadb03b88
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2879,6 +2879,15 @@ jobs:
           grep -q 'brand/icon.png' src/tray.rs || { echo "[FAIL] v388: tray brand path missing"; exit 1; }
           python3 patches/ui/patch_shortcut_icon.py .
           grep -q "v392" src/platform/windows.rs || { echo "[FAIL] v392: shortcut icon guard not relaxed"; exit 1; }
+          # [v399] Address books must bind to a server collection (Ab), never
+          # fall back to LocalAb: LocalAb keeps alias/tags local, so devices
+          # reached the API with empty aliases.
+          python3 patches/ui/patch_ab_server_mode.py .
+          grep -q "v399" flutter/lib/models/ab_model.dart || { echo "[FAIL] v399: address book server mode not wired"; exit 1; }
+          # [v400] Alias edits must reach the API from any tab, and the
+          # multi-select add offers the same rename prompt.
+          python3 patches/ui/patch_alias_sync.py .
+          grep -q "v400" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v400: alias sync not wired"; exit 1; }
           python3 patches/install/patch_packer_icon.py .
           grep -q "packer-icon.ico" libs/portable/build.rs || { echo "[FAIL] v394: installer icon not wired"; exit 1; }
           echo "[OK] brand artwork and icons wired"
