@@ -107,7 +107,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: c86206ecd546e9dabd946a936938bbfcccd747df
+      patches_sha: 587944d32944781568d7997c22c428e6fcaaf722
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -195,7 +195,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: c86206ecd546e9dabd946a936938bbfcccd747df
+          ref: 587944d32944781568d7997c22c428e6fcaaf722
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -2814,6 +2814,10 @@ jobs:
           # the build, which had also switched this lookup off.
           python3 patches/ui/patch_shortcut_icon.py .
           grep -q "v392" src/platform/windows.rs || { echo "[FAIL] v392: shortcut icon guard not relaxed"; exit 1; }
+          # [v394] The installer wrapper's icon comes from libs/portable/build.rs
+          # (winres + res/icon.ico), not from the app at all.
+          python3 patches/install/patch_packer_icon.py .
+          grep -q "packer-icon.ico" libs/portable/build.rs || { echo "[FAIL] v394: installer icon not wired"; exit 1; }
           # The home page is replaced later by patches/ui/desktop_home_page_new.dart,
           # so the logo loader is fixed in that template, not here.
 
@@ -4800,6 +4804,23 @@ jobs:
             exit 1
           }
           Write-Host "shortcut icon staged: $icoDir/icon.ico"
+
+          # [v394] Installer wrapper icon. libs/portable/build.rs feeds winres
+          # with ../../res/icon.ico, i.e. the repo-root res/, so the staged copy
+          # goes to the repo-root brand/ that build.rs now prefers. A NEW file
+          # next to res/ -- res/icon.ico itself stays upstream's.
+          # The packer is compiled later by generate.py, so this lands in time.
+          $packerIco = "./brand/packer-icon.ico"
+          $packerDir = Split-Path $packerIco -Parent
+          if (!(Test-Path $packerDir)) {
+            New-Item -ItemType Directory -Force -Path $packerDir | Out-Null
+          }
+          Copy-Item "$icoDir/icon.ico" $packerIco -Force
+          if (!(Test-Path $packerIco)) {
+            Write-Error "brand/packer-icon.ico was not staged"
+            exit 1
+          }
+          Write-Host "installer icon staged: $packerIco"
       - name: Download card_mark.png
         if: ${{ fromJson(inputs.extras || '{}').card_mark_link == 'true' }}
         env:
