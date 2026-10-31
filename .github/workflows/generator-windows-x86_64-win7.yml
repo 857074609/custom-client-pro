@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 1678a7a37fe8be7f131e4f6d494a0bae93fceead
+      patches_sha: 743fbebe7c4864a55fdfaaf4ff5cca1f3339146d
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 1678a7a37fe8be7f131e4f6d494a0bae93fceead
+          ref: 743fbebe7c4864a55fdfaaf4ff5cca1f3339146d
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -3434,6 +3434,9 @@ jobs:
           # [v406] A LocalAb carrying a server guid must pull, not no-op.
           python3 patches/ui/patch_local_ab_pull.py .
           grep -q "v406" flutter/lib/models/ab_model.dart || { echo "[FAIL] v406: local ab pull not wired"; exit 1; }
+          # [v407] Fetch every address book so aliases resolve across collections.
+          python3 patches/ui/patch_pull_all_abs.py .
+          grep -q "v407" flutter/lib/models/ab_model.dart || { echo "[FAIL] v407: pull-all not wired"; exit 1; }
           python3 patches/iroh/iroh_badge.py .
 
       # [v382] AI Buddy is a build-time choice, not a runtime one: the whole
