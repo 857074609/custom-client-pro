@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 743fbebe7c4864a55fdfaaf4ff5cca1f3339146d
+      patches_sha: 04d67189462b2a062571a5365dcee96d6df570fe
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 743fbebe7c4864a55fdfaaf4ff5cca1f3339146d
+          ref: 04d67189462b2a062571a5365dcee96d6df570fe
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -1757,6 +1757,11 @@ jobs:
           # 脚本检测到 // UI_MODE_BOTH 标记后仅跑 Rust 侧（写入 lan-ip / lan-ipv6 / direct-access-port
           # 选项供上部本机信息卡片读取），并自动跳过 Dart 侧注入（避免重复 buildDirectAccessBoard）。
           python3 patches/network/patch_direct_access.py . "${{ inputs.ui_mode }}"
+          # [v408] check_port must replace an existing port instead of ignoring
+          # the requested one, or the UDP pool walk never varies the target and
+          # a peer with a truncated port is retried forever.
+          python3 patches/network/patch_check_port.py .
+          grep -q "v408" libs/hbb_common/src/socket_client.rs || { echo "[FAIL] v408: check_port not patched"; exit 1; }
           # 不依赖 env.CLIENT_TYPE（其尚未设置），直接检测当前 desktop_home_page.dart 是否为
           # desktop_home_page_both.dart 变体（顶部含 // UI_MODE_BOTH 标记）。both 变体已在本机
           # 信息卡片自渲染网络信息，无需再注入 buildDirectAccessBoard。
