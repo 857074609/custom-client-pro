@@ -3571,7 +3571,8 @@ jobs:
           grep -qF "_gateText" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: gate question missing"; exit 1; }
           grep -qF "kAiOptionRiskGate" flutter/lib/ai/ai_settings.dart || { echo "[FAIL] v351: risk gate option missing"; exit 1; }
           grep -qF "AiSettings.riskGate" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: gate ignores its option"; exit 1; }
-          grep -qF "只给结果，不贴过程" flutter/lib/ai/ai_agent.dart || { echo "[FAIL] v351: output style not pinned"; exit 1; }
+          # [v409] the prompt moved to ai_settings.dart so it can be swapped per model.
+          grep -qF "只给结果，不贴过程" flutter/lib/ai/ai_settings.dart || { echo "[FAIL] v351: output style not pinned"; exit 1; }
           grep -qF "_writeVerbs" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v352: write-verb table missing"; exit 1; }
           grep -qF "_looksReadOnly" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v352: read-only shortcut missing"; exit 1; }
           grep -qF "aiRiskFamily" flutter/lib/ai/ai_tools.dart || { echo "[FAIL] v352: risk family lookup missing"; exit 1; }
