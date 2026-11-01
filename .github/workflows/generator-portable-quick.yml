@@ -3658,8 +3658,10 @@ jobs:
           if 'final Set<int> _openCards' not in page:
               print('[FAIL] v352: tool cards are not collapsible')
               sys.exit(1)
-          agent = open('flutter/lib/ai/ai_agent.dart', encoding='utf-8').read()
-          if '不可逆操作' not in agent:
+          # [v409] the prompt moved to ai_settings.dart so it can be swapped per
+          # model; the hard rule must be checked wherever the text now lives.
+          settings = open('flutter/lib/ai/ai_settings.dart', encoding='utf-8').read()
+          if '不可逆操作' not in settings:
               print('[FAIL] v351: irreversible-operation rule was trimmed away')
               sys.exit(1)
           if 'SKIPPED' not in agent:
