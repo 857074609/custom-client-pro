@@ -99,7 +99,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ fromJson(inputs.extras).version }}
-      patches_sha: 753b7844a60ec11515ce8a15ce844888685cd66a
+      patches_sha: abf09f775eba38153800436a451aa2d5ce53c162
     secrets:
       REPO: ${{ secrets.REPO }}
 
@@ -174,7 +174,7 @@ jobs:
           repository: 857074609/patches
           path: patches 
           token: ${{ secrets.REPO }}
-          ref: 753b7844a60ec11515ce8a15ce844888685cd66a
+          ref: abf09f775eba38153800436a451aa2d5ce53c162
 
       - name: Install invite Dart module (build contract, no watcher)
         shell: bash
@@ -3475,6 +3475,10 @@ jobs:
           grep -qF "AiBuddyPanel(ffi: _ffi)" flutter/lib/desktop/pages/remote_page.dart || { echo "[FAIL] v346: assistant panel widget missing"; exit 1; }
           grep -qF "class _AiBuddyButton extends StatelessWidget" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v346: assistant toolbar button missing"; exit 1; }
           grep -qF "toolbarItems.add(_AiBuddyButton(" flutter/lib/desktop/widgets/remote_toolbar.dart || { echo "[FAIL] v346: assistant button not registered"; exit 1; }
+          # [v413] Close-all-applications button on the screen wall toolbar. It
+          # reuses the assistant terminal channel, so that patch must run first.
+          python3 patches/ai/patch_screen_wall_kill_apps.py .
+          grep -qF "kWallKillAppsTerminalId" flutter/lib/desktop/pages/screen_wall_page.dart || { echo "[FAIL] v413: wall kill-apps button not wired"; exit 1; }
           python3 - <<'PY' || exit 1
           import sys
           s = open('flutter/lib/desktop/widgets/remote_toolbar.dart', encoding='utf-8').read()
