@@ -31,6 +31,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ai_buddy:
+        description: "Enable AI Buddy assistant (declared for dispatch parity; mobile/desktop variants may ignore it)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "icon link"
         required: false

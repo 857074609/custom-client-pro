@@ -32,6 +32,11 @@ on:
         required: false
         default: 'false'
         type: string
+      ai_buddy:
+        description: "Enable AI Buddy assistant (declared for dispatch parity; mobile/desktop variants may ignore it)"
+        required: false
+        default: 'false'
+        type: string
       iconlink:
         description: "Icon source: 'true' uses GENURL+uuid mechanism; or pass http(s) PNG link directly; 'false' (default) keeps RustDesk default icon."
         required: false
