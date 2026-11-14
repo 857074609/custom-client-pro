@@ -1026,17 +1026,24 @@ jobs:
           grep -q "http.post(" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v127: no http.post() call left in peer_card.dart"; exit 1; }
           grep -q "_requestOtp" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v127: OTP helper (_requestOtp) missing"; exit 1; }
 
-      - name: iroh menu (v88)
-        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+      # [v423] Address-book alias chain runs unconditionally.
+      # These used to live inside the iroh-menu step, which is gated on
+      # enable_iroh_direct == 'true'; an Android build with iroh off silently
+      # skipped them and the accessible list showed bare numeric ids.
+      - name: Address book alias chain (v170/v404)
         shell: bash
         run: |
-          # [v170] add-to-ab auto rename + desktop toolbar toggles
           python3 patches/ui/patch_add_to_ab_rename.py .
           python3 patches/ui/patch_peer_card_alias.py .
           # [v404] Resolve the card title from the address books too, so a
           # reinstall (which drops the local alias cache) still shows names.
           python3 patches/ui/patch_accessible_alias_lookup.py .
           grep -q "v404" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v404: accessible alias lookup not wired"; exit 1; }
+
+      - name: iroh menu (v88)
+        if: fromJson(inputs.extras).enable_iroh_direct == 'true'
+        shell: bash
+        run: |
           python3 patches/iroh/iroh_menu.py .
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
