@@ -1033,6 +1033,10 @@ jobs:
           # [v170] add-to-ab auto rename + desktop toolbar toggles
           python3 patches/ui/patch_add_to_ab_rename.py .
           python3 patches/ui/patch_peer_card_alias.py .
+          # [v404] Resolve the card title from the address books too, so a
+          # reinstall (which drops the local alias cache) still shows names.
+          python3 patches/ui/patch_accessible_alias_lookup.py .
+          grep -q "v404" flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] v404: accessible alias lookup not wired"; exit 1; }
           python3 patches/iroh/iroh_menu.py .
           if grep -q 'String? ipv6;' ./flutter/lib/common/hbbs/hbbs.dart; then
             grep -q "_irohDirectAction" ./flutter/lib/common/widgets/peer_card.dart || { echo "[FAIL] peer_card missing iroh menu"; exit 1; }
@@ -1170,6 +1174,19 @@ jobs:
         run: |
           python3 patches/network/patch_android_direct_server.py .
           python3 patches/ui/patch_add_address_book.py .
+          # [v399-v407] Keep the Android address book chain identical to the
+          # Windows generators. Without these, a book stays a LocalAb whose
+          # alias never reaches the server, and only the current collection is
+          # fetched -- the accessible list then shows bare numeric ids.
+          python3 patches/ui/patch_ab_server_mode.py .
+          python3 patches/ui/patch_alias_sync.py .
+          python3 patches/ui/patch_no_local_ab.py .
+          python3 patches/ui/patch_local_ab_alias_sync.py .
+          python3 patches/ui/patch_local_ab_pull.py .
+          # [v407] Fetch every collection so aliases in a non-current book
+          # are available to the accessible-device cards.
+          python3 patches/ui/patch_pull_all_abs.py .
+          grep -q "v407" flutter/lib/models/ab_model.dart || { echo "[FAIL] v407: pull-all-abs not wired"; exit 1; }
           python3 patches/quality/patch_quality_monitor_c.py .
           python3 patches/quality/patch_quality_monitor_sysload.py .
           # V338: the 5 system-load rows (CPU/mem/disk/net/GPU) are now sampled on the
