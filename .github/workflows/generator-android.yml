@@ -80,7 +80,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
 env:
   SCITER_RUST_VERSION: "1.75"
-  RUST_VERSION: "1.85.0"
+  RUST_VERSION: "1.88.0"
   CARGO_NDK_VERSION: "3.1.2"
   SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
   SCITER_NASM_DEBVERSION: "2.14-1"
@@ -1254,10 +1254,11 @@ jobs:
         run: |
           # iroh 0.35 pulls url 2.5.4 (via iroh-relay) -> idna 1.1 -> idna_adapter.
           # idna_adapter is pinned to =1.2.0 in Cargo.toml (via patch_iroh_transport.py),
-          # which drags the whole icu subtree to the 1.x line (MSRV 1.67) so the pinned
-          # 1.85.0 toolchain can build the iroh closure. 1.2.0 is the only 1.2.x build
-          # that depends on icu 1.x; 1.2.1/1.2.2 pull icu 2.x (rust-version 1.82/1.86)
-          # which the toolchain cannot compile. The pin lives in Cargo.toml (not a
+          # which keeps the icu subtree on the 1.x line (MSRV 1.67). The toolchain was
+          # raised to 1.88.0 because cargo-ndk's fresh dependency resolution began
+          # pulling ar_archive_writer 0.5.5 / pest 2.9.6 / psm 0.1.32, all of which
+          # declare rust-version 1.88; 1.85 rejected them before the lock was used.
+          # The icu pin stays for reproducibility. It lives in Cargo.toml (not a
           # post-hoc `cargo update`), so the first lock resolution already selects it.
           # Guarded so builds without iroh skip the pin cleanly.
           if grep -q '^iroh' ./Cargo.toml; then
