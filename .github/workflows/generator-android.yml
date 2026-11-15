@@ -633,12 +633,23 @@ jobs:
           #           controlled side's SEND_TIMEOUT_OTHER).
           #   v320-2: bound one pump tick (60s) so zero forward progress
           #           breaks the io_loop and triggers a reconnect.
+          # [v424] Record the checked-out patches revision. The v320 guard once
+          # failed because a workflow still pinned the V338 tag, whose version
+          # of these two scripts wrote different markers than the assertions
+          # below expected. Printing the revision makes that class of failure
+          # obvious instead of looking like the patch silently did nothing.
+          echo "[v320] patches rev: $(git -C patches rev-parse --short HEAD 2>/dev/null || echo unknown)"
           python3 patches/file_transfer/patch_client_send_timeout.py .
           python3 patches/file_transfer/patch_transfer_stall_timeout.py .
           # Guards: both markers, the actual timeout wire-ups, and the
           # timeout constant typed as u64 milliseconds (hbb_common::timeout
           # takes ms, not a Duration -- a Duration here fails to compile).
-          grep -qF "[v320] client send timeout" src/client/io_loop.rs || { echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"; exit 1; }
+          if ! grep -qF "[v320] client send timeout" src/client/io_loop.rs; then
+            echo "[FAIL] v320: client send-timeout marker missing in io_loop.rs"
+            echo "--- v320 lines actually present ---"
+            grep -nF "v320" src/client/io_loop.rs | head -20 || echo "(none)"
+            exit 1
+          fi
           grep -qF "peer.set_send_timeout(V320_CLIENT_SEND_TIMEOUT_MS);" src/client/io_loop.rs || { echo "[FAIL] v320: client set_send_timeout call missing"; exit 1; }
           grep -qF "[v320] transfer stall timeout" src/client/io_loop.rs || { echo "[FAIL] v320: transfer stall-timeout marker missing in io_loop.rs"; exit 1; }
           grep -qF "const V320_TRANSFER_STALL_TIMEOUT_MS: u64 = 60_000;" src/client/io_loop.rs || { echo "[FAIL] v320: stall timeout constant must be u64 milliseconds"; exit 1; }
